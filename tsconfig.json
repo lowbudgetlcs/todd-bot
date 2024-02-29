@@ -1,7 +1,7 @@
 {
     "compilerOptions": {
       "target": "esnext",
-      "module": "esnext",
+      "module": "nodenext",
       "moduleResolution": "nodenext",
       "lib": [
         "esnext"
@@ -22,5 +22,8 @@
       "resolveJsonModule": true
     },
     "include": ["./**/*.ts"],
-    "exclude": ["node_modules"]
+    "exclude": ["node_modules"],
+    "ts-node": {
+      "swc": true
+    }
   }
