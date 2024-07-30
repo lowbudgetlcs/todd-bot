@@ -1,22 +1,26 @@
 {
   "name": "todd-bot",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "",
-  "main": "index.js",
+  "main": "dist/index.js",
   "scripts": {
-    "dev": "ts-node index.ts",
+    "dev": "tsx watch src/index.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node dist/index.js",
+    "start": "node .",
     "build": "tsup src/index.ts --minify"
   },
   "author": "ruuffian",
   "license": "MIT",
   "dependencies": {
+    "@fightmegg/riot-api": "^0.0.20",
     "@swc/core": "^1.4.2",
+    "@types/node": "^22.0.0",
     "discord.js": "^14.14.1",
     "dotenv": "^16.4.5",
     "eslint": "^8.57.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.3.3"
+    "tsup": "^8.2.3",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.4"
   }
 }
