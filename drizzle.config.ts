@@ -6,10 +6,10 @@ dotenv.config();
 const supabaseUrl = process.env.SUPABASE_URL!;
 console.log(supabaseUrl);
 export default defineConfig({
-  dialect: "postgresql", // "mysql" | "sqlite"
+  schema: "./src/schema/*",
+  out: "./drizzle",
+  dialect: 'postgresql',
   dbCredentials: {
     url: supabaseUrl,
-  },
-  schema: "./src/schema.ts",
-  out: "./drizzle",
+  }
 });

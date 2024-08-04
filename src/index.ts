@@ -2,12 +2,9 @@
 import { ActionRowBuilder, Client, Collection, Events, GatewayIntentBits, ModalActionRowComponentBuilder, ModalBuilder, REST, Routes, TextInputBuilder, TextInputStyle } from 'discord.js';
 import { commands } from "./commands";
 import { config } from "./config";
-import { deployCommands } from "./deploy-commands";
-// import { createClient } from '@supabase/supabase-js'
-import { Database } from './supabase/database.types';
 import {execute} from "./commands/tournnament";
 import { TIMEOUT } from 'dns/promises';
-import { supabase } from './utils/supabase';
+import { deployCommands } from './deploy-commands';
 
 // Create a new client instance
 const client = new Client({ intents: ["Guilds", "GuildMessages", "DirectMessages"] });
@@ -16,29 +13,28 @@ const rest = new REST({ version: "10" }).setToken(config.DISCORD_TOKEN);
 
 const token = process.env.DISCORD_TOKEN;
 const provider_id = process.env.PROVIDER_ID;
+const guild_id = process.env.GUILD_ID;
 const tournament_id = process.env.TOURNAMENT_ID;
 const tournament_code_endpoint = process.env.TOURNAMENT_CODE_ENDPOIN;
 
 
-client.once("ready", () => {
+client.once("ready", async () => {
 	console.log("Discord bot is ready! 🤖");
-
-	
+	// await deployCommands({ guildId:  guild_id!});
 });
 
 client.on("guildCreate", async (guild) => {
-	console.log("here");
-	await deployCommands({ guildId: guild.id });
-});
-
+	console.log("deploy commands please")
+  });
 
 client.on(Events.InteractionCreate, async interaction => {
 	if (!interaction.isChatInputCommand()) return;
 
-	if (interaction.commandName === 'ping') {
+	if (interaction.commandName === 'genertate-tournament-code') {
 		// Create the modal
+		console.log(interaction.guildId)
 		const modal = new ModalBuilder()
-			.setCustomId('tournament')
+			.setCustomId('genertate-tournament-code')
 			.setTitle('Tournament Codes');
 
 		// Create the text input components
@@ -63,18 +59,16 @@ client.on(Events.InteractionCreate, async interaction => {
 });
 
 client.on(Events.InteractionCreate, async interaction => {
+	console.log(interaction.guildId);
 	if (!interaction.isModalSubmit()) return;
 
-	console.log(interaction.customId);
 	if(true){
 	// Get the data entered by the user
 		const team1 = interaction.fields.getTextInputValue('team1');
 		const team2 = interaction.fields.getTextInputValue('team2');
 		
-		console.log({ team1, team2});
 		var tournament_code = await execute(team1, team2);
-		console.log(tournament_code);
-		interaction.reply({content: "The first/second/third Code for your series is ```"+tournament_code+"```"});
+		interaction.reply({content: "The "+(tournament_code?.game_number!+1)+" Code for your series is ```"+tournament_code?.tournamentCode1+"```"});
 	}
 });
 
