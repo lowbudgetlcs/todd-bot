@@ -16,11 +16,12 @@ const provider_id = process.env.PROVIDER_ID;
 const guild_id = process.env.GUILD_ID;
 const tournament_id = process.env.TOURNAMENT_ID;
 const tournament_code_endpoint = process.env.TOURNAMENT_CODE_ENDPOIN;
+const channel_id = process.env.CHANNEL_ID;
 
 
 client.once("ready", async () => {
 	console.log("Discord bot is ready! 🤖");
-	// await deployCommands({ guildId:  guild_id!});
+	await deployCommands({ guildId:  guild_id!});
 });
 
 client.on("guildCreate", async (guild) => {
@@ -30,11 +31,11 @@ client.on("guildCreate", async (guild) => {
 client.on(Events.InteractionCreate, async interaction => {
 	if (!interaction.isChatInputCommand()) return;
 
-	if (interaction.commandName === 'genertate-tournament-code') {
-		// Create the modal
-		console.log(interaction.guildId)
+
+	if (interaction.commandName == 'generate-tournament-code' && interaction.channelId == channel_id) {
+
 		const modal = new ModalBuilder()
-			.setCustomId('genertate-tournament-code')
+			.setCustomId('generate-tournament-code')
 			.setTitle('Tournament Codes');
 
 		// Create the text input components
@@ -56,19 +57,27 @@ client.on(Events.InteractionCreate, async interaction => {
 		// Show the modal to the user
 		await interaction.showModal(modal);
 	}
+	else {
+		interaction.reply({ content: 'Please do not use this command in this way <3', ephemeral: true });
+	}
+
 });
 
 client.on(Events.InteractionCreate, async interaction => {
-	console.log(interaction.guildId);
 	if (!interaction.isModalSubmit()) return;
 
-	if(true){
 	// Get the data entered by the user
-		const team1 = interaction.fields.getTextInputValue('team1');
-		const team2 = interaction.fields.getTextInputValue('team2');
+	const team1 = interaction.fields.getTextInputValue('team1');
+	const team2 = interaction.fields.getTextInputValue('team2');
 		
-		var tournament_code = await execute(team1, team2);
-		interaction.reply({content: "The "+(tournament_code?.game_number!+1)+" Code for your series is ```"+tournament_code?.tournamentCode1+"```"});
+	var tournament_code = await execute(team1, team2);
+	if(tournament_code?.error!=""){
+		interaction.reply({content: tournament_code?.error, ephemeral: true});
+	}
+	else{
+		let response = "```The "+(tournament_code?.game_number!)+" Code for your series is "+tournament_code?.tournamentCode1;
+		response = tournament_code?.game_number!>5? response.concat(". You are above the needed codes for your series. If you are experiencing issues, please open an admit ticket.```<@247886805821685761>") : response.concat("```");
+		interaction.reply({content: response});
 	}
 });
 

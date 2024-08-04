@@ -1,4 +1,4 @@
-import { pgTable, pgEnum, serial, bigint, char, text, integer, varchar, foreignKey, boolean, index, type AnyPgColumn, smallint } from "drizzle-orm/pg-core"
+import { pgTable, foreignKey, pgEnum, serial, char, integer, boolean, index, varchar, text, type AnyPgColumn, bigint, smallint } from "drizzle-orm/pg-core"
   import { sql } from "drizzle-orm"
 
 export const aal_level = pgEnum("aal_level", ['aal1', 'aal2', 'aal3'])
@@ -11,20 +11,6 @@ export const key_type = pgEnum("key_type", ['aead-ietf', 'aead-det', 'hmacsha512
 export const action = pgEnum("action", ['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'ERROR'])
 export const equality_op = pgEnum("equality_op", ['eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'in'])
 
-
-export const results = pgTable("results", {
-	id: serial("id").primaryKey().notNull(),
-	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
-	start_time: bigint("start_time", { mode: "number" }),
-	short_code: char("short_code", { length: 44 }).notNull(),
-	meta_data: text("meta_data").notNull(),
-	game_id: integer("game_id"),
-	game_name: varchar("game_name", { length: 60 }),
-	game_type: varchar("game_type", { length: 20 }),
-	game_map: varchar("game_map", { length: 20 }),
-	game_mode: varchar("game_mode", { length: 20 }),
-	region: varchar("region", { length: 20 }),
-});
 
 export const accounts = pgTable("accounts", {
 	id: serial("id").primaryKey().notNull(),
@@ -45,16 +31,6 @@ export const divisions = pgTable("divisions", {
 	return {
 		lower_idx: index("divisions_lower_idx").using("btree", sql`lower((name)::text)`),
 	}
-});
-
-export const games = pgTable("games", {
-	id: serial("id").primaryKey().notNull(),
-	short_code: char("short_code", { length: 44 }).notNull(),
-	winner_id: integer("winner_id").references(() => teams.id),
-	loser_id: integer("loser_id").references(() => teams.id),
-	series_id: integer("series_id").notNull().references(() => series.id),
-	result_id: integer("result_id").references(() => results.id),
-	game_num: integer("game_num"),
 });
 
 export const performances = pgTable("performances", {
@@ -78,6 +54,20 @@ export const schedules = pgTable("schedules", {
 	series_id: integer("series_id").notNull().references(() => series.id),
 });
 
+export const results = pgTable("results", {
+	id: serial("id").primaryKey().notNull(),
+	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
+	start_time: bigint("start_time", { mode: "number" }),
+	short_code: varchar("short_code", { length: 100 }).notNull(),
+	meta_data: text("meta_data").notNull(),
+	game_id: integer("game_id"),
+	game_name: varchar("game_name", { length: 60 }),
+	game_type: varchar("game_type", { length: 20 }),
+	game_map: varchar("game_map", { length: 20 }),
+	game_mode: varchar("game_mode", { length: 20 }),
+	region: varchar("region", { length: 20 }),
+});
+
 export const series = pgTable("series", {
 	id: serial("id").primaryKey().notNull(),
 	team1_id: integer("team1_id").notNull().references(() => teams.id),
@@ -86,6 +76,16 @@ export const series = pgTable("series", {
 	message_id: bigint("message_id", { mode: "number" }),
 	playoffs: boolean("playoffs").notNull(),
 	win_condition: integer("win_condition").notNull(),
+});
+
+export const games = pgTable("games", {
+	id: serial("id").primaryKey().notNull(),
+	short_code: varchar("short_code", { length: 100 }).notNull(),
+	winner_id: integer("winner_id").references(() => teams.id),
+	loser_id: integer("loser_id").references(() => teams.id),
+	series_id: integer("series_id").notNull().references(() => series.id),
+	result_id: integer("result_id").references(() => results.id),
+	game_num: integer("game_num").default(0).notNull(),
 });
 
 export const standings = pgTable("standings", {

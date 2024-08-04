@@ -4,7 +4,6 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 const supabaseUrl = process.env.SUPABASE_URL!;
-console.log(supabaseUrl);
 export default defineConfig({
   schema: "./src/schema/*",
   out: "./drizzle",
