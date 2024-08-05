@@ -69,8 +69,14 @@ client.on(Events.InteractionCreate, async interaction => {
 	// Get the data entered by the user
 	const team1 = interaction.fields.getTextInputValue('team1');
 	const team2 = interaction.fields.getTextInputValue('team2');
-		
-	var tournament_code = await execute(team1, team2);
+	var tournament_code;
+	try {
+		tournament_code = await execute(team1, team2);
+	}
+	catch(e){
+		interaction.reply({content: "Error, contact ruuffian.", ephemeral: true});
+		return;
+	}
 	if(tournament_code?.error!=""){
 		interaction.reply({content: tournament_code?.error, ephemeral: true});
 	}

@@ -29,4 +29,3 @@ export async function deployCommands({ guildId }: DeployCommandsProps) {
     console.error(error);
   }
 }
-
