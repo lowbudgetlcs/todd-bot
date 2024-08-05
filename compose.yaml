@@ -1,5 +1,5 @@
 services:
   todd-bot:
-    build: .
+    image: lblcs/todd-bot:latest
     env_file: .env 
     container_name: todd-bot
