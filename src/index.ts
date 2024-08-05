@@ -75,6 +75,7 @@ client.on(Events.InteractionCreate, async interaction => {
 	divisionMap.set(2, "COMMERCIAL");
 	divisionMap.set(3, "FINANCIAL");
 	divisionMap.set(4, "EXECUTIVE");
+	divisionMap.set(5, "TEST");
 
 	var tournament_code;
 	try {
