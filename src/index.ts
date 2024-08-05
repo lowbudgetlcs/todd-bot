@@ -69,6 +69,13 @@ client.on(Events.InteractionCreate, async interaction => {
 	// Get the data entered by the user
 	const team1 = interaction.fields.getTextInputValue('team1');
 	const team2 = interaction.fields.getTextInputValue('team2');
+
+	const divisionMap = new Map();
+	divisionMap.set(1, "ECONOMY");
+	divisionMap.set(2, "COMMERCIAL");
+	divisionMap.set(3, "FINANCIAL");
+	divisionMap.set(4, "EXECUTIVE");
+
 	var tournament_code;
 	try {
 		tournament_code = await execute(team1, team2);
@@ -81,8 +88,11 @@ client.on(Events.InteractionCreate, async interaction => {
 		interaction.reply({content: tournament_code?.error, ephemeral: true});
 	}
 	else{
-		let response = "```The "+(tournament_code?.game_number!)+" Code for your series is "+tournament_code?.tournamentCode1;
-		response = tournament_code?.game_number!>5? response.concat(". You are above the needed codes for your series. If you are experiencing issues, please open an admit ticket.```<@247886805821685761>") : response.concat("```");
+		let division_name = divisionMap.get(tournament_code?.division);
+		let group_name = tournament_code?.group;
+		let response = "## "+ division_name + " - Group "+group_name+ "\n"+"**__"+tournament_code.team1Name+"__** vs **__"+tournament_code.team2Name+"__**\n"+"Game "+(tournament_code?.game_number!)+" Code: ```"+tournament_code?.tournamentCode1 + "```";
+		if(tournament_code?.game_number!>5)
+			response = response.concat("\nYou are above the needed codes for your series. If you are experiencing issues, please open an admit ticket. <@247886805821685761>");
 		interaction.reply({content: response});
 	}
 });
