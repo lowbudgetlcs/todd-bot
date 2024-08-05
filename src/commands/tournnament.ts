@@ -103,7 +103,7 @@ export async function execute(team1: String, team2: String) {
   }
   
   let meta = JSON.stringify({gameNum: game_number, seriesId: series_id});
-  let riotResponse = await config.rAPI.tournamentStubV5.createCodes({params: {
+  let riotResponse = await config.rAPI.tournamentV5.createCodes({params: {
       count: 1,
       tournamentId: tournament_code
   }, body: {
