@@ -63,6 +63,10 @@ export async function execute(team1: String, team2: String) {
   let error = "";
   let tournamentCode1="";
   let game_number = 1;
+  let division=0;
+  let group="";
+  let team1Name="";
+  let team2Name="";
 
 
   let teamInfo = await checkTeams(team1, team2);
@@ -70,8 +74,10 @@ export async function execute(team1: String, team2: String) {
   
   if(teamInfo?.data.error!=""){
     error = teamInfo?.data.error!;
-    return {tournamentCode1, game_number, error};
+    return {tournamentCode1, game_number, error, division, group,team1Name, team2Name};
   }
+  team1Name = teamInfo.data.team1!.name;
+  team2Name = teamInfo.data.team2!.name;
   let response = await db.select({providerId: divisions.provider_id, tournamentId: divisions.tournament_id}).from(divisions).where(eq(divisions.id, teamInfo.data.team1!.division_id));
 
   let tournament_code = response[0].tournamentId;
@@ -81,7 +87,7 @@ export async function execute(team1: String, team2: String) {
   
   if(series_check[0]==undefined){
     error = "There is no series for those two teams.";
-    return {tournamentCode1, game_number, error};
+    return {tournamentCode1, game_number, error, division, group,team1Name, team2Name};
   }
 
   let series_id = series_check[0].seriesId;
@@ -93,10 +99,10 @@ export async function execute(team1: String, team2: String) {
 
   if(game_number>10){
     error = "We do not allow more than 10 codes for a single series. Please make a ticket if you are having issues with your tournament codes.";
-    return {tournamentCode1, game_number, error};
+    return {tournamentCode1, game_number, error, division, group,team1Name, team2Name};
   }
   
-  let meta = JSON.stringify({game_num: game_number, series_id: series_id});
+  let meta = JSON.stringify({gameNum: game_number, seriesId: series_id});
   let riotResponse = await config.rAPI.tournamentV5.createCodes({params: {
       count: 1,
       tournamentId: tournament_code
@@ -110,6 +116,8 @@ export async function execute(team1: String, team2: String) {
   }})
   tournamentCode1 = riotResponse[0];
   await db.insert(games).values({short_code: tournamentCode1[0], series_id: series_id, game_num: game_number});
+  division = teamInfo.data.team1!.division_id;
+  group = teamInfo.data.team1!.group_id;
 
-  return {tournamentCode1, game_number, error};
+  return {tournamentCode1, game_number, error, division, group, team1Name, team2Name};
 }
