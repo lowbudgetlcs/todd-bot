@@ -66,7 +66,7 @@ client.on(Events.InteractionCreate, async interaction => {
 client.on(Events.InteractionCreate, async interaction => {
 	if (!interaction.isModalSubmit()) return;
 
-	await interaction.deferReply({ephemeral: true});
+	await interaction.deferReply();
 
 	// Get the data entered by the user
 	const team1 = interaction.fields.getTextInputValue('team1');
@@ -84,11 +84,16 @@ client.on(Events.InteractionCreate, async interaction => {
 		tournament_code = await execute(team1, team2);
 	}
 	catch(e){
-		interaction.followUp({content: "Error, contact ruuffian.", ephemeral: true});
+		await interaction.editReply("Error");
+		await interaction.followUp({content: "Error, contact ruuffian.", ephemeral: true});
+		await interaction.deleteReply();
+
 		return;
 	}
 	if(tournament_code?.error!=""){
-		interaction.followUp({content: tournament_code?.error, ephemeral: true});
+		await interaction.editReply("Error");
+		await interaction.followUp({content: tournament_code?.error, ephemeral: true});
+		await interaction.deleteReply();
 	}
 	else{
 		let division_name = divisionMap.get(tournament_code?.division);
@@ -96,7 +101,7 @@ client.on(Events.InteractionCreate, async interaction => {
 		let response = "## "+ division_name + " - Group "+group_name+ "\n"+"**__"+tournament_code.team1Name+"__** vs **__"+tournament_code.team2Name+"__**\n"+"Game "+(tournament_code?.game_number!)+" Code: ```"+tournament_code?.tournamentCode1 + "```";
 		if(tournament_code?.game_number!>5)
 			response = response.concat("\nYou are above the needed codes for your series. If you are experiencing issues, please open an admit ticket. <@247886805821685761>");
-		interaction.followUp({content: response, ephemeral: false});
+		await interaction.editReply(response);
 	}
 });
 
