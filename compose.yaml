@@ -1,0 +1,5 @@
+services:
+  todd-bot:
+    build: .
+    env_file: .env 
+    container_name: todd-bot
