@@ -66,6 +66,8 @@ client.on(Events.InteractionCreate, async interaction => {
 client.on(Events.InteractionCreate, async interaction => {
 	if (!interaction.isModalSubmit()) return;
 
+	await interaction.deferReply();
+
 	// Get the data entered by the user
 	const team1 = interaction.fields.getTextInputValue('team1');
 	const team2 = interaction.fields.getTextInputValue('team2');
