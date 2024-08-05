@@ -1,5 +1,5 @@
 
-import { ActionRowBuilder, Client, Collection, Events, GatewayIntentBits, ModalActionRowComponentBuilder, ModalBuilder, REST, Routes, TextInputBuilder, TextInputStyle } from 'discord.js';
+import { ActionRowBuilder, Client, Collection, Events, GatewayIntentBits, ModalActionRowComponentBuilder, ModalBuilder, REST, Routes, TextInputBuilder, TextInputStyle, PresenceData, Presence, ActivityType } from 'discord.js';
 import { commands } from "./commands";
 import { config } from "./config";
 import {execute} from "./commands/tournnament";
@@ -7,7 +7,11 @@ import { TIMEOUT } from 'dns/promises';
 import { deployCommands } from './deploy-commands';
 
 // Create a new client instance
-const client = new Client({ intents: ["Guilds", "GuildMessages", "DirectMessages"] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds, "Guilds", "GuildMessages", "DirectMessages"], presence: {activities: [{
+	state: 'Flipping pancakes at the Dennys',
+	type: ActivityType.Custom,
+	name: 'Flipping pancakes at the Dennys'
+}], status: 'online'}});
 const commandsData = Object.values(commands).map((command) => command.data);
 const rest = new REST({ version: "10" }).setToken(config.DISCORD_TOKEN);
 
@@ -21,6 +25,7 @@ const channel_id = process.env.CHANNEL_ID;
 
 client.once("ready", async () => {
 	console.log("Discord bot is ready! 🤖");
+	client.user?.setPresence({status: 'online',});
 	await deployCommands({ guildId:  guild_id!});
 });
 
