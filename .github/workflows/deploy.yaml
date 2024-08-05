@@ -65,7 +65,7 @@ jobs:
           script: |
             cd docker/lblcs/${{ env.APP }}
             echo SUPABASE_URL="${{ secrets.SUPABASE_URL }}" > .env
-            echo RIOT_TOKEN="${{ secrets.RIOT_TOKEN }}" >> .env
+            echo RIOT_KEY="${{ secrets.RIOT_KEY }}" >> .env
             echo DISCORD_CLIENT_ID="${{ secrets.DISCORD_CLIENT_ID }}" >> .env
             echo GUILD_ID="${{ secrets.GUILD_ID }}" >> .env
             echo DISCORD_TOKEN="${{ secrets.DISCORD_TOKEN }}" >> .env
