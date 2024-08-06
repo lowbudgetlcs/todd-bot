@@ -103,7 +103,7 @@ client.on(Events.InteractionCreate, async interaction => {
 	else{
 		let division_name = divisionMap.get(tournament_code?.division);
 		let group_name = tournament_code?.group;
-		let response = "## "+ division_name + " - Group "+group_name+ "\n"+"**__"+tournament_code.team1Name+"__** vs **__"+tournament_code.team2Name+"__**\n"+"Game "+(tournament_code?.game_number!)+" Code: ```"+tournament_code?.tournamentCode1 + "```";
+		let response = "## "+ division_name + " - Group "+group_name+ "\n"+"**__"+tournament_code.team1Name+"__** vs **__"+tournament_code.team2Name+"__**\n"+"Game "+(tournament_code?.game_number!)+" Code: `"+tournament_code?.tournamentCode1 + "`";
 		if(tournament_code?.game_number!>5)
 			response = response.concat("\nYou are above the needed codes for your series. If you are experiencing issues, please open an admit ticket. <@247886805821685761>");
 		await interaction.editReply(response);
