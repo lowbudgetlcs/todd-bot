@@ -1,5 +1,5 @@
 
-import { ActionRowBuilder, Client, Collection, Events, GatewayIntentBits, ModalActionRowComponentBuilder, ModalBuilder, REST, Routes, TextInputBuilder, TextInputStyle } from 'discord.js';
+import { ActionRowBuilder, Client, Collection, Events, GatewayIntentBits, ModalActionRowComponentBuilder, ModalBuilder, REST, Routes, TextInputBuilder, TextInputStyle, PresenceData, Presence, ActivityType } from 'discord.js';
 import { commands } from "./commands";
 import { config } from "./config";
 import {execute} from "./commands/tournnament";
@@ -7,7 +7,11 @@ import { TIMEOUT } from 'dns/promises';
 import { deployCommands } from './deploy-commands';
 
 // Create a new client instance
-const client = new Client({ intents: ["Guilds", "GuildMessages", "DirectMessages"] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds, "Guilds", "GuildMessages", "DirectMessages"], presence: {activities: [{
+	state: 'Flipping pancakes at the Dennys',
+	type: ActivityType.Custom,
+	name: 'Flipping pancakes at the Dennys'
+}], status: 'online'}});
 const commandsData = Object.values(commands).map((command) => command.data);
 const rest = new REST({ version: "10" }).setToken(config.DISCORD_TOKEN);
 
@@ -21,6 +25,7 @@ const channel_id = process.env.CHANNEL_ID;
 
 client.once("ready", async () => {
 	console.log("Discord bot is ready! 🤖");
+	client.user?.setPresence({status: 'online',});
 	await deployCommands({ guildId:  guild_id!});
 });
 
@@ -66,24 +71,42 @@ client.on(Events.InteractionCreate, async interaction => {
 client.on(Events.InteractionCreate, async interaction => {
 	if (!interaction.isModalSubmit()) return;
 
+	await interaction.deferReply();
+
 	// Get the data entered by the user
 	const team1 = interaction.fields.getTextInputValue('team1');
 	const team2 = interaction.fields.getTextInputValue('team2');
+
+	const divisionMap = new Map();
+	divisionMap.set(1, "ECONOMY");
+	divisionMap.set(2, "COMMERCIAL");
+	divisionMap.set(3, "FINANCIAL");
+	divisionMap.set(4, "EXECUTIVE");
+	divisionMap.set(5, "TEST");
+
 	var tournament_code;
 	try {
 		tournament_code = await execute(team1, team2);
 	}
 	catch(e){
-		interaction.reply({content: "Error, contact ruuffian.", ephemeral: true});
+		await interaction.editReply("Error");
+		await interaction.followUp({content: "Error, contact ruuffian.", ephemeral: true});
+		await interaction.deleteReply();
+
 		return;
 	}
 	if(tournament_code?.error!=""){
-		interaction.reply({content: tournament_code?.error, ephemeral: true});
+		await interaction.editReply("Error");
+		await interaction.followUp({content: tournament_code?.error, ephemeral: true});
+		await interaction.deleteReply();
 	}
 	else{
-		let response = "```The "+(tournament_code?.game_number!)+" Code for your series is "+tournament_code?.tournamentCode1;
-		response = tournament_code?.game_number!>5? response.concat(". You are above the needed codes for your series. If you are experiencing issues, please open an admit ticket.```<@247886805821685761>") : response.concat("```");
-		interaction.reply({content: response});
+		let division_name = divisionMap.get(tournament_code?.division);
+		let group_name = tournament_code?.group;
+		let response = "## "+ division_name + " - Group "+group_name+ "\n"+"**__"+tournament_code.team1Name+"__** vs **__"+tournament_code.team2Name+"__**\n"+"Game "+(tournament_code?.game_number!)+" Code: `"+tournament_code?.tournamentCode1 + "`";
+		if(tournament_code?.game_number!>5)
+			response = response.concat("\nYou are above the needed codes for your series. If you are experiencing issues, please open an admit ticket. <@247886805821685761>");
+		await interaction.editReply(response);
 	}
 });
 
