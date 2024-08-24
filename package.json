@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node .",
-    "build": "tsup src/index.ts --minify"
+    "build": "tsup src/index.ts src/cron.ts --minify",
+    "start": "pm2 start ecosystem.config.js"
   },
   "author": "ruuffian",
   "license": "MIT",
@@ -15,10 +15,12 @@
     "@fightmegg/riot-api": "^0.0.20",
     "@swc/core": "^1.4.2",
     "@types/node": "^22.0.0",
+    "croner": "^8.1.1",
     "discord.js": "^14.14.1",
     "dotenv": "^16.4.5",
     "drizzle-orm": "^0.32.1",
     "eslint": "^8.57.0",
+    "pm2": "^5.4.2",
     "postgres": "^3.4.4",
     "ts-node": "^10.9.2",
     "tsup": "^8.2.3",
