@@ -1,10 +1,12 @@
-export const apps = [
-  {
-    name: "bot",
-    script: "./dist/index.js"
-  },
-  {
-    name: "cron",
-    script: "./dist/cron.js"
-  }
-];
+module.exports = {
+  apps : [
+    {
+      name   : "bot",
+      script : "./dist/index.js"
+    },
+    {
+      name   : "cron",
+      script : "./dist/cron.js"
+    }
+  ]
+}
