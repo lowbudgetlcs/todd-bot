@@ -54,4 +54,4 @@ const job = Cron("45 23 * * *", async () => {
   const deletedCodes = await Promise.all(deletedPromises);
   const count = deletedCodes.filter(val => typeof val != "undefined").length
   console.info(`Pruning complete! Deleted ${count} codes.`)
-}).trigger();
+});
