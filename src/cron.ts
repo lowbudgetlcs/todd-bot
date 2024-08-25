@@ -22,7 +22,7 @@ const job = Cron("45 23 * * *", async () => {
   const unprocessedCodes = await db.select().from(games).where(
     and(
       eq(games.processed, false),
-      sql`${games.created_at} < current_timestamp - interval '12 minutes'`
+      sql`${games.created_at} < current_timestamp - interval '12 hours'`
     )
   );
   console.info(`Fetched ${unprocessedCodes.length} codes.`)
