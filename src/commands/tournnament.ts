@@ -116,8 +116,9 @@ export async function execute(team1: String, team2: String) {
   }})
   tournamentCode1 = riotResponse[0];
 
-  await db.insert(games).values({short_code: tournamentCode1, series_id: series_id, game_num: game_number});
-
+  await db.transaction(async (tx) => {
+    await tx.insert(games).values({short_code: tournamentCode1, series_id: series_id, game_num: game_number});
+  })
 
   division = teamInfo.data.team1!.division_id;
   group = teamInfo.data.team1!.group_id;
