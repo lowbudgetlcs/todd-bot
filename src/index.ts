@@ -85,13 +85,12 @@ client.on(Events.InteractionCreate, async interaction => {
 	divisionMap.set(5, "TEST");
 
 	var tournament_code;
-
 	try {
 		tournament_code = await execute(team1, team2);
 	}
 	catch(e){
 		await interaction.editReply("Error");
-		await interaction.followUp({content: "Error, contact ruuffian. "+e, ephemeral: true});
+		await interaction.followUp({content: "Error, contact ruuffian.", ephemeral: true});
 		await interaction.deleteReply();
 
 		return;
