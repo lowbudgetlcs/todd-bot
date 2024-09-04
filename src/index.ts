@@ -1,10 +1,11 @@
 
-import { ActionRowBuilder, Client, Collection, Events, GatewayIntentBits, ModalActionRowComponentBuilder, ModalBuilder, REST, Routes, TextInputBuilder, TextInputStyle, PresenceData, Presence, ActivityType } from 'discord.js';
+import { ActionRowBuilder, Client, PermissionsBitField, Collection, Events, GatewayIntentBits, ModalActionRowComponentBuilder, ModalBuilder, REST, Routes, TextInputBuilder, TextInputStyle, PresenceData, Presence, ActivityType } from 'discord.js';
 import { commands } from "./commands";
 import { config } from "./config";
 import {execute} from "./commands/tournnament";
 import { TIMEOUT } from 'dns/promises';
 import { deployCommands } from './deploy-commands';
+import {checkRole} from './commands/commandToggle';
 
 // Create a new client instance
 const client = new Client({ intents: [GatewayIntentBits.Guilds, "Guilds", "GuildMessages", "DirectMessages"], presence: {activities: [{
@@ -22,6 +23,7 @@ const tournament_id = process.env.TOURNAMENT_ID;
 const tournament_code_endpoint = process.env.TOURNAMENT_CODE_ENDPOIN;
 const channel_id = process.env.CHANNEL_ID;
 
+var commandToggle=true;
 
 client.once("ready", async () => {
 	console.log("Discord bot is ready! 🤖");
@@ -35,9 +37,15 @@ client.on("guildCreate", async (guild) => {
 
 client.on(Events.InteractionCreate, async interaction => {
 	if (!interaction.isChatInputCommand()) return;
+	if(interaction.commandName == "command-toggle") {
+		var check = await checkRole(interaction.member?.roles);
+		var reply = "Tournament Code Command Allowed: ";
+		commandToggle=!commandToggle;
+		await interaction.reply({content: reply + commandToggle});
+		return;
+	}
 
-
-	if (interaction.commandName == 'generate-tournament-code' && interaction.channelId == channel_id) {
+	if (interaction.commandName == 'generate-tournament-code' && interaction.channelId == channel_id && commandToggle) {
 
 		const modal = new ModalBuilder()
 			.setCustomId('generate-tournament-code')
@@ -63,7 +71,8 @@ client.on(Events.InteractionCreate, async interaction => {
 		await interaction.showModal(modal);
 	}
 	else {
-		interaction.reply({ content: 'Please do not use this command in this way <3', ephemeral: true });
+		var commandCheck = commandToggle? ": Please do not use this command <3.": ": This is Turned Off <3" ;
+		interaction.reply({ content: 'Beep Boop, Beep Bop'+commandCheck, ephemeral: true });
 	}
 
 });
@@ -111,3 +120,11 @@ client.on(Events.InteractionCreate, async interaction => {
 });
 
 client.login(config.DISCORD_TOKEN);
+
+function useState(arg0: boolean): { commandToggle: any; setCommandToggle: any; } {
+	throw new Error('Function not implemented.');
+}
+// function useState(arg0: boolean): { commandToggle: any; setCommandToggle: any; } {
+// 	throw new Error('Function not implemented.');
+// }
+
