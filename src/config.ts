@@ -11,10 +11,13 @@ const riotConfig: RiotAPITypes.Config = {
   debug: false,
 };
  const rAPI = new RiotAPI(String(RIOT_KEY), riotConfig);
+ const ADMIN_ROLES = process.env.ADMIN_ROLES!.split(',');
 
-if (!DISCORD_TOKEN || !DISCORD_CLIENT_ID || !GUILD_ID || !SUPABASE_URL ||  !CHANNEL_ID) {
+if (!DISCORD_TOKEN || !DISCORD_CLIENT_ID || !GUILD_ID || !SUPABASE_URL || !RIOT_KEY || !CHANNEL_ID || !ADMIN_ROLES) {
   throw new Error("Missing environment variables");
 }
+
+
 
 export const config = {
   DISCORD_TOKEN,
@@ -22,5 +25,6 @@ export const config = {
   GUILD_ID, 
   SUPABASE_URL, 
   rAPI,
-  CHANNEL_ID
+  CHANNEL_ID,
+  ADMIN_ROLES
 };

@@ -16,9 +16,10 @@ export async function deployCommands({ guildId }: DeployCommandsProps) {
     await rest.put(Routes.applicationGuildCommands(config.DISCORD_CLIENT_ID, guildId), { body: [] })
     .then(() => console.log('Successfully deleted all guild commands.'))
     .catch(console.error);
-
+    
+    console.log(commandsData);
     await rest.put(
-      Routes.applicationCommands(config.DISCORD_CLIENT_ID),
+      Routes.applicationGuildCommands(config.DISCORD_CLIENT_ID, guildId),
       {
         body: commandsData,
       }
