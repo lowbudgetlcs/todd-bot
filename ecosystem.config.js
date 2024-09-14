@@ -1,12 +1,12 @@
 module.exports = {
-  apps : [
+  apps: [
     {
-      name   : "bot",
-      script : "./dist/index.js"
+      name: "bot",
+      script: "./dist/index.js",
     },
     {
-      name   : "cron",
-      script : "./dist/cron.js"
-    }
-  ]
-}
+      name: "cron",
+      script: "./dist/cron.js",
+    },
+  ],
+};

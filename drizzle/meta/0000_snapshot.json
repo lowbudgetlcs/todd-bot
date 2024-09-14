@@ -110,12 +110,8 @@
           "tableFrom": "accounts",
           "tableTo": "players",
           "schemaTo": "public",
-          "columnsFrom": [
-            "player_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["player_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -234,12 +230,8 @@
           "tableFrom": "games",
           "tableTo": "series",
           "schemaTo": "public",
-          "columnsFrom": [
-            "series_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["series_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -248,12 +240,8 @@
           "tableFrom": "games",
           "tableTo": "teams",
           "schemaTo": "public",
-          "columnsFrom": [
-            "loser_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["loser_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -262,12 +250,8 @@
           "tableFrom": "games",
           "tableTo": "results",
           "schemaTo": "public",
-          "columnsFrom": [
-            "result_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["result_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -276,12 +260,8 @@
           "tableFrom": "games",
           "tableTo": "teams",
           "schemaTo": "public",
-          "columnsFrom": [
-            "winner_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["winner_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -325,12 +305,8 @@
           "tableFrom": "performances",
           "tableTo": "teams",
           "schemaTo": "public",
-          "columnsFrom": [
-            "team_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["team_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -339,12 +315,8 @@
           "tableFrom": "performances",
           "tableTo": "players",
           "schemaTo": "public",
-          "columnsFrom": [
-            "player_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["player_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -353,12 +325,8 @@
           "tableFrom": "performances",
           "tableTo": "games",
           "schemaTo": "public",
-          "columnsFrom": [
-            "game_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["game_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -396,12 +364,8 @@
           "tableFrom": "players",
           "tableTo": "teams",
           "schemaTo": "public",
-          "columnsFrom": [
-            "team_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["team_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -451,12 +415,8 @@
           "tableFrom": "schedules",
           "tableTo": "divisions",
           "schemaTo": "public",
-          "columnsFrom": [
-            "division_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["division_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -465,12 +425,8 @@
           "tableFrom": "schedules",
           "tableTo": "series",
           "schemaTo": "public",
-          "columnsFrom": [
-            "series_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["series_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -526,12 +482,8 @@
           "tableFrom": "series",
           "tableTo": "teams",
           "schemaTo": "public",
-          "columnsFrom": [
-            "team1_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["team1_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -540,12 +492,8 @@
           "tableFrom": "series",
           "tableTo": "teams",
           "schemaTo": "public",
-          "columnsFrom": [
-            "team2_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["team2_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -595,12 +543,8 @@
           "tableFrom": "standings",
           "tableTo": "teams",
           "schemaTo": "public",
-          "columnsFrom": [
-            "team_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["team_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -673,12 +617,8 @@
           "tableFrom": "teams",
           "tableTo": "divisions",
           "schemaTo": "public",
-          "columnsFrom": [
-            "division_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["division_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -687,12 +627,8 @@
           "tableFrom": "teams",
           "tableTo": "players",
           "schemaTo": "public",
-          "columnsFrom": [
-            "captain_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["captain_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -743,35 +679,22 @@
   "enums": {
     "auth.aal_level": {
       "name": "aal_level",
-      "values": [
-        "aal1",
-        "aal2",
-        "aal3"
-      ],
+      "values": ["aal1", "aal2", "aal3"],
       "schema": "auth"
     },
     "auth.code_challenge_method": {
       "name": "code_challenge_method",
-      "values": [
-        "s256",
-        "plain"
-      ],
+      "values": ["s256", "plain"],
       "schema": "auth"
     },
     "auth.factor_status": {
       "name": "factor_status",
-      "values": [
-        "unverified",
-        "verified"
-      ],
+      "values": ["unverified", "verified"],
       "schema": "auth"
     },
     "auth.factor_type": {
       "name": "factor_type",
-      "values": [
-        "totp",
-        "webauthn"
-      ],
+      "values": ["totp", "webauthn"],
       "schema": "auth"
     },
     "auth.one_time_token_type": {
@@ -788,12 +711,7 @@
     },
     "pgsodium.key_status": {
       "name": "key_status",
-      "values": [
-        "default",
-        "valid",
-        "invalid",
-        "expired"
-      ],
+      "values": ["default", "valid", "invalid", "expired"],
       "schema": "pgsodium"
     },
     "pgsodium.key_type": {
@@ -815,26 +733,12 @@
     },
     "realtime.action": {
       "name": "action",
-      "values": [
-        "INSERT",
-        "UPDATE",
-        "DELETE",
-        "TRUNCATE",
-        "ERROR"
-      ],
+      "values": ["INSERT", "UPDATE", "DELETE", "TRUNCATE", "ERROR"],
       "schema": "realtime"
     },
     "realtime.equality_op": {
       "name": "equality_op",
-      "values": [
-        "eq",
-        "neq",
-        "lt",
-        "lte",
-        "gt",
-        "gte",
-        "in"
-      ],
+      "values": ["eq", "neq", "lt", "lte", "gt", "gte", "in"],
       "schema": "realtime"
     }
   },

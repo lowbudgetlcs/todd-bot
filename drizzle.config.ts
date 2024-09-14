@@ -1,14 +1,14 @@
 // drizzle.config.ts
 import { defineConfig } from "drizzle-kit";
-import dotenv from 'dotenv';
+import dotenv from "dotenv";
 
 dotenv.config();
 const supabaseUrl = process.env.SUPABASE_URL!;
 export default defineConfig({
   schema: "./src/schema/*",
   out: "./drizzle",
-  dialect: 'postgresql',
+  dialect: "postgresql",
   dbCredentials: {
     url: supabaseUrl,
-  }
+  },
 });
