@@ -123,15 +123,15 @@ export async function execute(team1: String, team2: String) {
     return {tournamentCode1, game_number, error, division, group,team1Name, team2Name};
  
   }
-  await db.transaction(async (tx) => {
     try{
+  await db.transaction(async (tx) => {
       await tx.insert(games).values({short_code: tournamentCode1, series_id: series_id, game_num: game_number});
+  })
+
     } catch (e: any) {
       error = "Something went wrong with saving the code: " +tournamentCode1+" . Please make a ticket.";
       return {tournamentCode1, game_number, error, division, group,team1Name, team2Name};
     }
-  })
-
   division = teamInfo.data.team1!.division_id;
   group = teamInfo.data.team1!.group_id;
 
