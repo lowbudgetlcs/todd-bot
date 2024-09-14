@@ -13,16 +13,19 @@ type DeployCommandsProps = {
 export async function deployCommands({ guildId }: DeployCommandsProps) {
   try {
     console.log("Started refreshing application (/) commands.");
-    await rest.put(Routes.applicationGuildCommands(config.DISCORD_CLIENT_ID, guildId), { body: [] })
-    .then(() => console.log('Successfully deleted all guild commands.'))
-    .catch(console.error);
-    
+    await rest
+      .put(Routes.applicationGuildCommands(config.DISCORD_CLIENT_ID, guildId), {
+        body: [],
+      })
+      .then(() => console.log("Successfully deleted all guild commands."))
+      .catch(console.error);
+
     console.log(commandsData);
     await rest.put(
       Routes.applicationGuildCommands(config.DISCORD_CLIENT_ID, guildId),
       {
         body: commandsData,
-      }
+      },
     );
 
     console.log("Successfully reloaded application (/) commands.");
