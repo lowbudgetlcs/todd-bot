@@ -144,10 +144,11 @@ export async function execute(team1: String, team2: String) {
       team2Name,
     };
   }
-
-  let meta = JSON.stringify({ gameNum: game_number, seriesId: series_id });
-  let riotResponse = await config.rAPI.tournamentV5.createCodes({
-    params: {
+  
+  let meta = JSON.stringify({gameNum: game_number, seriesId: series_id});
+  let riotResponse=null;
+  try{
+    riotResponse = await config.rAPI.tournamentV5.createCodes({params: {
       count: 1,
       tournamentId: tournament_code,
     },
@@ -157,21 +158,22 @@ export async function execute(team1: String, team2: String) {
       mapType: RiotAPITypes.TournamentV5.MAPTYPE.SUMMONERS_RIFT,
       spectatorType: RiotAPITypes.TournamentV5.SPECTATORTYPE.ALL,
       enoughPlayers: false,
-      metadata: meta,
-    },
-  });
+      metadata: meta
+  }})
   tournamentCode1 = riotResponse[0];
-
+  } catch (e: any){
+    error = "Something went wrong on Riot's end. Please make a ticket.";
+    return {tournamentCode1, game_number, error, division, group,team1Name, team2Name};
+ 
+  }
+    try{
   await db.transaction(async (tx) => {
-    await tx
-      .insert(games)
-      .values({
-        short_code: tournamentCode1,
-        series_id: series_id,
-        game_num: game_number,
-      });
-  });
-
+      await tx.insert(games).values({short_code: tournamentCode1, series_id: series_id, game_num: game_number});
+  })
+    } catch (e: any) {
+      error = "Something went wrong with saving the code: " +tournamentCode1+" . Please make a ticket.";
+      return {tournamentCode1, game_number, error, division, group,team1Name, team2Name};
+    }
   division = teamInfo.data.team1!.division_id;
   group = teamInfo.data.team1!.group_id;
 
