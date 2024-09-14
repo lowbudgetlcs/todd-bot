@@ -17,8 +17,13 @@ type Game = {
 }
 
 // Code pruning job
-const job = Cron("45 23 * * *", async () => {
-  console.info("Begininng pruning...")
+export function initCron() {
+  const job = Cron("45 23 * * *");
+  job.schedule(pruneJob);
+}
+
+const pruneJob = async () => {
+  console.info("Begininng pruning...");
   const unprocessedCodes = await db.select().from(games).where(
     and(
       eq(games.processed, false),
@@ -54,4 +59,4 @@ const job = Cron("45 23 * * *", async () => {
   const deletedCodes = await Promise.all(deletedPromises);
   const count = deletedCodes.filter(val => typeof val != "undefined").length
   console.info(`Pruning complete! Deleted ${count} codes.`)
-});
+};
