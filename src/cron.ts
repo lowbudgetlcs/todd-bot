@@ -19,8 +19,8 @@ type Game = {
 // Code pruning job
 export function initCron() {
   const job = Cron("45 23 * * *");
-  //job.schedule(pruneJob);
-  //job.trigger();
+  job.schedule(pruneJob);
+  job.trigger();
 }
 
 const pruneJob = async () => {
