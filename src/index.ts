@@ -136,10 +136,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
   var tournament_code;
   try {
     tournament_code = await execute(team1, team2);
-  } catch (e) {
+  } catch (e: any) {
+    console.error(e);
     await interaction.editReply("Error");
     await interaction.followUp({
-      content: "Error, contact ruuffian.",
+      content: "Error, contact ruufian.",
       ephemeral: true,
     });
     await interaction.deleteReply();
@@ -155,12 +156,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await interaction.deleteReply();
   } else {
     let division_name = divisionMap.get(tournament_code?.division);
-    let group_name = tournament_code?.group;
     let response =
       "## " +
       division_name +
-      " - Group " +
-      group_name +
       "\n" +
       "**__" +
       tournament_code.team1Name +

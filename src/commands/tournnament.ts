@@ -6,9 +6,11 @@ import {
 import { config } from "../config";
 import { RiotAPITypes } from "@fightmegg/riot-api";
 import { db } from "../db/db";
-import { divisions, games, series, teams } from "../db/schema";
-import { and, or, sql, desc } from "drizzle-orm";
+import { divisions, games, series, teams, teamToSeries } from "../db/schema";
+import { and, or, sql, desc} from "drizzle-orm";
 import { eq } from "drizzle-orm";
+import {alias } from "drizzle-orm/pg-core"
+import { check } from "drizzle-orm/mysql-core";
 
 export const data = new SlashCommandBuilder()
   .setName("generate-tournament-code")
@@ -22,50 +24,29 @@ async function grabTeamInfo(team: String) {
   return data[0];
 }
 
-async function checkTeams(team1: String, team2: String) {
-  let error = "";
-
-  let team1Data = await grabTeamInfo(team1);
-  let team2Data = await grabTeamInfo(team2);
-
-  if (team1Data == null) {
-    error = "Are you sure " + team1 + " is a real team?";
-    return { data: { team1: null, team2: null, error: error } };
-  }
-  if (team2Data == null) {
-    error = "Are you sure " + team2 + " is a real team?";
-    return { data: { team1: null, team2: null, error: error } };
-  }
-
-  if (team1Data.id == team2Data.id) {
-    error =
-      "Yeah I'm not really sure what to tell you chief. You're not better than yourself";
-    return { data: { team1: null, team2: null, error: error } };
-  }
-
-  if (
-    team1Data.division_id == team2Data.division_id &&
-    team1Data.group_id == team2Data.group_id
-  ) {
-    return { data: { team1: team1Data, team2: team2Data, error } };
-  } else {
-    error = "Silly Goose, these teams can't play against each other!";
-    return { data: { team1: null, team2: null, error: error } };
-  }
-}
-
-async function checkSeries(team1: any, team2: any) {
-  const { first, second } =
-    team1.id > team2.id
-      ? { first: team1.id, second: team2.id }
-      : { first: team2.id, second: team1.id };
-
+async function checkSeries(team1Data: any, team2Data: any) {
+  const team1 = alias(teamToSeries, "team1");
+  const team2 = alias(teamToSeries, "team2");
+  try{
   let response = await db
-    .select({ seriesId: series.id })
+    .select({ seriesId: series.id }) // Specify the column(s) to retrieve
     .from(series)
-    .where(and(eq(series.team1_id, first), eq(series.team2_id, second)));
+    .innerJoin(
+      team1 , // First join for team1
+      and(eq(team1.seriesId, series.id), (eq(team1.teamId, team1Data.id))) // Match team1
+    )
+    .innerJoin(
+      team2, // Second join for team2 with alias "st2"
+      and(eq(team2.seriesId, series.id), (eq(team2.teamId, team2Data.id))) // Match team2 using alias
+    )
+    .where(eq(team1.seriesId, series.id)) // Ensure both teams are in the same series
+    .limit(1); // Optionally limit to one result if needed
 
-  return response;
+  return response[0];
+  } catch(e){
+    console.log(e);
+    return null;
+  }
 }
 
 export async function execute(team1: String, team2: String) {
@@ -73,64 +54,63 @@ export async function execute(team1: String, team2: String) {
   let tournamentCode1 = "";
   let game_number = 1;
   let division = 0;
-  let group = "";
   let team1Name = "";
   let team2Name = "";
 
-  let teamInfo = await checkTeams(team1, team2);
+  let team1Data = await grabTeamInfo(team1);
+  let team2Data = await grabTeamInfo(team2);
 
-  if (teamInfo?.data.error != "") {
-    error = teamInfo?.data.error!;
+  team1Name = team1.toString();
+  team2Name = team2.toString();
+  if (!team1Data || !team2Data) {
+    error = `Are you sure ${!team1Data ? team1 : team2} is a real team?`;
     return {
       tournamentCode1,
       game_number,
       error,
       division,
-      group,
       team1Name,
       team2Name,
     };
   }
-  team1Name = teamInfo.data.team1!.name;
-  team2Name = teamInfo.data.team2!.name;
-  let response = await db
-    .select({
-      providerId: divisions.provider_id,
-      tournamentId: divisions.tournament_id,
-    })
-    .from(divisions)
-    .where(eq(divisions.id, teamInfo.data.team1!.division_id));
+  if (team1Data.id === team2Data.id) {
+    error =
+      "This is not One For All. No picking the same champs/teams";
+    return {
+      tournamentCode1,
+      game_number,
+      error,
+      division,
+      team1Name,
+      team2Name,
+    };
+  }
 
-  let tournament_code = response[0].tournamentId;
-
-  let series_check = await checkSeries(
-    teamInfo.data.team1,
-    teamInfo.data.team2,
-  );
-
-  if (series_check[0] == undefined) {
+  const seriesCheck = await checkSeries(team1Data, team2Data);
+  if (!seriesCheck) {
     error = "There is no series for those two teams.";
     return {
       tournamentCode1,
       game_number,
       error,
       division,
-      group,
       team1Name,
       team2Name,
     };
   }
 
-  let series_id = series_check[0].seriesId;
-  let game_result = await db
-    .select({ gameNum: games.game_num })
+
+  division = team1Data.divisionId;
+  const series_id = seriesCheck.seriesId;
+  const gameResult = await db
+    .select({ gameNum: games.gameNum })
     .from(games)
-    .where(eq(games.series_id, series_id))
-    .orderBy(desc(games.game_num));
+    .where(eq(games.seriesId, series_id))
+    .orderBy(desc(games.gameNum));
 
-  if (game_result != undefined && game_result[0] != undefined)
-    game_number = game_result[0].gameNum! + 1;
-
+  if (gameResult && gameResult[0]) {
+    game_number = gameResult[0].gameNum + 1;
+  }
   if (game_number > 10) {
     error =
       "We do not allow more than 10 codes for a single series. Please make a ticket if you are having issues with your tournament codes.";
@@ -139,74 +119,96 @@ export async function execute(team1: String, team2: String) {
       game_number,
       error,
       division,
-      group,
       team1Name,
       team2Name,
     };
   }
+  const response = await db
+    .select({
+      tournamentId: divisions.tournamentId,
+    })
+    .from(divisions)
+    .where(eq(divisions.id, team1Data.divisionId));
 
-  let meta = JSON.stringify({ gameNum: game_number, seriesId: series_id });
-  let riotResponse = null;
-  try {
-    riotResponse = await config.rAPI.tournamentV5.createCodes({
-      params: {
-        count: 1,
-        tournamentId: tournament_code,
-      },
-      body: {
-        teamSize: 5,
-        pickType: RiotAPITypes.TournamentV5.PICKTYPE.TOURNAMENT_DRAFT,
-        mapType: RiotAPITypes.TournamentV5.MAPTYPE.SUMMONERS_RIFT,
-        spectatorType: RiotAPITypes.TournamentV5.SPECTATORTYPE.ALL,
-        enoughPlayers: false,
-        metadata: meta,
-      },
-    });
-    tournamentCode1 = riotResponse[0];
-  } catch (e: any) {
-    error = "Something went wrong on Riot's end. Please make a ticket.";
+  const tournament_code = response[0]?.tournamentId;
+  if (!tournament_code) {
+    error = "Tournament code not found for the given division.";
     return {
       tournamentCode1,
       game_number,
       error,
       division,
-      group,
       team1Name,
       team2Name,
     };
   }
-  try {
-    await db.transaction(async (tx) => {
-      await tx.insert(games).values({
-        short_code: tournamentCode1,
-        series_id: series_id,
-        game_num: game_number,
-      });
-    });
-  } catch (e: any) {
-    error =
-      "Something went wrong with saving the code: " +
-      tournamentCode1 +
-      " . Please make a ticket.";
-    return {
-      tournamentCode1,
-      game_number,
-      error,
-      division,
-      group,
-      team1Name,
-      team2Name,
-    };
-  }
-  division = teamInfo.data.team1!.division_id;
-  group = teamInfo.data.team1!.group_id;
+  return {
+    tournamentCode1,
+    game_number,
+    error,
+    division,
+    team1Name,
+    team2Name,
+  };
+  // let riotResponse;
+  // try {
+  //   let meta = JSON.stringify({ gameNum: game_number, seriesId: series_id });
+  //   riotResponse = await config.rAPI.tournamentV5.createCodes({
+  //     params: {
+  //       count: 1,
+  //       tournamentId: tournament_code,
+  //     },
+  //     body: {
+  //       teamSize: 5,
+  //       pickType: RiotAPITypes.TournamentV5.PICKTYPE.TOURNAMENT_DRAFT,
+  //       mapType: RiotAPITypes.TournamentV5.MAPTYPE.SUMMONERS_RIFT,
+  //       spectatorType: RiotAPITypes.TournamentV5.SPECTATORTYPE.ALL,
+  //       enoughPlayers: false,
+  //       metadata: meta,
+  //     },
+  //   });
+  //   tournamentCode1 = riotResponse[0];
+  // } catch (e: any) {
+  //   error = "Something went wrong on Riot's end. Please make a ticket.";
+  //   return {
+  //     tournamentCode1,
+  //     game_number,
+  //     error,
+  //     division,
+  //     team1Name,
+  //     team2Name,
+  //   };
+  // }
+
+
+  // try {
+  //   await db.transaction(async (tx) => {
+  //     await tx.insert(games).values({
+  //       shortcode: tournamentCode1,
+  //       seriesId: series_id,
+  //       gameNum: game_number,
+  //     });
+  //   });
+  // } catch (e: any) {
+  //   error =
+  //     "Something went wrong with saving the code: " +
+  //     tournamentCode1 +
+  //     " . Please make a ticket.";
+  //   return {
+  //     tournamentCode1,
+  //     game_number,
+  //     error,
+  //     division,
+  //     team1Name,
+  //     team2Name,
+  //   };
+  // }
 
   return {
     tournamentCode1,
     game_number,
     error,
     division,
-    group,
     team1Name,
     team2Name,
   };
