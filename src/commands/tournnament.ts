@@ -142,67 +142,60 @@ export async function execute(team1: String, team2: String) {
       team2Name,
     };
   }
-  return {
-    tournamentCode1,
-    game_number,
-    error,
-    division,
-    team1Name,
-    team2Name,
-  };
-  // let riotResponse;
-  // try {
-  //   let meta = JSON.stringify({ gameNum: game_number, seriesId: series_id });
-  //   riotResponse = await config.rAPI.tournamentV5.createCodes({
-  //     params: {
-  //       count: 1,
-  //       tournamentId: tournament_code,
-  //     },
-  //     body: {
-  //       teamSize: 5,
-  //       pickType: RiotAPITypes.TournamentV5.PICKTYPE.TOURNAMENT_DRAFT,
-  //       mapType: RiotAPITypes.TournamentV5.MAPTYPE.SUMMONERS_RIFT,
-  //       spectatorType: RiotAPITypes.TournamentV5.SPECTATORTYPE.ALL,
-  //       enoughPlayers: false,
-  //       metadata: meta,
-  //     },
-  //   });
-  //   tournamentCode1 = riotResponse[0];
-  // } catch (e: any) {
-  //   error = "Something went wrong on Riot's end. Please make a ticket.";
-  //   return {
-  //     tournamentCode1,
-  //     game_number,
-  //     error,
-  //     division,
-  //     team1Name,
-  //     team2Name,
-  //   };
-  // }
+
+  let riotResponse;
+  try {
+    let meta = JSON.stringify({ gameNum: game_number, seriesId: series_id });
+    riotResponse = await config.rAPI.tournamentV5.createCodes({
+      params: {
+        count: 1,
+        tournamentId: tournament_code,
+      },
+      body: {
+        teamSize: 5,
+        pickType: RiotAPITypes.TournamentV5.PICKTYPE.TOURNAMENT_DRAFT,
+        mapType: RiotAPITypes.TournamentV5.MAPTYPE.SUMMONERS_RIFT,
+        spectatorType: RiotAPITypes.TournamentV5.SPECTATORTYPE.ALL,
+        enoughPlayers: false,
+        metadata: meta,
+      },
+    });
+    tournamentCode1 = riotResponse[0];
+  } catch (e: any) {
+    error = "Something went wrong on Riot's end. Please make a ticket.";
+    return {
+      tournamentCode1,
+      game_number,
+      error,
+      division,
+      team1Name,
+      team2Name,
+    };
+  }
 
 
-  // try {
-  //   await db.transaction(async (tx) => {
-  //     await tx.insert(games).values({
-  //       shortcode: tournamentCode1,
-  //       seriesId: series_id,
-  //       gameNum: game_number,
-  //     });
-  //   });
-  // } catch (e: any) {
-  //   error =
-  //     "Something went wrong with saving the code: " +
-  //     tournamentCode1 +
-  //     " . Please make a ticket.";
-  //   return {
-  //     tournamentCode1,
-  //     game_number,
-  //     error,
-  //     division,
-  //     team1Name,
-  //     team2Name,
-  //   };
-  // }
+  try {
+    await db.transaction(async (tx) => {
+      await tx.insert(games).values({
+        shortcode: tournamentCode1,
+        seriesId: series_id,
+        gameNum: game_number,
+      });
+    });
+  } catch (e: any) {
+    error =
+      "Something went wrong with saving the code: " +
+      tournamentCode1 +
+      " . Please make a ticket.";
+    return {
+      tournamentCode1,
+      game_number,
+      error,
+      division,
+      team1Name,
+      team2Name,
+    };
+  }
 
   return {
     tournamentCode1,
