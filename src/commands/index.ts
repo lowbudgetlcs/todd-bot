@@ -1,8 +1,9 @@
 import * as tournament from "./tournnament";
 import * as commandToggle from "./commandToggle";
-// import * as ping from "./ping";
+import * as opgg from "./opgg";
 
 export const commands = {
   tournament,
   commandToggle,
+  opgg
 };

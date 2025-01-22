@@ -17,19 +17,21 @@
     "@swc/core": "^1.4.2",
     "@types/node": "^22.0.0",
     "croner": "^8.1.1",
-    "discord.js": "^14.14.1",
+    "discord.js": "^14.17.3",
     "dotenv": "^16.4.5",
-    "drizzle-orm": "^0.32.1",
+    "drizzle-kit": "^0.30.2",
+    "drizzle-orm": "^0.38.4",
     "eslint": "^8.57.0",
+    "npm": "^11.0.0",
+    "pg": "^8.13.1",
     "pm2": "^5.4.2",
-    "postgres": "^3.4.4",
+    "postgres": "^3.4.5",
     "ts-node": "^10.9.2",
     "tsup": "^8.2.3",
     "tsx": "^4.16.2",
     "typescript": "^5.5.4"
   },
   "devDependencies": {
-    "drizzle-kit": "^0.22.8",
     "prettier": "^3.3.3"
   }
 }

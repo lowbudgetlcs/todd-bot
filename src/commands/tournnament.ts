@@ -1,14 +1,18 @@
 import {
-  CommandInteraction,
-  ModalBuilder,
+  ActionRowBuilder,
+  CacheType,
+  Interaction,
   SlashCommandBuilder,
+  StringSelectMenuBuilder,
+  StringSelectMenuInteraction,
 } from "discord.js";
-import { config } from "../config";
-import { RiotAPITypes } from "@fightmegg/riot-api";
 import { db } from "../db/db";
-import { divisions, games, series, teams } from "../db/schema";
-import { and, or, sql, desc } from "drizzle-orm";
-import { eq } from "drizzle-orm";
+import { divisions, games, series, teams, teamToSeries } from "../db/schema";
+import { and, sql, desc, eq} from "drizzle-orm";
+import {alias } from "drizzle-orm/pg-core"
+import divisionMap from "../constants/constants";
+import { config } from "../config";
+import { RiotAPITypes } from "@fightmegg/riot-api/dist/esm/@types";
 
 export const data = new SlashCommandBuilder()
   .setName("generate-tournament-code")
@@ -21,133 +25,296 @@ async function grabTeamInfo(team: String) {
     .where(sql`lower(${teams.name}) = lower(${team})`);
   return data[0];
 }
+const userState = new Map();
 
-async function checkTeams(team1: String, team2: String) {
-  let error = "";
-
-  let team1Data = await grabTeamInfo(team1);
-  let team2Data = await grabTeamInfo(team2);
-
-  if (team1Data == null) {
-    error = "Are you sure " + team1 + " is a real team?";
-    return { data: { team1: null, team2: null, error: error } };
-  }
-  if (team2Data == null) {
-    error = "Are you sure " + team2 + " is a real team?";
-    return { data: { team1: null, team2: null, error: error } };
-  }
-
-  if (team1Data.id == team2Data.id) {
-    error =
-      "Yeah I'm not really sure what to tell you chief. You're not better than yourself";
-    return { data: { team1: null, team2: null, error: error } };
-  }
-
-  if (
-    team1Data.division_id == team2Data.division_id &&
-    team1Data.group_id == team2Data.group_id
-  ) {
-    return { data: { team1: team1Data, team2: team2Data, error } };
-  } else {
-    error = "Silly Goose, these teams can't play against each other!";
-    return { data: { team1: null, team2: null, error: error } };
-  }
+export async function getTeamsByDivision(division: number) {
+  let data = await db.select().from(teams).where((eq(teams.divisionId, division)));
+  return data;
 }
 
-async function checkSeries(team1: any, team2: any) {
-  const { first, second } =
-    team1.id > team2.id
-      ? { first: team1.id, second: team2.id }
-      : { first: team2.id, second: team1.id };
-
+async function checkSeries(team1Data: any, team2Data: any) {
+  const team1 = alias(teamToSeries, "team1");
+  const team2 = alias(teamToSeries, "team2");
+  try{
   let response = await db
-    .select({ seriesId: series.id })
+    .select({ seriesId: series.id }) // Specify the column(s) to retrieve
     .from(series)
-    .where(and(eq(series.team1_id, first), eq(series.team2_id, second)));
+    .innerJoin(
+      team1 , // First join for team1
+      and(eq(team1.seriesId, series.id), (eq(team1.teamId, team1Data.id))) // Match team1
+    )
+    .innerJoin(
+      team2, // Second join for team2 with alias "st2"
+      and(eq(team2.seriesId, series.id), (eq(team2.teamId, team2Data.id))) // Match team2 using alias
+    )
+    .where(eq(team1.seriesId, series.id)) // Ensure both teams are in the same series
+    .limit(1); // Optionally limit to one result if needed
 
-  return response;
+  return response[0];
+  } catch(e){
+    console.log(e);
+    return null;
+  }
 }
 
-export async function execute(team1: String, team2: String) {
+export async function handleGenerateTournamentCode(interaction: Interaction, channelId: string, commandToggle: boolean) {
+  if (!interaction.isChatInputCommand()) return;
+
+  const { commandName, channelId: interactionChannelId } = interaction;
+
+  if (commandName === "generate-tournament-code" && interactionChannelId === channelId && commandToggle) {
+    const divisionDropdown = new StringSelectMenuBuilder()
+      .setCustomId("division_select")
+      .setPlaceholder("Select a Division")
+      .addOptions(
+        Array.from(divisionMap.entries()).map(([key, value]) => ({
+          label: value,
+          value: key.toString(),
+        }))
+      );
+    const divisionRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(divisionDropdown);
+
+    await interaction.reply({
+      content: "Please select a division:",
+      components: [divisionRow],
+      ephemeral: true,
+    });
+
+    return;
+  } else if (interactionChannelId !== channelId || !commandToggle) {
+    const commandCheck = commandToggle
+      ? ": Please do not use this command <3."
+      : ": This is Turned Off <3";
+    await interaction.reply({
+      content: "Beep Boop, Beep Bop" + commandCheck,
+      ephemeral: true,
+    });
+  }
+}
+
+export async function handleDivisionSelect(interaction: any) {
+  const { customId, values, user } = interaction;
+
+  if (customId === "division_select") {
+    const divisionKey = parseInt(values[0]);
+    const divisionName = divisionMap.get(divisionKey);
+    const teams = await getTeamsByDivision(divisionKey) || [];
+
+    if (!teams.length) {
+      await interaction.update({
+        content: "No teams found for the selected division.",
+        components: [],
+      });
+      return;
+    }
+
+    const team1Dropdown = new StringSelectMenuBuilder()
+      .setCustomId("team1_select")
+      .setPlaceholder("Select Team 1")
+      .addOptions(teams.map((team) => ({ label: team.name, value: team.name })));
+
+    const team2Dropdown = new StringSelectMenuBuilder()
+      .setCustomId("team2_select")
+      .setPlaceholder("Select Team 2")
+      .addOptions(teams.map((team) => ({ label: team.name, value: team.name })));
+
+    const row1 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(team1Dropdown);
+    const row2 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(team2Dropdown);
+
+    userState.set(user.id, { divisionName, teams, team1: null, team2: null });
+
+    await interaction.update({
+      content: `You selected the **${divisionName}** division. Now select your teams:`,
+      components: [row1, row2],
+    });
+  }
+}
+
+export async function handleTeamSelect(interaction: any) {
+  const { customId, values, user } = interaction;
+
+  const selectedTeam = values[0];
+  const isTeam1 = customId === "team1_select";
+
+  const state = userState.get(user.id);
+  if (!state) {
+    await interaction.update({
+      content: "Error: Unable to retrieve state. Please restart the interaction.",
+      components: [],
+    });
+    return;
+  }
+
+  if (isTeam1) {
+    state.team1 = selectedTeam;
+  } else {
+    state.team2 = selectedTeam;
+  }
+
+  const team1Dropdown = new StringSelectMenuBuilder()
+    .setCustomId("team1_select")
+    .setPlaceholder("Select Team 1")
+    .addOptions(
+      state.teams.map((team: { name: any; }) => ({
+        label: team.name,
+        value: team.name,
+        default: state.team1 === team.name
+      }))
+    );
+
+  const team2Dropdown = new StringSelectMenuBuilder()
+    .setCustomId("team2_select")
+    .setPlaceholder("Select Team 2")
+    .addOptions(
+      state.teams.map((team: { name: any; }) => ({
+        label: team.name,
+        value: team.name,
+        default: state.team2 === team.name
+      }))
+    );
+
+  const row1 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(team1Dropdown);
+  const row2 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(team2Dropdown);
+
+  if (!(state.team1 && state.team2)) {
+    const content = `You selected **${state.team1 || "Team 1 not selected"}** for Team 1 and **${state.team2 || "Team 2 not selected"}** for Team 2.`;
+    await interaction.update({
+      content,
+      components: [row1, row2],
+    });
+    return;
+  }
+
+  try {
+    const tournamentCode = await execute(state.team1, state.team2, interaction);
+    const response = tournamentCode.error.length > 0 ? tournamentCode.error : tournamentCode.discordResponse;
+
+    if (tournamentCode.error.length > 0) {
+      // Handle error: Update original interaction
+      await interaction.update({
+        content: response,
+        components: [],
+      });
+    } else {
+      // Handle success: Update and follow up
+      await interaction.update({
+        content: "Your teams have been selected. Generating tournament code...",
+        components: [],
+      });
+      await interaction.followUp({
+        content: response,
+        ephemeral: false,
+      });
+    }
+
+    userState.delete(user.id);
+  } catch (error) {
+    console.error(error);
+    await interaction.update({
+      content: "An error occurred while generating the tournament code. Please try again later.",
+      components: [],
+    });
+    userState.delete(user.id);
+  }
+}
+
+export async function execute(team1: String, team2: String, interaction: StringSelectMenuInteraction<CacheType>) {
   let error = "";
   let tournamentCode1 = "";
   let game_number = 1;
   let division = 0;
-  let group = "";
   let team1Name = "";
   let team2Name = "";
 
-  let teamInfo = await checkTeams(team1, team2);
+  let team1Data = await grabTeamInfo(team1);
+  let team2Data = await grabTeamInfo(team2);
 
-  if (teamInfo?.data.error != "") {
-    error = teamInfo?.data.error!;
+  team1Name = team1.toString();
+  team2Name = team2.toString();
+  if (!team1Data || !team2Data) {
+    error = `Are you sure ${!team1Data ? team1 : team2} is a real team?`;
     return {
       tournamentCode1,
       game_number,
       error,
       division,
-      group,
       team1Name,
       team2Name,
     };
   }
-  team1Name = teamInfo.data.team1!.name;
-  team2Name = teamInfo.data.team2!.name;
-  let response = await db
-    .select({
-      providerId: divisions.provider_id,
-      tournamentId: divisions.tournament_id,
-    })
-    .from(divisions)
-    .where(eq(divisions.id, teamInfo.data.team1!.division_id));
+  if (team1Data.id === team2Data.id) {
+    error =
+      "This is not One For All. No picking the same champs/teams";
+    return {
+      tournamentCode1,
+      game_number,
+      error,
+      division,
+      team1Name,
+      team2Name,
+    };
+  }
 
-  let tournament_code = response[0].tournamentId;
-
-  let series_check = await checkSeries(
-    teamInfo.data.team1,
-    teamInfo.data.team2,
-  );
-
-  if (series_check[0] == undefined) {
+  const seriesCheck = await checkSeries(team1Data, team2Data);
+  if (!seriesCheck) {
     error = "There is no series for those two teams.";
     return {
       tournamentCode1,
       game_number,
       error,
       division,
-      group,
       team1Name,
       team2Name,
     };
   }
 
-  let series_id = series_check[0].seriesId;
-  let game_result = await db
-    .select({ gameNum: games.game_num })
+  division = team1Data.divisionId;
+  const series_id = seriesCheck.seriesId;
+  const gameResult = await db
+    .select({ gameNum: games.gameNum })
     .from(games)
-    .where(eq(games.series_id, series_id))
-    .orderBy(desc(games.game_num));
+    .where(eq(games.seriesId, series_id))
+    .orderBy(desc(games.gameNum));
 
-  if (game_result != undefined && game_result[0] != undefined)
-    game_number = game_result[0].gameNum! + 1;
-
+  if (gameResult && gameResult[0]) {
+    game_number = gameResult[0].gameNum + 1;
+  }
   if (game_number > 10) {
     error =
-      "We do not allow more than 10 codes for a single series. Please make a ticket if you are having issues with your tournament codes.";
+      "We do not allow more than 10 codes for a single series. Please open an URGENT admin ticket if you are having issues with your tournament codes.";
     return {
       tournamentCode1,
       game_number,
       error,
       division,
-      group,
       team1Name,
       team2Name,
     };
   }
 
-  let meta = JSON.stringify({ gameNum: game_number, seriesId: series_id });
-  let riotResponse = null;
+  const response = await db
+    .select({
+      tournamentId: divisions.tournamentId,
+    })
+    .from(divisions)
+    .where(eq(divisions.id, team1Data.divisionId));
+
+  const tournament_code = response[0]?.tournamentId;
+  if (!tournament_code) {
+    error = "Tournament code not found for the given division.";
+    return {
+      tournamentCode1,
+      game_number,
+      error,
+      division,
+      team1Name,
+      team2Name,
+    };
+  }
+
+  let riotResponse;
   try {
+    let meta = JSON.stringify({ gameNum: game_number, seriesId: series_id });
     riotResponse = await config.rAPI.tournamentV5.createCodes({
       params: {
         count: 1,
@@ -164,13 +331,12 @@ export async function execute(team1: String, team2: String) {
     });
     tournamentCode1 = riotResponse[0];
   } catch (e: any) {
-    error = "Something went wrong on Riot's end. Please make a ticket.";
+    error = "Something went wrong on Riot's end. Please make an URGENT admin ticket.";
     return {
       tournamentCode1,
       game_number,
       error,
       division,
-      group,
       team1Name,
       team2Name,
     };
@@ -178,36 +344,51 @@ export async function execute(team1: String, team2: String) {
   try {
     await db.transaction(async (tx) => {
       await tx.insert(games).values({
-        short_code: tournamentCode1,
-        series_id: series_id,
-        game_num: game_number,
+        shortcode: tournamentCode1,
+        seriesId: series_id,
+        gameNum: game_number,
       });
     });
   } catch (e: any) {
     error =
       "Something went wrong with saving the code: " +
       tournamentCode1 +
-      " . Please make a ticket.";
+      " . Please make an URGENT admin ticket.";
     return {
       tournamentCode1,
       game_number,
       error,
       division,
-      group,
       team1Name,
       team2Name,
     };
   }
-  division = teamInfo.data.team1!.division_id;
-  group = teamInfo.data.team1!.group_id;
-
+  
+  let division_name = divisionMap.get(division);
+  let discordResponse =
+    "## " +
+    division_name +
+    "\n" +
+    "**__" +
+    team1Name +
+    "__** vs **__" +
+    team2Name +
+    "__**\n" +
+    "Game " +
+    game_number! +
+    " Code: `" +
+    tournamentCode1 +
+    "`";
+  if (game_number! > 5)
+    discordResponse = discordResponse.concat(
+      "\nYou have generated more codes than required for this series. If you are experiencing issues, please open an URGENT admin ticket. ", //<@247886805821685761>",
+    );
   return {
-    tournamentCode1,
+    discordResponse,
     game_number,
     error,
     division,
-    group,
     team1Name,
     team2Name,
-  };
+  }
 }
