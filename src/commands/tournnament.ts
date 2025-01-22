@@ -1,7 +1,11 @@
 import {
+  CacheType,
   CommandInteraction,
+  Interaction,
   ModalBuilder,
+  ModalSubmitInteraction,
   SlashCommandBuilder,
+  StringSelectMenuInteraction,
 } from "discord.js";
 import { config } from "../config";
 import { RiotAPITypes } from "@fightmegg/riot-api";
@@ -10,7 +14,7 @@ import { divisions, games, series, teams, teamToSeries } from "../db/schema";
 import { and, or, sql, desc} from "drizzle-orm";
 import { eq } from "drizzle-orm";
 import {alias } from "drizzle-orm/pg-core"
-import { check } from "drizzle-orm/mysql-core";
+import divisionMap from "../constants/constants";
 
 export const data = new SlashCommandBuilder()
   .setName("generate-tournament-code")
@@ -22,6 +26,11 @@ async function grabTeamInfo(team: String) {
     .from(teams)
     .where(sql`lower(${teams.name}) = lower(${team})`);
   return data[0];
+}
+
+export async function getTeamsByDivision(division: number) {
+  let data = await db.select().from(teams).where((eq(teams.divisionId, division)));
+  return data;
 }
 
 async function checkSeries(team1Data: any, team2Data: any) {
@@ -49,7 +58,7 @@ async function checkSeries(team1Data: any, team2Data: any) {
   }
 }
 
-export async function execute(team1: String, team2: String) {
+export async function execute(team1: String, team2: String, interaction: StringSelectMenuInteraction<CacheType>) {
   let error = "";
   let tournamentCode1 = "";
   let game_number = 1;
@@ -99,7 +108,6 @@ export async function execute(team1: String, team2: String) {
     };
   }
 
-
   division = team1Data.divisionId;
   const series_id = seriesCheck.seriesId;
   const gameResult = await db
@@ -123,6 +131,7 @@ export async function execute(team1: String, team2: String) {
       team2Name,
     };
   }
+
   const response = await db
     .select({
       tournamentId: divisions.tournamentId,
@@ -172,8 +181,6 @@ export async function execute(team1: String, team2: String) {
       team2Name,
     };
   }
-
-
   try {
     await db.transaction(async (tx) => {
       await tx.insert(games).values({
@@ -197,12 +204,31 @@ export async function execute(team1: String, team2: String) {
     };
   }
 
+  let division_name = divisionMap.get(division);
+  let discordResponse =
+    "## " +
+    division_name +
+    "\n" +
+    "**__" +
+    team1Name +
+    "__** vs **__" +
+    team2Name +
+    "__**\n" +
+    "Game " +
+    game_number! +
+    " Code: `" +
+    tournamentCode1 +
+    "`";
+  if (game_number! > 5)
+    discordResponse = discordResponse.concat(
+      "\nYou are above the needed codes for your series. If you are experiencing issues, please open an admit ticket. <@247886805821685761>",
+    );
   return {
-    tournamentCode1,
+    discordResponse,
     game_number,
     error,
     division,
     team1Name,
     team2Name,
-  };
+  }
 }

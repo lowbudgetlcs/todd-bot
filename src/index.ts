@@ -1,26 +1,21 @@
 import {
   ActionRowBuilder,
   Client,
-  PermissionsBitField,
-  Collection,
   Events,
   GatewayIntentBits,
   ModalActionRowComponentBuilder,
   ModalBuilder,
-  REST,
-  Routes,
   TextInputBuilder,
   TextInputStyle,
-  PresenceData,
-  Presence,
   ActivityType,
+  StringSelectMenuBuilder,
 } from "discord.js";
-import { commands } from "./commands";
 import { config } from "./config";
-import { execute } from "./commands/tournnament";
-import { TIMEOUT } from "dns/promises";
+import { execute, getTeamsByDivision } from "./commands/tournnament";
+
 import { deployCommands } from "./deploy-commands";
 import { checkRole } from "./commands/commandToggle";
+import divisionMap from "./constants/constants";
 
 // Create a new client instance
 const client = new Client({
@@ -41,14 +36,10 @@ const client = new Client({
     status: "online",
   },
 });
-const commandsData = Object.values(commands).map((command) => command.data);
-const rest = new REST({ version: "10" }).setToken(config.DISCORD_TOKEN);
 
-const token = process.env.DISCORD_TOKEN;
-const provider_id = process.env.PROVIDER_ID;
+const userState = new Map();
+
 const guild_id = process.env.GUILD_ID;
-const tournament_id = process.env.TOURNAMENT_ID;
-const tournament_code_endpoint = process.env.TOURNAMENT_CODE_ENDPOIN;
 const channel_id = process.env.CHANNEL_ID;
 
 var commandToggle = true;
@@ -64,9 +55,12 @@ client.on("guildCreate", async (guild) => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
-  if (interaction.commandName == "command-toggle") {
-    var check = await checkRole(interaction.member?.roles);
+
+  if (interaction.isChatInputCommand() && interaction.commandName == "command-toggle") {
+    if (await checkRole(interaction.member?.roles)) {
+      await interaction.reply({ content: "Sorry, you aren't cool enough for this command." });
+      return;
+    }
     var reply = "Tournament Code Command Allowed: ";
     commandToggle = !commandToggle;
     await interaction.reply({ content: reply + commandToggle });
@@ -74,39 +68,30 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 
   if (
+    interaction.isChatInputCommand() &&
     interaction.commandName == "generate-tournament-code" &&
     interaction.channelId == channel_id &&
     commandToggle
   ) {
-    const modal = new ModalBuilder()
-      .setCustomId("generate-tournament-code")
-      .setTitle("Tournament Codes");
-
-    // Create the text input components
-    const team1 = new TextInputBuilder()
-      .setCustomId("team1")
-      .setLabel("First team input")
-      .setStyle(TextInputStyle.Short);
-
-    const team2 = new TextInputBuilder()
-      .setCustomId("team2")
-      .setLabel("Second team input")
-      .setStyle(TextInputStyle.Short);
-
-    const firstActionRow =
-      new ActionRowBuilder<ModalActionRowComponentBuilder>().addComponents(
-        team1,
+    const divisionDropdown = new StringSelectMenuBuilder()
+      .setCustomId("division_select")
+      .setPlaceholder("Select a Division")
+      .addOptions(
+        Array.from(divisionMap.entries()).map(([key, value]) => ({
+          label: value,
+          value: key.toString(),
+        }))
       );
-    const secondActionRow =
-      new ActionRowBuilder<ModalActionRowComponentBuilder>().addComponents(
-        team2,
-      );
+    const divisionRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(divisionDropdown);
 
-    modal.addComponents(firstActionRow, secondActionRow);
+    await interaction.reply({
+      content: "Please select a division:",
+      components: [divisionRow],
+      ephemeral: true,
+    });
 
-    // Show the modal to the user
-    await interaction.showModal(modal);
-  } else {
+    return;
+  } else if (interaction.isChatInputCommand() && (interaction.channelId != channel_id || !commandToggle)) {
     var commandCheck = commandToggle
       ? ": Please do not use this command <3."
       : ": This is Turned Off <3";
@@ -115,68 +100,137 @@ client.on(Events.InteractionCreate, async (interaction) => {
       ephemeral: true,
     });
   }
+
+  if (interaction.isStringSelectMenu()) {
+    const { customId, values, user } = interaction;
+
+    if (customId === "division_select") {
+      const divisionKey = parseInt(values[0]);
+      const divisionName = divisionMap.get(divisionKey);
+      const teams = await getTeamsByDivision(divisionKey) || [];
+
+      if (!(await teams).length) {
+        await interaction.update({
+          content: "No teams found for the selected division.",
+          components: [],
+        });
+        return;
+      }
+
+      const team1Dropdown = new StringSelectMenuBuilder()
+        .setCustomId("team1_select")
+        .setPlaceholder("Select Team 1")
+        .addOptions(teams.map((team) => ({ label: team.name, value: team.name })));
+
+      const team2Dropdown = new StringSelectMenuBuilder()
+        .setCustomId("team2_select")
+        .setPlaceholder("Select Team 2")
+        .addOptions(teams.map((team) => ({ label: team.name, value: team.name})));
+
+      const row1 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(team1Dropdown);
+      const row2 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(team2Dropdown);
+
+      // Store the state with teams and dropdowns
+      userState.set(user.id, { divisionName, teams, team1: null, team2: null, row1, row2 });
+
+      await interaction.update({
+        content: `You selected the **${divisionName}** division. Now select your teams:`,
+        components: [row1, row2],
+      });
+    } else if (customId === "team1_select" || customId === "team2_select") {
+      const selectedTeam = values[0];
+      const isTeam1 = customId === "team1_select";
+
+      // Retrieve the saved state for this user
+      const state = userState.get(user.id);
+      if (!state) {
+        await interaction.update({
+          content: "Error: Unable to retrieve state. Please restart the interaction.",
+          components: [],
+        });
+        return;
+      }
+
+      // Update the user's state with the selected team
+      if (isTeam1) {
+        state.team1 = selectedTeam;
+      } else {
+        state.team2 = selectedTeam;
+      }
+
+      const team1Dropdown = new StringSelectMenuBuilder()
+        .setCustomId("team1_select")
+        .setPlaceholder("Select Team 1")
+        .addOptions(
+          state.teams.map((team: { name: any; }) => ({
+            label: team.name,
+            value: team.name,
+            default: state.team1 === team.name // Mark selected team as default
+          }))
+        );
+
+      const team2Dropdown = new StringSelectMenuBuilder()
+        .setCustomId("team2_select")
+        .setPlaceholder("Select Team 2")
+        .addOptions(
+          state.teams.map((team: { name: any; }) => ({
+            label: team.name,
+            value: team.name,
+            default: state.team2 === team.name // Mark selected team as default
+          }))
+        );
+
+      const row1 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(team1Dropdown);
+      const row2 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(team2Dropdown);
+
+      // Update message content without changing the dropdown components
+      if(!(state.team1 && state.team2)){
+        const content = `You selected **${state.team1 || "Team 1 not selected"}** for Team 1 and **${state.team2 || "Team 2 not selected"}** for Team 2.`;
+        await interaction.update({
+          content,
+          components: [row1, row2], // Keep the dropdowns intact
+        });
+      }
+
+      // If both teams are selected, call the execute function
+      if (state.team1 && state.team2) {
+        try {
+          const tournamentCode = await execute(state.team1, state.team2, interaction);
+          // Notify the user with the final selection and tournament code
+          const response = tournamentCode.error.length>0? tournamentCode.error : tournamentCode.discordResponse;
+          if (tournamentCode.error.length > 0) {
+            // If there's an error, update the interaction with an ephemeral response
+            await interaction.update({
+              content: response,
+              components: [], // Remove dropdowns 
+            });
+          } else {
+            // If no error, defer the reply if not already done
+            if (!interaction.replied && !interaction.deferred) {
+              await interaction.deferReply(); // Defer the reply if not already done
+            }
+      
+            // Send a non-ephemeral follow-up with the successful response
+            await interaction.followUp({
+              content: response,
+              ephemeral: false, // This is the new, non-ephemeral message
+            });
+          }
+          userState.delete(user.id);
+        } catch (error) {
+          console.error(error);
+          await interaction.update({
+            content: "An error occurred while generating the tournament code. Please try again later.",
+            components: [],
+          });
+        }
+      }
+    }
+  }
 });
 
-client.on(Events.InteractionCreate, async (interaction) => {
-  if (!interaction.isModalSubmit()) return;
 
-  await interaction.deferReply();
 
-  // Get the data entered by the user
-  const team1 = interaction.fields.getTextInputValue("team1");
-  const team2 = interaction.fields.getTextInputValue("team2");
-
-  const divisionMap = new Map();
-  divisionMap.set(1, "ECONOMY");
-  divisionMap.set(2, "COMMERCIAL");
-  divisionMap.set(3, "FINANCIAL");
-  divisionMap.set(4, "EXECUTIVE");
-  divisionMap.set(5, "TEST");
-
-  var tournament_code;
-  try {
-    tournament_code = await execute(team1, team2);
-  } catch (e: any) {
-    console.error(e);
-    await interaction.editReply("Error");
-    await interaction.followUp({
-      content: "Error, contact ruufian.",
-      ephemeral: true,
-    });
-    await interaction.deleteReply();
-
-    return;
-  }
-  if (tournament_code?.error != "") {
-    await interaction.editReply("Error");
-    await interaction.followUp({
-      content: tournament_code?.error,
-      ephemeral: true,
-    });
-    await interaction.deleteReply();
-  } else {
-    let division_name = divisionMap.get(tournament_code?.division);
-    let response =
-      "## " +
-      division_name +
-      "\n" +
-      "**__" +
-      tournament_code.team1Name +
-      "__** vs **__" +
-      tournament_code.team2Name +
-      "__**\n" +
-      "Game " +
-      tournament_code?.game_number! +
-      " Code: `" +
-      tournament_code?.tournamentCode1 +
-      "`";
-    if (tournament_code?.game_number! > 5)
-      response = response.concat(
-        "\nYou are above the needed codes for your series. If you are experiencing issues, please open an admit ticket. <@247886805821685761>",
-      );
-    await interaction.editReply(response);
-  }
-});
 
 client.login(config.DISCORD_TOKEN);
 
