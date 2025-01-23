@@ -10,7 +10,6 @@ import { db } from "../db/db";
 import { divisions, games, series, teams, teamToSeries } from "../db/schema";
 import { and, sql, desc, eq} from "drizzle-orm";
 import {alias } from "drizzle-orm/pg-core"
-import divisionMap from "../constants/constants";
 import { config } from "../config";
 import { RiotAPITypes } from "@fightmegg/riot-api/dist/esm/@types";
 
@@ -57,7 +56,7 @@ async function checkSeries(team1Data: any, team2Data: any) {
   }
 }
 
-export async function handleGenerateTournamentCode(interaction: Interaction, channelId: string, commandToggle: boolean) {
+export async function handleGenerateTournamentCode(interaction: Interaction, channelId: string, commandToggle: boolean, divisionsMap: Map<any, any>) {
   if (!interaction.isChatInputCommand()) return;
 
   const { commandName, channelId: interactionChannelId } = interaction;
@@ -67,8 +66,8 @@ export async function handleGenerateTournamentCode(interaction: Interaction, cha
       .setCustomId("division_select")
       .setPlaceholder("Select a Division")
       .addOptions(
-        Array.from(divisionMap.entries()).map(([key, value]) => ({
-          label: value,
+        Array.from(divisionsMap.entries()).map(([key, value]) => ({
+          label: value.toString(),
           value: key.toString(),
         }))
       );
@@ -92,12 +91,12 @@ export async function handleGenerateTournamentCode(interaction: Interaction, cha
   }
 }
 
-export async function handleDivisionSelect(interaction: any) {
+export async function handleDivisionSelect(interaction: any,  divisionsMap: Map<any, any>) {
   const { customId, values, user } = interaction;
 
   if (customId === "division_select") {
     const divisionKey = parseInt(values[0]);
-    const divisionName = divisionMap.get(divisionKey);
+    const divisionName = divisionsMap.get(divisionKey);
     const teams = await getTeamsByDivision(divisionKey) || [];
 
     if (!teams.length) {
@@ -105,6 +104,7 @@ export async function handleDivisionSelect(interaction: any) {
         content: "No teams found for the selected division.",
         components: [],
       });
+      userState.delete(user.id);
       return;
     }
 
@@ -127,10 +127,14 @@ export async function handleDivisionSelect(interaction: any) {
       content: `You selected the **${divisionName}** division. Now select your teams:`,
       components: [row1, row2],
     });
+    setTimeout(() => {
+      userState.delete(user.id);
+      console.log(`User state for ${user.id} cleared due to inactivity.`);
+    }, 5 * 60 * 1000); 
   }
 }
 
-export async function handleTeamSelect(interaction: any) {
+export async function handleTeamSelect(interaction: any, divisionsMap: Map<any, any>) {
   const { customId, values, user } = interaction;
 
   const selectedTeam = values[0];
@@ -186,7 +190,7 @@ export async function handleTeamSelect(interaction: any) {
   }
 
   try {
-    const tournamentCode = await execute(state.team1, state.team2, interaction);
+    const tournamentCode = await execute(state.team1, state.team2, interaction, divisionsMap);
     const response = tournamentCode.error.length > 0 ? tournamentCode.error : tournamentCode.discordResponse;
 
     if (tournamentCode.error.length > 0) {
@@ -218,7 +222,7 @@ export async function handleTeamSelect(interaction: any) {
   }
 }
 
-export async function execute(team1: String, team2: String, interaction: StringSelectMenuInteraction<CacheType>) {
+export async function execute(team1: String, team2: String, interaction: StringSelectMenuInteraction<CacheType>, divisionsMap: Map<any, any>) {
   let error = "";
   let tournamentCode1 = "";
   let game_number = 1;
@@ -363,8 +367,9 @@ export async function execute(team1: String, team2: String, interaction: StringS
       team2Name,
     };
   }
+  // tournamentCode1 = "5";
   
-  let division_name = divisionMap.get(division);
+  let division_name = divisionsMap.get(division);
   let discordResponse =
     "## " +
     division_name +

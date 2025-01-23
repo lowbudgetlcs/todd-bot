@@ -1,6 +1,5 @@
 import { Interaction, StringSelectMenuBuilder, ActionRowBuilder, StringSelectMenuInteraction, SlashCommandBuilder } from "discord.js";
 import { getTeamsByDivision } from "./tournnament"; // Assuming you have this for getting teams
-import divisionMap from "../constants/constants"; // Same division map as before
 import { db } from "../db/db";
 import { players} from "../db/schema";
 import { eq } from "drizzle-orm";
@@ -27,7 +26,7 @@ async function generateOpgg(teamId: number) {
     return opggUrl;
 }
 
-export async function handleOpggCommand(interaction: Interaction, channelId: string, commandToggle: boolean) {
+export async function handleOpggCommand(interaction: Interaction, channelId: string, commandToggle: boolean, divisionsMap: Map<any, any>) {
   if (!interaction.isChatInputCommand()) return;
 
   const { commandName, channelId: interactionChannelId } = interaction;
@@ -38,7 +37,7 @@ export async function handleOpggCommand(interaction: Interaction, channelId: str
       .setCustomId("division_select_opgg")
       .setPlaceholder("Select a Division")
       .addOptions(
-        Array.from(divisionMap.entries()).map(([key, value]) => ({
+        Array.from(divisionsMap.entries()).map(([key, value]) => ({
           label: value,
           value: key.toString(),
         }))
@@ -63,10 +62,10 @@ export async function handleOpggCommand(interaction: Interaction, channelId: str
   }
 }
 
-export async function handleDivisionSelectOpgg(interaction: StringSelectMenuInteraction) {
+export async function handleDivisionSelectOpgg(interaction: StringSelectMenuInteraction, divisionsMap: Map<any, any>) {
   const { values, user } = interaction;
   const divisionKey = parseInt(values[0]);
-  const divisionName = divisionMap.get(divisionKey);
+  const divisionName = divisionsMap.get(divisionKey);
   const teams = await getTeamsByDivision(divisionKey) || [];
 
   if (!(await teams).length) {
@@ -96,7 +95,6 @@ export async function handleTeamSelectOpgg(interaction: StringSelectMenuInteract
 
   // Run the generateOpgg function with the selected team ID
   try {
-    console.log(selectedTeamId);
     const opggLink = await generateOpgg(parseInt(selectedTeamId));
 
     // Send the OP.GG link as a follow-up
