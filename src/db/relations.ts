@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { teams, players, divisions, games, series, teamToSeries, teamPerformances, teamGameData, playerPerformances, playerGameData, gameDumps, draftLobbies } from "./schema";
+import { teams, players, divisions, games, series, teamToSeries, teamPerformances, teamGameData, playerPerformances, playerGameData, gameDumps, draftLobbies } from "../db/schema";
 
 export const playersRelations = relations(players, ({one, many}) => ({
 	team: one(teams, {
@@ -46,7 +46,6 @@ export const teamsRelations = relations(teams, ({one, many}) => ({
 export const divisionsRelations = relations(divisions, ({many}) => ({
 	teams: many(teams),
 	series: many(series),
-	teamPerformances: many(teamPerformances),
 	playerPerformances: many(playerPerformances),
 }));
 
@@ -101,19 +100,7 @@ export const teamToSeriesRelations = relations(teamToSeries, ({one}) => ({
 	}),
 }));
 
-export const teamGameDataRelations = relations(teamGameData, ({one}) => ({
-	teamPerformance: one(teamPerformances, {
-		fields: [teamGameData.teamPerformanceId],
-		references: [teamPerformances.id]
-	}),
-}));
-
 export const teamPerformancesRelations = relations(teamPerformances, ({one, many}) => ({
-	teamGameData: many(teamGameData),
-	division: one(divisions, {
-		fields: [teamPerformances.divisionId],
-		references: [divisions.id]
-	}),
 	game: one(games, {
 		fields: [teamPerformances.gameId],
 		references: [games.id]
@@ -121,6 +108,14 @@ export const teamPerformancesRelations = relations(teamPerformances, ({one, many
 	team: one(teams, {
 		fields: [teamPerformances.teamId],
 		references: [teams.id]
+	}),
+	teamGameData: many(teamGameData),
+}));
+
+export const teamGameDataRelations = relations(teamGameData, ({one}) => ({
+	teamPerformance: one(teamPerformances, {
+		fields: [teamGameData.teamPerformanceId],
+		references: [teamPerformances.id]
 	}),
 }));
 

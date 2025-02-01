@@ -5,6 +5,9 @@ import {
   Collection,
   MessageFlags,
   ActivityType,
+  Interaction,
+  SlashCommandBuilder,
+  RESTPostAPIChatInputApplicationCommandsJSONBody,
 } from "discord.js";
 import { config } from "./config";
 // import {  handleDivisionSelect, handleGenerateTournamentCode, handleTeamSelect } from "./commands/tournnament";
@@ -18,10 +21,15 @@ import * as path from 'path';
 import * as fs from 'fs';
 
 type ActionWrapper = {
-  execute: (interaction) => Promise<void>
+  execute: (interaction: Interaction) => Promise<void>
 }
 class DiscordClient extends Client {
   commands: Collection<string, ActionWrapper> = new Collection;
+}
+
+type CommandFileExport = {
+  data: SlashCommandBuilder,
+  execute: (interaction: Interaction) => Promise<void>
 }
 
 // Create a new client instance
@@ -48,10 +56,30 @@ const guild_id = process.env.GUILD_ID;
 
 const divisionsMap = new Map();
 
+// For sending to discord to register commands I don't know how to make this not look like garbo
+const commands : RESTPostAPIChatInputApplicationCommandsJSONBody[] = []
+
+// Populate commands property of the Client, currently only works for commands/ and not subfolders cuz not needed
+const commandsPath = path.join(__dirname, 'commands');
+console.log(commandsPath)
+const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+
+for (const file of commandFiles) {
+  const filePath = path.join(commandsPath, file);
+  const command : CommandFileExport =  require(filePath);
+  // Set a new item in the Collection with the key as the command name and the value as the exported module
+  if ('data' in command && 'execute' in command) {
+    commands.push(command.data.toJSON())
+    client.commands.set(command.data.name, command);
+  } else {
+    console.log(`[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`);
+  }
+}
+
 client.once("ready", async () => {
   console.log("Discord bot is ready! 🤖");
   client.user?.setPresence({ status: "online" });
-  await deployCommands({ guildId: guild_id! });
+  await deployCommands({ guildId: guild_id! }, commands );
   let data = await db.select().from(divisions);
   for (const division of data) {
     divisionsMap.set(division.id, division.name)
@@ -59,31 +87,11 @@ client.once("ready", async () => {
   console.log(divisionsMap);
 });
 
-client.commands = new Collection();
-
-const foldersPath = path.join(__dirname, 'commands');
-const commandFolders = fs.readdirSync(foldersPath);
-
-for (const folder of commandFolders) {
-	const commandsPath = path.join(foldersPath, folder);
-	const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
-	for (const file of commandFiles) {
-		const filePath = path.join(commandsPath, file);
-		const command = require(filePath);
-		// Set a new item in the Collection with the key as the command name and the value as the exported module
-		if ('data' in command && 'execute' in command) {
-			client.commands.set(command.data.name, command);
-		} else {
-			console.log(`[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`);
-		}
-	}
-}
-
-
 const channelId = process.env.CHANNEL_ID!;
 
 client.on(Events.InteractionCreate, async interaction => {
 	if (!interaction.isChatInputCommand()) return;
+  console.log(interaction);
 
 	const command = client.commands.get(interaction.commandName);
 
@@ -91,8 +99,9 @@ client.on(Events.InteractionCreate, async interaction => {
 		console.error(`No command matching ${interaction.commandName} was found.`);
 		return;
 	}
-
+  // Base command / single command
 	try {
+    // TODO: checkDbForPermissions(interaction);
 		await command.execute(interaction);
 	} catch (error) {
 		console.error(error);
@@ -102,6 +111,7 @@ client.on(Events.InteractionCreate, async interaction => {
 			await interaction.reply({ content: 'There was an error while executing this command!', flags: MessageFlags.Ephemeral });
 		}
 	}
+  // TODO Followup commands
 });
 
 
@@ -118,7 +128,7 @@ client.on(Events.InteractionCreate, async interaction => {
 //         commandToggle = !commandToggle;
 //       }
 //     }
-//     if(interaction.commandName === "team-opgg"){
+//     if(interactioninteraction.commandName === "team-opgg"){
 //       await handleOpggCommand(interaction, channelId, commandToggle, divisionsMap);
 //     }
 //   }

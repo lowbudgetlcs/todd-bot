@@ -4,9 +4,15 @@ import { db } from "../db/db";
 import { players} from "../db/schema";
 import { eq } from "drizzle-orm";
 
-export const data = new SlashCommandBuilder()
+module.exports = {
+  data: new SlashCommandBuilder()
   .setName("team-opgg")
-  .setDescription("Generates Team op.gg link");
+  .setDescription("Generates Team op.gg link"),
+  async execute(interaction) {
+    // TODO: fix this 
+    let x = 1+1;
+  }
+}
 
 async function generateOpgg(teamId: number) {
 
@@ -26,7 +32,7 @@ async function generateOpgg(teamId: number) {
     return opggUrl;
 }
 
-export async function handleOpggCommand(interaction: Interaction, channelId: string, commandToggle: boolean, divisionsMap: Map<any, any>) {
+async function handleOpggCommand(interaction: Interaction, channelId: string, commandToggle: boolean, divisionsMap: Map<any, any>) {
   if (!interaction.isChatInputCommand()) return;
 
   const { commandName, channelId: interactionChannelId } = interaction;
@@ -62,7 +68,7 @@ export async function handleOpggCommand(interaction: Interaction, channelId: str
   }
 }
 
-export async function handleDivisionSelectOpgg(interaction: StringSelectMenuInteraction, divisionsMap: Map<any, any>) {
+async function handleDivisionSelectOpgg(interaction: StringSelectMenuInteraction, divisionsMap: Map<any, any>) {
   const { values, user } = interaction;
   const divisionKey = parseInt(values[0]);
   const divisionName = divisionsMap.get(divisionKey);
@@ -89,7 +95,7 @@ export async function handleDivisionSelectOpgg(interaction: StringSelectMenuInte
   });
 }
 
-export async function handleTeamSelectOpgg(interaction: StringSelectMenuInteraction) {
+async function handleTeamSelectOpgg(interaction: StringSelectMenuInteraction) {
   const { values, user } = interaction;
   const selectedTeamId = values[0];
 
