@@ -1,8 +1,22 @@
-import { pgTable, type AnyPgColumn, foreignKey, unique, serial, char, varchar, integer, text, jsonb, timestamp, boolean, bigint, smallint, pgEnum } from "drizzle-orm/pg-core"
+import { pgTable, serial, varchar, bigint, type AnyPgColumn, foreignKey, unique, char, integer, text, jsonb, timestamp, boolean, smallint, pgEnum } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
 export const riftSide = pgEnum("rift_side", ['BLUE', 'RED'])
 
+
+export const commandRolePermissions = pgTable("command_role_permissions", {
+	id: serial().primaryKey().notNull(),
+	name: varchar().notNull(),
+	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
+	roleId: bigint("role_id", { mode: "number" }).notNull(),
+});
+
+export const commandChannelPermissions = pgTable("command_channel_permissions", {
+	id: serial().primaryKey().notNull(),
+	name: varchar().notNull(),
+	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
+	channelId: bigint("channel_id", { mode: "number" }).notNull(),
+});
 
 export const players = pgTable("players", {
 	id: serial().primaryKey().notNull(),
@@ -106,31 +120,12 @@ export const series = pgTable("series", {
 		}),
 ]);
 
-export const teamPerformances = pgTable("team_performances", {
-	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "team_performances_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
-	teamId: integer("team_id"),
-	gameId: integer("game_id"),
-	divisionId: integer("division_id"),
-}, (table) => [
-	foreignKey({
-			columns: [table.gameId],
-			foreignColumns: [games.id],
-			name: "team_performances_game_id_fkey"
-		}),
-	foreignKey({
-			columns: [table.teamId],
-			foreignColumns: [teams.id],
-			name: "team_performances_team_id_fkey"
-		}),
-	unique("team_performances_team_id_game_id_key").on(table.teamId, table.gameId),
-]);
-
 export const teamGameData = pgTable("team_game_data", {
 	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "team_game_data_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
 	teamPerformanceId: integer("team_performance_id").notNull(),
 	gold: integer().notNull(),
 	kills: integer().notNull(),
-	side: riftSide().notNull(),
+	side: text().notNull(),
 	win: boolean().notNull(),
 	gameLength: integer("game_length").notNull(),
 	barons: integer().default(0).notNull(),
@@ -153,6 +148,30 @@ export const teamGameData = pgTable("team_game_data", {
 			name: "team_game_data_team_performance_id_fkey"
 		}),
 	unique("team_game_data_team_performance_id_key").on(table.teamPerformanceId),
+]);
+
+export const teamPerformances = pgTable("team_performances", {
+	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "team_performances_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
+	teamId: integer("team_id"),
+	gameId: integer("game_id"),
+	divisionId: integer("division_id"),
+}, (table) => [
+	foreignKey({
+			columns: [table.divisionId],
+			foreignColumns: [divisions.id],
+			name: "team_performances_division_id_fkey"
+		}),
+	foreignKey({
+			columns: [table.gameId],
+			foreignColumns: [games.id],
+			name: "team_performances_game_id_fkey"
+		}),
+	foreignKey({
+			columns: [table.teamId],
+			foreignColumns: [teams.id],
+			name: "team_performances_team_id_fkey"
+		}),
+	unique("team_performances_team_id_game_id_key").on(table.teamId, table.gameId),
 ]);
 
 export const playerGameData = pgTable("player_game_data", {
@@ -248,6 +267,13 @@ export const gameDumps = pgTable("game_dumps", {
 		}),
 	unique("game_dumps_game_id_key").on(table.gameId),
 ]);
+
+export const users = pgTable("users", {
+	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "users_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
+	username: varchar().notNull(),
+	// TODO: failed to parse database type 'bytea'
+	ha1: unknown("ha1").notNull(),
+});
 
 export const draftLobbies = pgTable("draft_lobbies", {
 	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "draft_lobbies_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
