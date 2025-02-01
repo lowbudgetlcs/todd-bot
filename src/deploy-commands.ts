@@ -11,6 +11,7 @@ type DeployCommandsProps = {
 };
 
 export async function deployCommands({ guildId }: DeployCommandsProps) {
+  console.log("bello");
   try {
     console.log("Started refreshing application (/) commands.");
     await rest
