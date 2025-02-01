@@ -79,7 +79,7 @@ for (const file of commandFiles) {
 client.once("ready", async () => {
   console.log("Discord bot is ready! 🤖");
   client.user?.setPresence({ status: "online" });
-  await deployCommands({ guildId: guild_id! }, commands );
+  // await deployCommands({ guildId: guild_id! }, commands );
   let data = await db.select().from(divisions);
   for (const division of data) {
     divisionsMap.set(division.id, division.name)
