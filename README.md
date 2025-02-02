@@ -60,8 +60,6 @@
 
 Bot companion 🤖 for the Low Budget LCS Discord!
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
 <!-- GETTING STARTED -->
 ## Getting Started
 
@@ -97,5 +95,3 @@ To get a local copy up and running follow these simple example steps.
    ADMIN_ROLES=
    ```
 4. `npx drizzle-kit pull` and `npx drizzle-kit generate` to update the schema!
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
