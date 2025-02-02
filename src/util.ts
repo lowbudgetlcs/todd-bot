@@ -1,5 +1,6 @@
+import { eq } from "drizzle-orm/sql";
 import { db } from "./db/db";
-import { divisions } from "./db/schema";
+import { divisions, teams } from "./db/schema";
 
 type DivisionsMap = Map<number, string>
 
@@ -9,23 +10,32 @@ type DivisionsMap = Map<number, string>
 //   return () => value ?? (value = factory());
 // }
 
-export class DatabaseUtil {
-  private static _instance : DatabaseUtil;
+
 /**
- * Cached version of the divison map
+ * Class for some database queries that should be shared between classes. 
+ * 
+ */
+export class DatabaseUtil {
+  private static _instance : DatabaseUtil = new DatabaseUtil();
+/**
+ * Cached version of the division map
  * @returns Divions map of the id and the division name
  */
   public divisionsMap!: DivisionsMap;
 
   private constructor()
   {
+    if (DatabaseUtil._instance)
+    {
+      throw new Error("Use DatabaseUtil.instance instead of new.");
+    }
+    DatabaseUtil._instance = this;
     this.populateDivisonsMap();
   }
 
   public static get Instance()
   {
-      // Do you need arguments? Make it a regular static method instead.
-      return this._instance || (this._instance = new this());
+      return DatabaseUtil._instance ?? (DatabaseUtil._instance = new DatabaseUtil());
   }
 
   private async populateDivisonsMap()
@@ -37,4 +47,9 @@ export class DatabaseUtil {
     };
   }
   
+}
+
+export async function getTeamsByDivision(division: number) {
+  let data = await db.select().from(teams).where((eq(teams.divisionId, division)));
+  return data;
 }
