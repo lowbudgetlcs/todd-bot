@@ -17,7 +17,7 @@ import { deployCommands } from "./deploy-commands";
 // import { handleDivisionSelectOpgg, handleOpggCommand, handleTeamSelectOpgg } from "./commands/opgg";
 // import { divisions } from "./db/schema";
 // import { db } from "./db/db";
-import { DatabaseUtil } from "./util";
+import { DatabaseUtil, checkDbForPermissions } from "./util";
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -90,7 +90,6 @@ const channelId = process.env.CHANNEL_ID!;
 
 client.on(Events.InteractionCreate, async interaction => {
 	if (!interaction.isChatInputCommand()) return;
-  console.log(interaction);
 
 	const command = client.commands.get(interaction.commandName);
 
@@ -100,7 +99,15 @@ client.on(Events.InteractionCreate, async interaction => {
 	}
   // Base command / single command
 	try {
-    // TODO: checkDbForPermissions(interaction);
+    // TODO: actually need to test this lol
+    if (!await checkDbForPermissions(interaction, interaction.commandName))
+    {
+      await interaction.reply({
+        content: "Sorry, you aren't cool enough for this command.",
+        ephemeral: true,
+      });
+      return;
+    }
 		await command.execute(interaction);
 	} catch (error) {
 		console.error(error);
