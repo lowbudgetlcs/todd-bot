@@ -15,10 +15,14 @@ import { config } from "./config";
 import { deployCommands } from "./deploy-commands";
 // import { checkRole, toggleCheck } from "./commands/commandToggle";
 // import { handleDivisionSelectOpgg, handleOpggCommand, handleTeamSelectOpgg } from "./commands/opgg";
-import { divisions } from "./db/schema";
-import { db } from "./db/db";
+// import { divisions } from "./db/schema";
+// import { db } from "./db/db";
+import { DatabaseUtil } from "./util";
 import * as path from 'path';
 import * as fs from 'fs';
+
+// We'll just do this first to initialize it since we'll need it around ;p
+let dbUtil = DatabaseUtil.Instance;
 
 type ActionWrapper = {
   execute: (interaction: Interaction) => Promise<void>
@@ -54,8 +58,6 @@ const client = new DiscordClient({
 
 const guild_id = process.env.GUILD_ID;
 
-const divisionsMap = new Map();
-
 // For sending to discord to register commands I don't know how to make this not look like garbo
 const commands : RESTPostAPIChatInputApplicationCommandsJSONBody[] = []
 
@@ -80,10 +82,7 @@ client.once("ready", async () => {
   console.log("Discord bot is ready! 🤖");
   client.user?.setPresence({ status: "online" });
   // await deployCommands({ guildId: guild_id! }, commands );
-  let data = await db.select().from(divisions);
-  for (const division of data) {
-    divisionsMap.set(division.id, division.name)
-  };
+  let divisionsMap = dbUtil.divisionsMap;
   console.log(divisionsMap);
 });
 

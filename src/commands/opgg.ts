@@ -10,7 +10,40 @@ module.exports = {
   .setDescription("Generates Team op.gg link"),
   async execute(interaction) {
     // TODO: fix this 
-    let x = 1+1;
+    if (!interaction.isChatInputCommand()) return;
+
+    const { commandName, channelId: interactionChannelId } = interaction;
+  
+    // Ensure the command is valid and toggled on
+    if (commandName === "team-opgg" && interactionChannelId === channelId && commandToggle) {
+      const divisionDropdown = new StringSelectMenuBuilder()
+        .setCustomId("division_select_opgg")
+        .setPlaceholder("Select a Division")
+        .addOptions(
+          Array.from(divisionsMap.entries()).map(([key, value]) => ({
+            label: value,
+            value: key.toString(),
+          }))
+        );
+      const divisionRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(divisionDropdown);
+  
+      await interaction.reply({
+        content: "Please select a division to get the OP.GG information:",
+        components: [divisionRow],
+        ephemeral: true,
+      });
+  
+      return;
+    } else if (interactionChannelId !== channelId || !commandToggle) {
+      const commandCheck = commandToggle
+        ? ": Please do not use this command <3."
+        : ": This is Turned Off <3";
+      await interaction.reply({
+        content: "Beep Boop, Beep Bop" + commandCheck,
+        ephemeral: true,
+      });
+    }
+  
   }
 }
 
@@ -33,39 +66,6 @@ async function generateOpgg(teamId: number) {
 }
 
 async function handleOpggCommand(interaction: Interaction, channelId: string, commandToggle: boolean, divisionsMap: Map<any, any>) {
-  if (!interaction.isChatInputCommand()) return;
-
-  const { commandName, channelId: interactionChannelId } = interaction;
-
-  // Ensure the command is valid and toggled on
-  if (commandName === "team-opgg" && interactionChannelId === channelId && commandToggle) {
-    const divisionDropdown = new StringSelectMenuBuilder()
-      .setCustomId("division_select_opgg")
-      .setPlaceholder("Select a Division")
-      .addOptions(
-        Array.from(divisionsMap.entries()).map(([key, value]) => ({
-          label: value,
-          value: key.toString(),
-        }))
-      );
-    const divisionRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(divisionDropdown);
-
-    await interaction.reply({
-      content: "Please select a division to get the OP.GG information:",
-      components: [divisionRow],
-      ephemeral: true,
-    });
-
-    return;
-  } else if (interactionChannelId !== channelId || !commandToggle) {
-    const commandCheck = commandToggle
-      ? ": Please do not use this command <3."
-      : ": This is Turned Off <3";
-    await interaction.reply({
-      content: "Beep Boop, Beep Bop" + commandCheck,
-      ephemeral: true,
-    });
-  }
 }
 
 async function handleDivisionSelectOpgg(interaction: StringSelectMenuInteraction, divisionsMap: Map<any, any>) {
