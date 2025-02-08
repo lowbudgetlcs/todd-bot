@@ -13,9 +13,15 @@ import {alias } from "drizzle-orm/pg-core"
 import { config } from "../config";
 import { RiotAPITypes } from "@fightmegg/riot-api/dist/esm/@types";
 
-export const data = new SlashCommandBuilder()
+module.exports = {
+  data: new SlashCommandBuilder()
   .setName("generate-tournament-code")
-  .setDescription("Generate Tournament Code");
+  .setDescription("Generate Tournament Code"),
+  async execute(interaction) {
+    // TODO: fix this 
+    let x = 1+1;
+  }
+}
 
 async function grabTeamInfo(team: String) {
   let data = await db
@@ -26,7 +32,7 @@ async function grabTeamInfo(team: String) {
 }
 const userState = new Map();
 
-export async function getTeamsByDivision(division: number) {
+async function getTeamsByDivision(division: number) {
   let data = await db.select().from(teams).where((eq(teams.divisionId, division)));
   return data;
 }
@@ -56,7 +62,7 @@ async function checkSeries(team1Data: any, team2Data: any) {
   }
 }
 
-export async function handleGenerateTournamentCode(interaction: Interaction, channelId: string, commandToggle: boolean, divisionsMap: Map<any, any>) {
+async function handleGenerateTournamentCode(interaction: Interaction, channelId: string, commandToggle: boolean, divisionsMap: Map<any, any>) {
   if (!interaction.isChatInputCommand()) return;
 
   const { commandName, channelId: interactionChannelId } = interaction;
@@ -91,7 +97,7 @@ export async function handleGenerateTournamentCode(interaction: Interaction, cha
   }
 }
 
-export async function handleDivisionSelect(interaction: any,  divisionsMap: Map<any, any>) {
+async function handleDivisionSelect(interaction: any,  divisionsMap: Map<any, any>) {
   const { customId, values, user } = interaction;
 
   if (customId === "division_select") {
@@ -134,7 +140,7 @@ export async function handleDivisionSelect(interaction: any,  divisionsMap: Map<
   }
 }
 
-export async function handleTeamSelect(interaction: any, divisionsMap: Map<any, any>) {
+async function handleTeamSelect(interaction: any, divisionsMap: Map<any, any>) {
   const { customId, values, user } = interaction;
 
   const selectedTeam = values[0];
@@ -222,7 +228,7 @@ export async function handleTeamSelect(interaction: any, divisionsMap: Map<any, 
   }
 }
 
-export async function execute(team1: String, team2: String, interaction: StringSelectMenuInteraction<CacheType>, divisionsMap: Map<any, any>) {
+async function execute(team1: String, team2: String, interaction: StringSelectMenuInteraction<CacheType>, divisionsMap: Map<any, any>) {
   let error = "";
   let tournamentCode1 = "";
   let game_number = 1;
