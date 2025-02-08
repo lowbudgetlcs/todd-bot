@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm/sql";
 import { db } from "./db/db";
 import { commandChannelPermissions, commandRolePermissions, divisions, teams } from "./db/schema";
-import { CacheType, Interaction } from "discord.js";
+import { CacheType, GuildMember, Interaction } from "discord.js";
+import { channel } from "diagnostics_channel";
 
 type DivisionsMap = Map<number, string>
 
@@ -55,10 +56,22 @@ export async function getTeamsByDivision(division: number) {
   return data;
 }
 
-export async function getUserRoles(interaction : Interaction<CacheType>, role: string)
+/**
+ * Parses an interaction to get the user roles.
+ * @returns collection of role ids.
+ */
+function getUserRoles(interaction : Interaction<CacheType>)
 {
-  let x = interaction.member?.roles
-  return 
+  // THIS IS NOT THE RIGHT THING TO DO PROBABLY
+  // I DON'T UNDERSTAND WHY THE COMPILER REFUSES TO THINK
+  // THAT BECAUSE THIS TYPE IS A UNION OF OTHER TYPES
+  // THAT GUILDMEMBER PROPERTIES AREN'T AVAILABLE TO USE ????
+  // TODO: understand how to code
+  let member :GuildMember = interaction.member;
+  member.roles.cache.each(x => {
+    console.log(`Role name=${x.name}, role id= ${x.id}`);
+  });
+  return member.roles.cache.map(role => role.id);
 }
 
 
@@ -78,27 +91,35 @@ export async function checkDbForPermissions(interaction : Interaction<CacheType>
   let rolesToCheck = await db.select().from(commandRolePermissions).where(eq(commandRolePermissions.name, commandName));
   let channelsToCheck = await db.select().from(commandChannelPermissions).where(eq(commandChannelPermissions.name, commandName));
 
-  if (rolesToCheck)
+  if (rolesToCheck.length > 0)
   {
     roleAllowed = false;
     let permissionRoles = rolesToCheck.map(x => x.roleId);
-  
+    var userRoles = getUserRoles(interaction).map(x => +x);
+
     permissionRoles.forEach(role => {
-      if(role in interaction.member?.roles!)
+      // console.log(`Hello this is a log message: permission ${role}`)
+      // console.log(`Hello this is a log message. userRole has the role ${userRoles.some(userRole => role == +userRole)}`);
+
+      // console.log(`Hello this is a log message. userRoles: ${userRoles.join(',')}`);
+      // console.log(`Hello this is a log message. permissionRoles: ${permissionRoles.join(',')}`);
+      if(userRoles.some(userRole => role == +userRole))
       {
         roleAllowed = true;
       }
     })
   }
   
-  if (channelsToCheck)
+  if (channelsToCheck.length > 0)
   {
     channelAllowed = false;
     let channels = channelsToCheck.map(x => x.channelId);
-    if (interaction.channelId! in channels)
+    var messageChannel = +interaction.channelId!
+    if (messageChannel in channels)
     {
       channelAllowed = true;
     }
   }
+  // console.log(`Hello this is a log message: roleAllowed=${roleAllowed}, channelAllowed=${channelAllowed}`);
   return roleAllowed && channelAllowed;
 }
