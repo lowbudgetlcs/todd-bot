@@ -84,6 +84,9 @@ To get a local copy up and running follow these simple example steps.
    ```sh
    npm install
    ```
+   ```sh
+   npm i -g pm2
+   ```
 3. Fill a .env file with useful entries!
    ```
    DISCORD_TOKEN=
@@ -95,3 +98,8 @@ To get a local copy up and running follow these simple example steps.
    ADMIN_ROLES=
    ```
 4. `npx drizzle-kit pull` and `npx drizzle-kit generate` to update the schema!
+5. To run the bot:
+   ```sh
+   pm2-runtime ecosystem.config.js
+   ```
+
