@@ -2,6 +2,10 @@ import { GuildMemberRoleManager, PermissionFlagsBits, SlashCommandBuilder } from
 import { db } from "../db/db";
 import { commandRolePermissions } from "../db/schema";
 import { eq } from "drizzle-orm";
+import { config } from "../config"
+
+// TODO: this should probably be dynamic, whatever
+const tourneyCodeCommand = "generate-tournament-code"
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -10,23 +14,45 @@ module.exports = {
   // TODO: Confirm base level of permission 
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   async execute(interaction) {
-    // TODO: need to populate this table with data
-    let data = await db.select().from(commandRolePermissions).where(eq(commandRolePermissions.name, "generate-tournament-code"));
-    console.log("hello", data);
+    let data = await db.select().from(commandRolePermissions).where(eq(commandRolePermissions.name, tourneyCodeCommand));
+    var enabledForCaptains = data.length > config.ADMIN_ROLE_IDS.length
+    console.log(`Detected that ${tourneyCodeCommand} is ${enabledForCaptains ? "enabled for captains" : "admins only"}`);
     // If the row exists, then the command is enabled
-    if (data)
+    if (enabledForCaptains)
     {
-      db.delete(commandRolePermissions).where(eq(commandRolePermissions.name, "generate-tournament-code"));
-    }else {
-      // TODO: dynamically find the captain role or store it somewhere or something
-      // TODO: alternatively we can make this interactive and just pass in the role as an option or smth
-      db.insert(commandRolePermissions).values( {name: "generate-tournament-code", roleId: 123 })
-    }
-    // TODO: query database for tournament code value and alter it such that the captain role is removed
-    const reply = "Tournament Code Command Allowed: " + data == null;
+      try{
+        await db.transaction(async (tx) =>
+          {
+            await tx.delete(commandRolePermissions).where(eq(commandRolePermissions.name, tourneyCodeCommand));
+            config.ADMIN_ROLE_IDS.forEach(async (role) =>
+              {
+                await tx.insert(commandRolePermissions).values({name: tourneyCodeCommand, roleId: +role})
+              })
+          })
+        
+      } catch (error) {
         await interaction.reply({
-          content: reply,
-          flags: "Ephemeral",// Prevent spamming the channel with toggle updates
+          content: "There was an error configuring this command. Please contact @Dev Team",
+          flags: "Ephemeral"
         });
+        return;
+      }
+      
+    }else {
+      try {
+        db.insert(commandRolePermissions).values( {name: tourneyCodeCommand, roleId: +config.CAPTAIN_ROLE_ID })
+      } catch (error) {
+        await interaction.reply({
+          content: "There was an error configuring this command. Please contact @Dev Team",
+          flags: "Ephemeral"
+        });
+        return;
+      }
+    }
+    const reply = "Tournament Code Command Allowed: " + !enabledForCaptains;
+    await interaction.reply({
+      content: reply,
+      flags: "Ephemeral",// Prevent spamming the channel with toggle updates
+    });
   }
 }
