@@ -96,13 +96,8 @@ client.on(Events.InteractionCreate, async interaction => {
 	}
   // Base command / single command
 	try {
-    // TODO: actually need to test this lol
     if (!await checkDbForPermissions(interaction, interaction.commandName))
     {
-      await interaction.reply({
-        content: "Sorry, you aren't cool enough for this command.",
-        flags: "Ephemeral"
-      });
       return;
     }
 		await command.execute(interaction);

@@ -69,7 +69,7 @@ function getUserRoles(interaction : Interaction<CacheType>)
   // TODO: understand how to code
   let member :GuildMember = interaction.member;
   member.roles.cache.each(x => {
-    console.log(`Role name=${x.name}, role id= ${x.id}`);
+    console.log(`Role name=${x.name}, role id=${x.id}`);
   });
   return member.roles.cache.map(role => role.id);
 }
@@ -115,11 +115,30 @@ export async function checkDbForPermissions(interaction : Interaction<CacheType>
     channelAllowed = false;
     let channels = channelsToCheck.map(x => x.channelId);
     var messageChannel = +interaction.channelId!
-    if (messageChannel in channels)
+    if (channels.includes(messageChannel))
     {
       channelAllowed = true;
     }
   }
-  // console.log(`Hello this is a log message: roleAllowed=${roleAllowed}, channelAllowed=${channelAllowed}`);
+  if (!roleAllowed && !channelAllowed)
+  {
+    await interaction.reply({
+      content: "Sorry, you can't run this command with your roles and in this channel!",
+      flags: "Ephemeral"
+    });
+  } else if (!roleAllowed)
+  {
+    await interaction.reply({
+      content: "Sorry, you aren't cool enough for this command.",
+      flags: "Ephemeral"
+    });
+  } else if(!channelAllowed)
+  {
+    await interaction.reply({
+      content: "Sorry, you can't run that in this channel!",
+      flags: "Ephemeral"
+    });
+  }
+
   return roleAllowed && channelAllowed;
 }
