@@ -53,8 +53,8 @@ module.exports = {
     const command : string = interaction.options.getString('command');
     const channel : Channel | null = interaction.options.getChannel('channel');
     const role : Role | null = interaction.options.getRole('role');
-    const restrict : boolean = interaction.options.getBool('enable') ?? false;
-    const unrestrict : boolean = interaction.options.getBool('disable') ?? false;
+    const restrict : boolean = interaction.options.getBoolean('enable') ?? false;
+    const unrestrict : boolean = interaction.options.getBoolean('disable') ?? false;
     let reply = `Permissions for ${command} has been updated!`;
     if (restrict && unrestrict)
     {
