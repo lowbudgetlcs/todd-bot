@@ -47,7 +47,7 @@ module.exports = {
   )
   // We have our own permission system but we probably don't want to show this to the average user
   // TODO: Confirm base level of permission 
-  // .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .setContexts(InteractionContextType.Guild),
   async execute(interaction) {
     const command : string = interaction.options.getString('command');

@@ -1,4 +1,4 @@
-import { GuildMemberRoleManager, SlashCommandBuilder } from "discord.js";
+import { GuildMemberRoleManager, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import { db } from "../db/db";
 import { commandRolePermissions } from "../db/schema";
 import { eq } from "drizzle-orm";
@@ -6,7 +6,9 @@ import { eq } from "drizzle-orm";
 module.exports = {
   data: new SlashCommandBuilder()
   .setName("command-toggle")
-  .setDescription("Switches Tournament Code Off"),
+  .setDescription("Switches Tournament Code Off")
+  // TODO: Confirm base level of permission 
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   async execute(interaction) {
     // TODO: need to populate this table with data
     let data = await db.select().from(commandRolePermissions).where(eq(commandRolePermissions.name, "generate-tournament-code"));
