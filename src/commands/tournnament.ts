@@ -1,6 +1,7 @@
 import {
   ActionRowBuilder,
   CacheType,
+  ComponentType,
   Interaction,
   SlashCommandBuilder,
   StringSelectMenuBuilder,
@@ -12,14 +13,45 @@ import { and, sql, desc, eq} from "drizzle-orm";
 import {alias } from "drizzle-orm/pg-core"
 import { config } from "../config";
 import { RiotAPITypes } from "@fightmegg/riot-api/dist/esm/@types";
+import { DatabaseUtil } from "../util";
 
 module.exports = {
   data: new SlashCommandBuilder()
   .setName("generate-tournament-code")
   .setDescription("Generate Tournament Code"),
   async execute(interaction) {
-    // TODO: fix this 
-    let x = 1+1;
+
+    let divisionsMap = DatabaseUtil.Instance.divisionsMap;
+    const divisionDropdown = new StringSelectMenuBuilder()
+      .setCustomId("division_select")
+      .setPlaceholder("Select a Division")
+      .addOptions(
+        Array.from(divisionsMap.entries()).map(([key, value]) => ({
+          label: value.toString(),
+          value: key.toString(),
+        }))
+      );
+    const divisionRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(divisionDropdown);
+
+    const response = await interaction.reply({
+      content: "Please select a division:",
+      components: [divisionRow],
+      flags: "Ephemeral",
+      withResponse: true
+    });
+
+    const collector = response.resource!.message!.createMessageComponentCollector(
+      {
+        componentType: ComponentType.StringSelect,
+        filter: (i) => i.user === interaction.user && i.customId == "division_select",
+        time: 5 * 60 * 1000,
+      }
+    );
+
+    collector.on('collect', async (interaction) =>{
+      handleDivisionSelect(interaction);
+    } );
+    return;  
   }
 }
 
@@ -62,86 +94,62 @@ async function checkSeries(team1Data: any, team2Data: any) {
   }
 }
 
-async function handleGenerateTournamentCode(interaction: Interaction, channelId: string, commandToggle: boolean, divisionsMap: Map<any, any>) {
-  if (!interaction.isChatInputCommand()) return;
-
-  const { commandName, channelId: interactionChannelId } = interaction;
-
-  if (commandName === "generate-tournament-code" && interactionChannelId === channelId && commandToggle) {
-    const divisionDropdown = new StringSelectMenuBuilder()
-      .setCustomId("division_select")
-      .setPlaceholder("Select a Division")
-      .addOptions(
-        Array.from(divisionsMap.entries()).map(([key, value]) => ({
-          label: value.toString(),
-          value: key.toString(),
-        }))
-      );
-    const divisionRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(divisionDropdown);
-
-    await interaction.reply({
-      content: "Please select a division:",
-      components: [divisionRow],
-      ephemeral: true,
-    });
-
-    return;
-  } else if (interactionChannelId !== channelId || !commandToggle) {
-    const commandCheck = commandToggle
-      ? ": Please do not use this command <3."
-      : ": This is Turned Off <3";
-    await interaction.reply({
-      content: "Beep Boop, Beep Bop" + commandCheck,
-      ephemeral: true,
-    });
-  }
-}
-
-async function handleDivisionSelect(interaction: any,  divisionsMap: Map<any, any>) {
+async function handleDivisionSelect(interaction: any) {
   const { customId, values, user } = interaction;
+  let divisionsMap = DatabaseUtil.Instance.divisionsMap;
+  const divisionKey = parseInt(values[0]);
+  const divisionName = divisionsMap.get(divisionKey);
+  const teams = await getTeamsByDivision(divisionKey) || [];
 
-  if (customId === "division_select") {
-    const divisionKey = parseInt(values[0]);
-    const divisionName = divisionsMap.get(divisionKey);
-    const teams = await getTeamsByDivision(divisionKey) || [];
-
-    if (!teams.length) {
-      await interaction.update({
-        content: "No teams found for the selected division.",
-        components: [],
-      });
-      userState.delete(user.id);
-      return;
-    }
-
-    const team1Dropdown = new StringSelectMenuBuilder()
-      .setCustomId("team1_select")
-      .setPlaceholder("Select Team 1")
-      .addOptions(teams.map((team) => ({ label: team.name, value: team.name })));
-
-    const team2Dropdown = new StringSelectMenuBuilder()
-      .setCustomId("team2_select")
-      .setPlaceholder("Select Team 2")
-      .addOptions(teams.map((team) => ({ label: team.name, value: team.name })));
-
-    const row1 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(team1Dropdown);
-    const row2 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(team2Dropdown);
-
-    userState.set(user.id, { divisionName, teams, team1: null, team2: null });
-
+  if (!teams.length) {
     await interaction.update({
-      content: `You selected the **${divisionName}** division. Now select your teams:`,
-      components: [row1, row2],
+      content: "No teams found for the selected division.",
+      components: [],
     });
-    setTimeout(() => {
-      userState.delete(user.id);
-      console.log(`User state for ${user.id} cleared due to inactivity.`);
-    }, 5 * 60 * 1000); 
+    userState.delete(user.id);
+    return;
   }
+
+  const team1Dropdown = new StringSelectMenuBuilder()
+    .setCustomId("team1_select")
+    .setPlaceholder("Select Team 1")
+    .addOptions(teams.map((team) => ({ label: team.name, value: team.name })));
+
+  const team2Dropdown = new StringSelectMenuBuilder()
+    .setCustomId("team2_select")
+    .setPlaceholder("Select Team 2")
+    .addOptions(teams.map((team) => ({ label: team.name, value: team.name })));
+
+  const row1 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(team1Dropdown);
+  const row2 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(team2Dropdown);
+
+  userState.set(user.id, { divisionName, teams, team1: null, team2: null });
+
+  const response = await interaction.update({
+    content: `You selected the **${divisionName}** division. Now select your teams:`,
+    components: [row1, row2],
+  });
+  setTimeout(() => {
+    userState.delete(user.id);
+    console.log(`User state for ${user.id} cleared due to inactivity.`);
+  }, 5 * 60 * 1000); 
+
+  const collector = response.resource!.message!.createMessageComponentCollector(
+    {
+      componentType: ComponentType.StringSelect,
+      filter: (i) => i.user === interaction.user && ["team1_select", "team2_select"].includes(interaction.customId),
+      time: 5 * 60 * 1000,
+    }
+  );
+
+  collector.on('collect', async (interaction) =>{
+    handleTeamSelect(interaction);
+  } );
 }
 
-async function handleTeamSelect(interaction: any, divisionsMap: Map<any, any>) {
+async function handleTeamSelect(interaction: any) {
   const { customId, values, user } = interaction;
+  let divisionsMap = DatabaseUtil.Instance.divisionsMap;
 
   const selectedTeam = values[0];
   const isTeam1 = customId === "team1_select";
@@ -196,7 +204,7 @@ async function handleTeamSelect(interaction: any, divisionsMap: Map<any, any>) {
   }
 
   try {
-    const tournamentCode = await execute(state.team1, state.team2, interaction, divisionsMap);
+    const tournamentCode = await getTournamentCode(state.team1, state.team2, interaction, divisionsMap);
     const response = tournamentCode.error.length > 0 ? tournamentCode.error : tournamentCode.discordResponse;
 
     if (tournamentCode.error.length > 0) {
@@ -228,7 +236,7 @@ async function handleTeamSelect(interaction: any, divisionsMap: Map<any, any>) {
   }
 }
 
-async function execute(team1: String, team2: String, interaction: StringSelectMenuInteraction<CacheType>, divisionsMap: Map<any, any>) {
+async function getTournamentCode(team1: String, team2: String, interaction: StringSelectMenuInteraction<CacheType>, divisionsMap: Map<any, any>) {
   let error = "";
   let tournamentCode1 = "";
   let game_number = 1;
