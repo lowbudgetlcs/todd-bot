@@ -3,10 +3,11 @@ import { db } from "../db/db";
 import { commandRolePermissions } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { config } from "../config"
+import { Console } from "console";
 
 // TODO: this should probably be dynamic, whatever
 const tourneyCodeCommand = "generate-tournament-code"
-
+const errorMessage = "There was an error configuring this command. Please contact @Dev Team"
 module.exports = {
   data: new SlashCommandBuilder()
   .setName("command-toggle")
@@ -21,6 +22,7 @@ module.exports = {
     if (enabledForCaptains)
     {
       try{
+        console.log("Deleting captains from being able to generate tournament codes")
         await db.transaction(async (tx) =>
           {
             await tx.delete(commandRolePermissions).where(eq(commandRolePermissions.name, tourneyCodeCommand));
@@ -32,7 +34,7 @@ module.exports = {
         
       } catch (error) {
         await interaction.reply({
-          content: "There was an error configuring this command. Please contact @Dev Team",
+          content: errorMessage,
           flags: "Ephemeral"
         });
         return;
@@ -40,10 +42,14 @@ module.exports = {
       
     }else {
       try {
-        db.insert(commandRolePermissions).values( {name: tourneyCodeCommand, roleId: +config.CAPTAIN_ROLE_ID })
+        console.log("Allowing captains from being able to generate tournament codes")
+        await db.transaction(async (tx) =>
+          {
+            await tx.insert(commandRolePermissions).values( {name: tourneyCodeCommand, roleId: +config.CAPTAIN_ROLE_ID })
+          });
       } catch (error) {
         await interaction.reply({
-          content: "There was an error configuring this command. Please contact @Dev Team",
+          content: errorMessage,
           flags: "Ephemeral"
         });
         return;
