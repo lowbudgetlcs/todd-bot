@@ -12,13 +12,8 @@ import {
   RoleFlagsBitField,
 } from "discord.js";
 import { config } from "./config";
-// import {  handleDivisionSelect, handleGenerateTournamentCode, handleTeamSelect } from "./commands/tournnament";
 
 import { deployCommands } from "./deploy-commands";
-// import { checkRole, toggleCheck } from "./commands/commandToggle";
-// import { handleDivisionSelectOpgg, handleOpggCommand, handleTeamSelectOpgg } from "./commands/opgg";
-// import { divisions } from "./db/schema";
-// import { db } from "./db/db";
 import { DatabaseUtil, checkDbForPermissions } from "./util";
 import * as path from 'path';
 import * as fs from 'fs';
@@ -83,7 +78,7 @@ for (const file of commandFiles) {
 client.once("ready", async () => {
   console.log("Discord bot is ready! 🤖");
   client.user?.setPresence({ status: "online" });
-  // await deployCommands({ guildId: guild_id! }, commands );
+  await deployCommands({ guildId: guild_id! }, commands );
   let divisionsMap = dbUtil.divisionsMap;
   console.log(divisionsMap);
 });
@@ -120,36 +115,5 @@ client.on(Events.InteractionCreate, async interaction => {
 		}
 	}
 });
-
-
-// client.on(Events.InteractionCreate, async (interaction) => {
-
-
-//   console.log(interaction);
-//   if (interaction.isChatInputCommand()) {
-//     if(interaction.commandName === "generate-tournament-code"){
-//       await handleGenerateTournamentCode(interaction, channelId, commandToggle, divisionsMap);
-//     }
-//     if (interaction.isChatInputCommand() && interaction.commandName === "command-toggle") {
-//       if(await toggleCheck(interaction, commandToggle)) {
-//         commandToggle = !commandToggle;
-//       }
-//     }
-//     if(interactioninteraction.commandName === "team-opgg"){
-//       await handleOpggCommand(interaction, channelId, commandToggle, divisionsMap);
-//     }
-//   }
-//   if (interaction.isStringSelectMenu()) {
-//     if (interaction.customId === "division_select") {
-//       await handleDivisionSelect(interaction, divisionsMap);
-//     } else if (["team1_select", "team2_select"].includes(interaction.customId)) {
-//       await handleTeamSelect(interaction, divisionsMap);
-//     } else if (interaction.customId === "division_select_opgg") {
-//       await handleDivisionSelectOpgg(interaction, divisionsMap);
-//     } else if (interaction.customId === "team_select_opgg") {
-//       await handleTeamSelectOpgg(interaction);
-//     }
-//   }
-// });
 
 client.login(config.DISCORD_TOKEN);
