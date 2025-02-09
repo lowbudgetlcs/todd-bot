@@ -68,9 +68,9 @@ function getUserRoles(interaction : Interaction<CacheType>)
   // THAT GUILDMEMBER PROPERTIES AREN'T AVAILABLE TO USE ????
   // TODO: understand how to code
   let member :GuildMember = interaction.member;
-  member.roles.cache.each(x => {
-    console.log(`Role name=${x.name}, role id=${x.id}`);
-  });
+  // member.roles.cache.each(x => {
+  //   console.log(`Role name=${x.name}, role id=${x.id}`);
+  // });
   return member.roles.cache.map(role => role.id);
 }
 
