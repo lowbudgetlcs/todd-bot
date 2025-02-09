@@ -1,12 +1,54 @@
-import { Interaction, StringSelectMenuBuilder, ActionRowBuilder, StringSelectMenuInteraction, SlashCommandBuilder } from "discord.js";
-import { getTeamsByDivision } from "./tournnament"; // Assuming you have this for getting teams
+import { Interaction, StringSelectMenuBuilder, ActionRowBuilder, StringSelectMenuInteraction, SlashCommandBuilder, InteractionReplyOptions, MessagePayload, ComponentType } from "discord.js";
+// import { getTeamsByDivision } from "./tournnament"; // Assuming you have this for getting teams
 import { db } from "../db/db";
 import { players} from "../db/schema";
 import { eq } from "drizzle-orm";
+import { DatabaseUtil, getTeamsByDivision } from "../util";
 
-export const data = new SlashCommandBuilder()
+module.exports = {
+  data: new SlashCommandBuilder()
   .setName("team-opgg")
-  .setDescription("Generates Team op.gg link");
+  .setDescription("Generates Team op.gg link"),
+  async execute(interaction : Interaction) {
+    if (!interaction.isChatInputCommand()) return;
+
+    let divisionsMap = DatabaseUtil.Instance.divisionsMap;
+    // console.log(divisionsMap)
+    const divisionDropdown = new StringSelectMenuBuilder()
+      .setCustomId("division_select_opgg")
+      .setPlaceholder("Select a Division")
+      .addOptions(
+        Array.from(divisionsMap.entries()).map(([key, value]) => ({
+          label: value,
+          value: key.toString(),
+        }))
+      );
+    const divisionRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(divisionDropdown);
+    const response = await interaction.reply(
+      {
+      content: "Please select a division to get the OP.GG information:",
+      components: [divisionRow],
+      flags: "Ephemeral",
+      withResponse: true
+    });
+    // https://discordjs.guide/popular-topics/collectors.html#basic-reaction-collector
+    // https://www.youtube.com/watch?v=MDdt35tXYEA
+    // Note: that withResponse we can collect the callback message by using resource
+    // console.log("hello i am testing this feature", divisionMessage.resource?.message == null)
+    const collector = response.resource!.message!.createMessageComponentCollector(
+      {
+        componentType: ComponentType.StringSelect,
+        filter: (i) => i.user === interaction.user && i.customId == "division_select_opgg",
+        time: 60_000,
+      }
+    );
+
+    collector.on('collect', async (interaction) =>{
+      handleDivisionSelectOpgg(interaction, Number(interaction.values.at(0)!) );
+    } );
+    return;  
+  }
+}
 
 async function generateOpgg(teamId: number) {
 
@@ -26,47 +68,13 @@ async function generateOpgg(teamId: number) {
     return opggUrl;
 }
 
-export async function handleOpggCommand(interaction: Interaction, channelId: string, commandToggle: boolean, divisionsMap: Map<any, any>) {
-  if (!interaction.isChatInputCommand()) return;
-
-  const { commandName, channelId: interactionChannelId } = interaction;
-
-  // Ensure the command is valid and toggled on
-  if (commandName === "team-opgg" && interactionChannelId === channelId && commandToggle) {
-    const divisionDropdown = new StringSelectMenuBuilder()
-      .setCustomId("division_select_opgg")
-      .setPlaceholder("Select a Division")
-      .addOptions(
-        Array.from(divisionsMap.entries()).map(([key, value]) => ({
-          label: value,
-          value: key.toString(),
-        }))
-      );
-    const divisionRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(divisionDropdown);
-
-    await interaction.reply({
-      content: "Please select a division to get the OP.GG information:",
-      components: [divisionRow],
-      ephemeral: true,
-    });
-
-    return;
-  } else if (interactionChannelId !== channelId || !commandToggle) {
-    const commandCheck = commandToggle
-      ? ": Please do not use this command <3."
-      : ": This is Turned Off <3";
-    await interaction.reply({
-      content: "Beep Boop, Beep Bop" + commandCheck,
-      ephemeral: true,
-    });
-  }
+async function handleOpggCommand(interaction: Interaction, channelId: string, commandToggle: boolean, divisionsMap: Map<any, any>) {
 }
 
-export async function handleDivisionSelectOpgg(interaction: StringSelectMenuInteraction, divisionsMap: Map<any, any>) {
-  const { values, user } = interaction;
-  const divisionKey = parseInt(values[0]);
-  const divisionName = divisionsMap.get(divisionKey);
-  const teams = await getTeamsByDivision(divisionKey) || [];
+async function handleDivisionSelectOpgg(interaction: StringSelectMenuInteraction, division: number) {
+  let divisionsMap = DatabaseUtil.Instance.divisionsMap;
+  const divisionName = divisionsMap.get(division);
+  const teams = await getTeamsByDivision(division) || [];
 
   if (!(await teams).length) {
     await interaction.update({
@@ -83,16 +91,26 @@ export async function handleDivisionSelectOpgg(interaction: StringSelectMenuInte
 
   const teamRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(teamDropdown);
 
-  await interaction.update({
+  const response = await interaction.update({
     content: `You selected the **${divisionName}** division. Now select your team:`,
     components: [teamRow],
+    withResponse: true
   });
+
+  const collector = response.resource!.message!.createMessageComponentCollector(
+    {
+      componentType: ComponentType.StringSelect,
+      filter: (i) => i.user === interaction.user && i.customId === "team_select_opgg",
+      time: 60_000,
+    }
+  );
+
+  collector.on('collect', async (interaction) =>{
+    handleTeamSelectOpgg(interaction, interaction.values.at(0)!);
+  } );
 }
 
-export async function handleTeamSelectOpgg(interaction: StringSelectMenuInteraction) {
-  const { values, user } = interaction;
-  const selectedTeamId = values[0];
-
+async function handleTeamSelectOpgg(interaction: StringSelectMenuInteraction, selectedTeamId : string) {
   // Run the generateOpgg function with the selected team ID
   try {
     const opggLink = await generateOpgg(parseInt(selectedTeamId));
@@ -110,3 +128,4 @@ export async function handleTeamSelectOpgg(interaction: StringSelectMenuInteract
     });
   }
 }
+

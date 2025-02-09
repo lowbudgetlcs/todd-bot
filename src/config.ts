@@ -11,6 +11,7 @@ const {
   SUPABASE_URL,
   RIOT_KEY,
   CHANNEL_ID,
+  CAPTAIN_ROLE_ID
 } = process.env;
 
 const riotConfig: RiotAPITypes.Config = {
@@ -18,6 +19,8 @@ const riotConfig: RiotAPITypes.Config = {
 };
 const rAPI = new RiotAPI(String(RIOT_KEY), riotConfig);
 const ADMIN_ROLES = process.env.ADMIN_ROLES!.split(",");
+const ADMIN_ROLE_IDS = process.env.ADMIN_ROLE_IDS!.split(",");
+const ADMIN_CHANNEL_IDS = process.env.ADMIN_CHANNEL_IDS!.split(",");
 
 if (
   !DISCORD_TOKEN ||
@@ -26,7 +29,10 @@ if (
   !SUPABASE_URL ||
   !RIOT_KEY ||
   !CHANNEL_ID ||
-  !ADMIN_ROLES
+  !ADMIN_ROLES ||
+  !ADMIN_ROLE_IDS ||
+  !ADMIN_CHANNEL_IDS ||
+  !CAPTAIN_ROLE_ID
 ) {
   throw new Error("Missing environment variables");
 }
@@ -39,4 +45,7 @@ export const config = {
   rAPI,
   CHANNEL_ID,
   ADMIN_ROLES,
+  ADMIN_ROLE_IDS,
+  ADMIN_CHANNEL_IDS,
+  CAPTAIN_ROLE_ID
 };
