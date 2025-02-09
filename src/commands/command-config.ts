@@ -2,9 +2,11 @@ import { SlashCommandBuilder, PermissionFlagsBits, InteractionContextType, Cache
 import { db } from "../db/db";
 import { commandChannelPermissions, commandRolePermissions } from "../db/schema";
 import { and, eq } from "drizzle-orm";
+import { config } from "../config";
 
 
 const genericErrorMessage = "Something went wrong with the database operation! Please contact the dev team with any context.";
+const carefulErrorMessage=  "You are doing something potentially dangerous!!! Please @Dev Team to do this for you...";
 module.exports = {
   data: new SlashCommandBuilder()
   .setName("command-config")
@@ -55,6 +57,25 @@ module.exports = {
     const role : Role | null = interaction.options.getRole('role');
     const restrict : boolean = interaction.options.getBoolean('restrict') ?? false;
     const unrestrict : boolean = interaction.options.getBoolean('unrestrict') ?? false;
+    if ((role!= null) && (role.name == "@everyone" || config.ADMIN_ROLE_IDS.includes(role.id)))
+    {
+      // OK editorial time:
+      // I think they [admins] should be able to do stuff WITHOUT us
+      // but for the sake of people's sanity of them fucking things up
+      // I have made it such that if you touch any admin thing, it will have to go through
+      // the dev team. don't blame me.
+      await interaction.reply({
+        content: carefulErrorMessage
+      });
+      return;
+    }
+    if ((channel!= null) && config.ADMIN_CHANNEL_IDS.includes(channel.id))
+    {
+      await interaction.reply({
+        content: carefulErrorMessage
+      });
+      return;
+    }
     // console.log(`Testing everything
     // command=${command}
     // channel=${channel}
@@ -65,7 +86,7 @@ module.exports = {
     if (restrict && unrestrict)
     {
       await interaction.reply({
-        content: "This does not make sense! Please retry with a valid command that does not enable and disable"
+        content: "This does not make sense! Please retry with a valid command that does not restrict AND unrestrict",
       })
     } else if (restrict)
     {
