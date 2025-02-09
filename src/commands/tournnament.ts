@@ -39,7 +39,9 @@ module.exports = {
       flags: "Ephemeral",
       withResponse: true
     });
-
+    // Since we're not making any NEW messages we'll have to pass this fella around to keep listening to him
+    // As we traverse through each menu.
+    const message = response.resource!.message;
     const collector = response.resource!.message!.createMessageComponentCollector(
       {
         componentType: ComponentType.StringSelect,
@@ -49,7 +51,7 @@ module.exports = {
     );
 
     collector.on('collect', async (interaction) =>{
-      handleDivisionSelect(interaction);
+      handleDivisionSelect(interaction, message);
     } );
     return;  
   }
@@ -93,8 +95,9 @@ async function checkSeries(team1Data: any, team2Data: any) {
     return null;
   }
 }
-
-async function handleDivisionSelect(interaction: any) {
+// TODO: we should NOT use any here if we know what it's going to be.
+// i don't know what it is going to be LMFAO
+async function handleDivisionSelect(interaction: any, message: any) {
   const { customId, values, user } = interaction;
   let divisionsMap = DatabaseUtil.Instance.divisionsMap;
   const divisionKey = parseInt(values[0]);
@@ -133,11 +136,10 @@ async function handleDivisionSelect(interaction: any) {
     userState.delete(user.id);
     console.log(`User state for ${user.id} cleared due to inactivity.`);
   }, 5 * 60 * 1000); 
-
-  const collector = response.resource!.message!.createMessageComponentCollector(
+  const collector = message.createMessageComponentCollector(
     {
       componentType: ComponentType.StringSelect,
-      filter: (i) => i.user === interaction.user && ["team1_select", "team2_select"].includes(interaction.customId),
+      filter: (i) => i.user === interaction.user && ["team1_select", "team2_select"].includes(i.customId),
       time: 5 * 60 * 1000,
     }
   );
