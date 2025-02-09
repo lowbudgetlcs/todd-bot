@@ -65,13 +65,17 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           script: |
             cd docker/lblcs/${{ env.APP }}
-            echo SUPABASE_URL="${{ secrets.SUPABASE_URL }}" > .env
-            echo RIOT_KEY="${{ secrets.RIOT_KEY }}" >> .env
+            echo DATABASE_URL="${{ secrets.DATABASE_URL }}" > .env
+            echo RIOT_API_TOKEN="${{ secrets.RIOT_API_TOKEN }}" >> .env
             echo DISCORD_CLIENT_ID="${{ secrets.DISCORD_CLIENT_ID }}" >> .env
             echo GUILD_ID="${{ secrets.GUILD_ID }}" >> .env
             echo DISCORD_TOKEN="${{ secrets.DISCORD_TOKEN }}" >> .env
             echo CHANNEL_ID="${{ secrets.CHANNEL_ID }}" >> .env
             echo ADMIN_ROLES="${{ env.ADMIN_ROLES }}" >> .env
+            echo ADMIN_ROLE_IDS="${{ secrets.ADMIN_ROLE_IDS }}" >> .env
+            echo ADMIN_CHANNEL_IDS="${{ secrets.ADMIN_CHANNEL_IDS }}" >> .env
+            echo CAPTAIN_ROLE_ID="${{ secrets.CAPTAIN_ROLE_ID }}" >> .env
             docker-compose down
             docker-compose pull
             docker-compose up -d
+            rm -rf ./.env
