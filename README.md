@@ -92,13 +92,8 @@ To get a local copy up and running follow these simple example steps.
    DISCORD_TOKEN=
    DISCORD_CLIENT_ID=
    GUILD_ID=
-<<<<<<< Updated upstream
-   SUPABASE_URL=
-   RIOT_KEY=
-=======
    DATABASE_URL=
    RIOT_API_TOKEN=
->>>>>>> Stashed changes
    CHANNEL_ID=
    ADMIN_ROLES=
    ```
