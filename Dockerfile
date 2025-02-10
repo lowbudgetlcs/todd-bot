@@ -9,7 +9,7 @@ FROM node:22-alpine as runner
 WORKDIR /app
 RUN npm i -g pm2
 COPY --from=builder /build/dist ./dist
-COPY --from=builder /build/node_modules ./dist
+COPY --from=builder /build/node_modules ./node_modules
 COPY package.json ./
 
 CMD [ "npm", "run", "start"]
