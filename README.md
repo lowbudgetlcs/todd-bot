@@ -92,8 +92,8 @@ To get a local copy up and running follow these simple example steps.
    DISCORD_TOKEN=
    DISCORD_CLIENT_ID=
    GUILD_ID=
-   SUPABASE_URL=
-   RIOT_KEY=
+   DATABASE_URL=
+   RIOT_API_TOKEN=
    CHANNEL_ID=
    ADMIN_ROLES=
    ```
