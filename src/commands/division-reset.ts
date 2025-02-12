@@ -5,7 +5,7 @@ module.exports = {
   .setName("division-reset")
   .setDescription("Grabs Updated Division Information"),
   async execute(interaction) {
-    await DatabaseUtil.Instance.populateDivisonsMap();
+    DatabaseUtil.Instance.populateDivisonsMap();
     await interaction.reply({
             content: "Divisions Have Been Updated"
     })
