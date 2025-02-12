@@ -8,8 +8,10 @@
     "dev": "tsx watch src/index.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsup src/* --minify",
+    "build-ws": "tsup src/*/** --minify",
     "start": "pm2-runtime ./dist/index.js ",
-    "go": "tsup src/* && pm2-runtime ./dist/index.js"
+    "go": "tsup src/* --minify && pm2-runtime ./dist/index.js",
+    "go-ws": "tsup src/*/** --minify && pm2-runtime ./dist/index.js"
   },
   "author": "ruuffian",
   "license": "MIT",

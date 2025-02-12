@@ -40,7 +40,7 @@ export class DatabaseUtil {
       return DatabaseUtil._instance ?? (DatabaseUtil._instance = new DatabaseUtil());
   }
 
-  private async populateDivisonsMap()
+  public async populateDivisonsMap()
   {
     this.divisionsMap = new Map();
     let data = await db.select().from(divisions)
@@ -48,7 +48,6 @@ export class DatabaseUtil {
       this.divisionsMap.set(division.id, division.name)
     };
   }
-  
 }
 
 export async function getTeamsByDivision(division: number) {

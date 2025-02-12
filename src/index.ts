@@ -8,8 +8,6 @@ import {
   Interaction,
   SlashCommandBuilder,
   RESTPostAPIChatInputApplicationCommandsJSONBody,
-  GuildMember,
-  RoleFlagsBitField,
 } from "discord.js";
 import { config } from "./config";
 
@@ -56,16 +54,15 @@ const client = new DiscordClient({
 const guild_id = process.env.GUILD_ID;
 
 // For sending to discord to register commands I don't know how to make this not look like garbo
-const commands : RESTPostAPIChatInputApplicationCommandsJSONBody[] = []
+const commands: RESTPostAPIChatInputApplicationCommandsJSONBody[] = []
 
 // Populate commands property of the Client, currently only works for commands/ and not subfolders cuz not needed
 const commandsPath = path.join(__dirname, 'commands');
-console.log(commandsPath)
-const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.ts') || file.endsWith('js'));
 
 for (const file of commandFiles) {
   const filePath = path.join(commandsPath, file);
-  const command : CommandFileExport =  require(filePath);
+  const command: CommandFileExport = require(filePath);
   // Set a new item in the Collection with the key as the command name and the value as the exported module
   if ('data' in command && 'execute' in command) {
     commands.push(command.data.toJSON())
@@ -78,37 +75,35 @@ for (const file of commandFiles) {
 client.once("ready", async () => {
   console.log("Discord bot is ready! 🤖");
   client.user?.setPresence({ status: "online" });
-  await deployCommands({ guildId: guild_id! }, commands );
+  deployCommands({ guildId: guild_id! }, commands);
   let divisionsMap = dbUtil.divisionsMap;
-  console.log(divisionsMap);
 });
 
 const channelId = process.env.CHANNEL_ID!;
 
 client.on(Events.InteractionCreate, async interaction => {
-	if (!interaction.isChatInputCommand()) return;
+  if (!interaction.isChatInputCommand()) return;
 
-	const command = client.commands.get(interaction.commandName);
+  const command = client.commands.get(interaction.commandName);
 
-	if (!command) {
-		console.error(`No command matching ${interaction.commandName} was found.`);
-		return;
-	}
+  if (!command) {
+    console.error(`No command matching ${interaction.commandName} was found.`);
+    return;
+  }
   // Base command / single command
-	try {
-    if (!await checkDbForPermissions(interaction, interaction.commandName))
-    {
+  try {
+    if (!await checkDbForPermissions(interaction, interaction.commandName)) {
       return;
     }
-		await command.execute(interaction);
-	} catch (error) {
-		console.error(error);
-		if (interaction.replied || interaction.deferred) {
-			await interaction.followUp({ content: 'There was an error while executing this command!', flags: MessageFlags.Ephemeral });
-		} else {
-			await interaction.reply({ content: 'There was an error while executing this command!', flags: MessageFlags.Ephemeral });
-		}
-	}
+    await command.execute(interaction);
+  } catch (error) {
+    console.error(error);
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp({ content: 'There was an error while executing this command!', flags: MessageFlags.Ephemeral });
+    } else {
+      await interaction.reply({ content: 'There was an error while executing this command!', flags: MessageFlags.Ephemeral });
+    }
+  }
 });
 
 client.login(config.DISCORD_TOKEN);

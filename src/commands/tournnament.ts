@@ -21,7 +21,17 @@ module.exports = {
   .setDescription("Generate Tournament Code"),
   async execute(interaction) {
 
+    
     let divisionsMap = DatabaseUtil.Instance.divisionsMap;
+
+    if(divisionsMap.size==0) {
+      await interaction.reply({
+        content: "No divisions found.",
+        components: [],
+        flags: "Ephemeral",
+      });
+      return;
+    }
     const divisionDropdown = new StringSelectMenuBuilder()
       .setCustomId("division_select")
       .setPlaceholder("Select a Division")

@@ -1,6 +1,5 @@
 import dotenv from "dotenv";
-import { RiotAPI, RiotAPITypes, PlatformId } from "@fightmegg/riot-api";
-import { randomBytes } from "crypto";
+import { RiotAPI, RiotAPITypes } from "@fightmegg/riot-api";
 
 dotenv.config();
 
@@ -11,16 +10,16 @@ const {
   DATABASE_URL,
   RIOT_API_TOKEN,
   CHANNEL_ID,
-  CAPTAIN_ROLE_ID
+  CAPTAIN_ROLE_ID,
+  ADMIN_ROLES: adminRoles,
+  ADMIN_ROLE_IDS: adminRoleIds,
+  ADMIN_CHANNEL_IDS: adminChannelIds
 } = process.env;
 
 const riotConfig: RiotAPITypes.Config = {
   debug: false,
 };
 const rAPI = new RiotAPI(String(RIOT_API_TOKEN), riotConfig);
-const ADMIN_ROLES = process.env.ADMIN_ROLES!.split(",");
-const ADMIN_ROLE_IDS = process.env.ADMIN_ROLE_IDS!.split(",");
-const ADMIN_CHANNEL_IDS = process.env.ADMIN_CHANNEL_IDS!.split(",");
 
 if (
   !DISCORD_TOKEN ||
@@ -29,13 +28,17 @@ if (
   !DATABASE_URL ||
   !RIOT_API_TOKEN ||
   !CHANNEL_ID ||
-  !ADMIN_ROLES ||
-  !ADMIN_ROLE_IDS ||
-  !ADMIN_CHANNEL_IDS ||
+  !adminRoles ||
+  !adminRoleIds ||
+  !adminChannelIds ||
   !CAPTAIN_ROLE_ID
 ) {
   throw new Error("Missing environment variables");
 }
+
+const ADMIN_ROLES = adminRoles.split(",");
+const ADMIN_ROLE_IDS = adminRoleIds.split(",");
+const ADMIN_CHANNEL_IDS = adminChannelIds.split(",");
 
 export const config = {
   DISCORD_TOKEN,
