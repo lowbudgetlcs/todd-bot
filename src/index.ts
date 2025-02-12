@@ -79,7 +79,6 @@ client.once("ready", async () => {
   client.user?.setPresence({ status: "online" });
   await deployCommands({ guildId: guild_id! }, commands );
   let divisionsMap = dbUtil.divisionsMap;
-  console.log(divisionsMap);
 });
 
 const channelId = process.env.CHANNEL_ID!;

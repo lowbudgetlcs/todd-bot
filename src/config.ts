@@ -1,6 +1,5 @@
 import dotenv from "dotenv";
-import { RiotAPI, RiotAPITypes, PlatformId } from "@fightmegg/riot-api";
-import { randomBytes } from "crypto";
+import { RiotAPI, RiotAPITypes } from "@fightmegg/riot-api";
 
 dotenv.config();
 
