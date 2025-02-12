@@ -60,8 +60,7 @@ const commands : RESTPostAPIChatInputApplicationCommandsJSONBody[] = []
 
 // Populate commands property of the Client, currently only works for commands/ and not subfolders cuz not needed
 const commandsPath = path.join(__dirname, 'commands');
-console.log(commandsPath)
-const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.ts'));
 
 for (const file of commandFiles) {
   const filePath = path.join(commandsPath, file);
@@ -89,7 +88,7 @@ client.on(Events.InteractionCreate, async interaction => {
 	if (!interaction.isChatInputCommand()) return;
 
 	const command = client.commands.get(interaction.commandName);
-
+  
 	if (!command) {
 		console.error(`No command matching ${interaction.commandName} was found.`);
 		return;

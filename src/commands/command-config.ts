@@ -24,6 +24,7 @@ module.exports = {
       { name: "command-toggle", value: "toggle"},
       { name: "generate-tournament-code", value: "tournament"},
       { name: "opgg", value: "opgg"},
+      { name: "division-reset", value: "division"}
     )
   )
   // TODO: get feedback of how this is actually used, might want to rethink this setup

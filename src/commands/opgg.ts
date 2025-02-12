@@ -14,6 +14,14 @@ module.exports = {
 
     let divisionsMap = DatabaseUtil.Instance.divisionsMap;
     // console.log(divisionsMap)
+    if(divisionsMap.size==0) {
+      await interaction.reply({
+        content: "No divisions found.",
+        components: [],
+        flags: "Ephemeral",
+      });
+      return;
+    }
     const divisionDropdown = new StringSelectMenuBuilder()
       .setCustomId("division_select_opgg")
       .setPlaceholder("Select a Division")
