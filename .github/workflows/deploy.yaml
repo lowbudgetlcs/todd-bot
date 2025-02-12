@@ -72,9 +72,9 @@ jobs:
             echo DISCORD_TOKEN="${{ secrets.DISCORD_TOKEN }}" >> .env
             echo CHANNEL_ID="${{ secrets.CHANNEL_ID }}" >> .env
             echo ADMIN_ROLES="${{ env.ADMIN_ROLES }}" >> .env
-            echo ADMIN_ROLE_IDS="${{ secrets.ADMIN_ROLE_IDS }}" >> .env
-            echo ADMIN_CHANNEL_IDS="${{ secrets.ADMIN_CHANNEL_IDS }}" >> .env
-            echo CAPTAIN_ROLE_ID="${{ secrets.CAPTAIN_ROLE_ID }}" >> .env
+            echo ADMIN_ROLE_IDS="${{ env.ADMIN_ROLE_IDS }}" >> .env
+            echo ADMIN_CHANNEL_IDS="${{ env.ADMIN_CHANNEL_IDS }}" >> .env
+            echo CAPTAIN_ROLE_ID="${{ env.CAPTAIN_ROLE_ID }}" >> .env
             docker-compose down
             docker-compose pull
             docker-compose up -d
