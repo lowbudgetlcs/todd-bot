@@ -1,10 +1,15 @@
 import { eq } from "drizzle-orm/sql";
 import { db } from "./db/db";
-import { commandChannelPermissions, commandRolePermissions, divisions, teams } from "./db/schema";
+import {
+  commandChannelPermissions,
+  commandRolePermissions,
+  divisions,
+  teams,
+} from "./db/schema";
 import { CacheType, GuildMember, Interaction } from "discord.js";
 import { channel } from "diagnostics_channel";
 
-type DivisionsMap = Map<number, string>
+type DivisionsMap = Map<number, string>;
 
 // //https://stackoverflow.com/questions/42761189/implementing-lazyt-in-typescript
 // function lazy<T>(factory: () => NonNullable<T>) {
@@ -12,46 +17,46 @@ type DivisionsMap = Map<number, string>
 //   return () => value ?? (value = factory());
 // }
 
-
 /**
- * Class for some database queries that should be shared between classes. 
- * 
+ * Class for some database queries that should be shared between classes.
+ *
  */
 export class DatabaseUtil {
-  private static _instance : DatabaseUtil = new DatabaseUtil();
-/**
- * Cached version of the division map
- * @returns Divions map of the id and the division name
- */
+  private static _instance: DatabaseUtil = new DatabaseUtil();
+  /**
+   * Cached version of the division map
+   * @returns Divions map of the id and the division name
+   */
   public divisionsMap!: DivisionsMap;
 
-  private constructor()
-  {
-    if (DatabaseUtil._instance)
-    {
+  private constructor() {
+    if (DatabaseUtil._instance) {
       throw new Error("Use DatabaseUtil.instance instead of new.");
     }
     DatabaseUtil._instance = this;
     this.populateDivisonsMap();
   }
 
-  public static get Instance()
-  {
-      return DatabaseUtil._instance ?? (DatabaseUtil._instance = new DatabaseUtil());
+  public static get Instance() {
+    return (
+      DatabaseUtil._instance ?? (DatabaseUtil._instance = new DatabaseUtil())
+    );
   }
 
-  public async populateDivisonsMap()
-  {
+  public async populateDivisonsMap() {
     this.divisionsMap = new Map();
-    let data = await db.select().from(divisions)
+    let data = await db.select().from(divisions);
     for (const division of data) {
-      this.divisionsMap.set(division.id, division.name)
-    };
+      this.divisionsMap.set(division.id, division.name);
+    }
   }
 }
 
 export async function getTeamsByDivision(division: number) {
-  let data = await db.select().from(teams).where((eq(teams.divisionId, division)));
+  let data = await db
+    .select()
+    .from(teams)
+    .where(eq(teams.divisionId, division));
   return data;
 }
 
@@ -59,20 +64,18 @@ export async function getTeamsByDivision(division: number) {
  * Parses an interaction to get the user roles.
  * @returns collection of role ids.
  */
-function getUserRoles(interaction : Interaction<CacheType>)
-{
+function getUserRoles(interaction: Interaction<CacheType>) {
   // THIS IS NOT THE RIGHT THING TO DO PROBABLY
   // I DON'T UNDERSTAND WHY THE COMPILER REFUSES TO THINK
   // THAT BECAUSE THIS TYPE IS A UNION OF OTHER TYPES
   // THAT GUILDMEMBER PROPERTIES AREN'T AVAILABLE TO USE ????
   // TODO: understand how to code
-  let member :GuildMember = interaction.member;
+  let member: GuildMember = interaction.member as GuildMember;
   // member.roles.cache.each(x => {
   //   console.log(`Role name=${x.name}, role id=${x.id}`);
   // });
-  return member.roles.cache.map(role => role.id);
+  return member.roles.cache.map((role) => role.id);
 }
-
 
 /**
  * Calls the db to check if the command is good to execute.
@@ -80,62 +83,56 @@ function getUserRoles(interaction : Interaction<CacheType>)
  * Checks both role + channel perms, must need both to execute.
  * @returns command is good to execute
  */
-export async function checkDbForPermissions(interaction : Interaction<CacheType>, commandName : string)
-{
-  let roleAllowed = true;
-  let channelAllowed = true;
+export async function checkDbForPermissions(
+  interaction: Interaction,
+  commandName: string
+) {
+  let roleAllowed = false;
+  let channelAllowed = false;
   // i don't know how joins work so we will live with 2 queries
   // TODO: cache these results, maybe like every 5 minutes?
   // excluding some commands maybe api dependant ones so we don't get abusers?
-  let rolesToCheck = await db.select().from(commandRolePermissions).where(eq(commandRolePermissions.name, commandName));
-  let channelsToCheck = await db.select().from(commandChannelPermissions).where(eq(commandChannelPermissions.name, commandName));
+  let rolesToCheck = await db
+    .select()
+    .from(commandRolePermissions)
+    .where(eq(commandRolePermissions.name, commandName));
+  let channelsToCheck = await db
+    .select()
+    .from(commandChannelPermissions)
+    .where(eq(commandChannelPermissions.name, commandName));
 
-  if (rolesToCheck.length > 0)
-  {
-    roleAllowed = false;
-    let permissionRoles = rolesToCheck.map(x => x.roleId);
-    var userRoles = getUserRoles(interaction).map(x => +x);
-
-    permissionRoles.forEach(role => {
-      // console.log(`Hello this is a log message: permission ${role}`)
-      // console.log(`Hello this is a log message. userRole has the role ${userRoles.some(userRole => role == +userRole)}`);
-
-      // console.log(`Hello this is a log message. userRoles: ${userRoles.join(',')}`);
-      // console.log(`Hello this is a log message. permissionRoles: ${permissionRoles.join(',')}`);
-      if(userRoles.some(userRole => role == +userRole))
-      {
-        roleAllowed = true;
-      }
-    })
+  if (rolesToCheck.length > 0) {
+    let roleIds = rolesToCheck.map((x) => x.roleId);
+    const member = interaction.member as GuildMember;
+    roleAllowed = member.roles.cache.some((role) => roleIds.includes(role.id));
+  } else {
+    roleAllowed = true;
   }
-  
-  if (channelsToCheck.length > 0)
-  {
-    channelAllowed = false;
-    let channels = channelsToCheck.map(x => x.channelId);
-    var messageChannel = +interaction.channelId!
-    if (channels.includes(messageChannel))
-    {
+
+  if (channelsToCheck.length > 0) {
+    let channelIds = channelsToCheck.map((x) => x.channelId);
+    const messageChannel = interaction.channelId ?? "";
+    if (channelIds.includes(messageChannel)) {
       channelAllowed = true;
     }
+  } else {
+    channelAllowed = true;
   }
-  if (!roleAllowed && !channelAllowed)
-  {
+  if (!roleAllowed && !channelAllowed) {
     await interaction.reply({
-      content: "Sorry, you can't run this command with your roles and in this channel!",
-      flags: "Ephemeral"
+      content:
+        "Sorry, you can't run this command with your roles and in this channel!",
+      flags: "Ephemeral",
     });
-  } else if (!roleAllowed)
-  {
+  } else if (!roleAllowed) {
     await interaction.reply({
       content: "Sorry, you aren't cool enough for this command.",
-      flags: "Ephemeral"
+      flags: "Ephemeral",
     });
-  } else if(!channelAllowed)
-  {
+  } else if (!channelAllowed) {
     await interaction.reply({
       content: "Sorry, you can't run that in this channel!",
-      flags: "Ephemeral"
+      flags: "Ephemeral",
     });
   }
 
