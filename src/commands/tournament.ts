@@ -362,21 +362,21 @@ async function getTournamentCode(
   let shortcode;
   try {
     let meta = JSON.stringify({ gameNum: gameNumber, seriesId: seriesId });
-    // const riotResponse = await config.rAPI.tournamentV5.createCodes({
-    //   params: {
-    //     count: 1,
-    //     tournamentId: tid,
-    //   },
-    //   body: {
-    //     teamSize: 5,
-    //     pickType: RiotAPITypes.TournamentV5.PICKTYPE.TOURNAMENT_DRAFT,
-    //     mapType: RiotAPITypes.TournamentV5.MAPTYPE.SUMMONERS_RIFT,
-    //     spectatorType: RiotAPITypes.TournamentV5.SPECTATORTYPE.ALL,
-    //     enoughPlayers: false,
-    //     metadata: meta,
-    //   },
-    // });
-    // shortcode = riotResponse[0];
+    const riotResponse = await config.rAPI.tournamentV5.createCodes({
+      params: {
+        count: 1,
+        tournamentId: tid,
+      },
+      body: {
+        teamSize: 5,
+        pickType: RiotAPITypes.TournamentV5.PICKTYPE.TOURNAMENT_DRAFT,
+        mapType: RiotAPITypes.TournamentV5.MAPTYPE.SUMMONERS_RIFT,
+        spectatorType: RiotAPITypes.TournamentV5.SPECTATORTYPE.ALL,
+        enoughPlayers: false,
+        metadata: meta,
+      },
+    });
+    shortcode = riotResponse[0];
   } catch (e: any) {
     return {
       shortcode: null,
