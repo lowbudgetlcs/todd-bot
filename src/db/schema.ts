@@ -1,74 +1,21 @@
-import { pgTable, serial, varchar, bigint, type AnyPgColumn, foreignKey, unique, char, integer, text, jsonb, timestamp, boolean, smallint, pgEnum, customType } from "drizzle-orm/pg-core"
+import { pgTable, index, foreignKey, unique, serial, text, integer, jsonb, timestamp, varchar, bigint, smallint, boolean, type AnyPgColumn, char } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
-export const riftSide = pgEnum("rift_side", ['BLUE', 'RED'])
-const bytea = customType<{
-	data: Buffer,
-	default: false
-}>({
-    dataType() {
-      return 'bytea';
-    },
-});
 
-
-export const commandRolePermissions = pgTable("command_role_permissions", {
-	id: serial().primaryKey().notNull(),
-	name: varchar().notNull(),
-	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
-	roleId: bigint("role_id", { mode: "number" }).notNull(),
-});
-
-export const commandChannelPermissions = pgTable("command_channel_permissions", {
-	id: serial().primaryKey().notNull(),
-	name: varchar().notNull(),
-	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
-	channelId: bigint("channel_id", { mode: "number" }).notNull(),
-});
-
-export const players = pgTable("players", {
-	id: serial().primaryKey().notNull(),
-	riotPuuid: char("riot_puuid", { length: 78 }).notNull(),
-	summonerName: varchar("summoner_name", { length: 25 }),
-	teamId: integer("team_id"),
-}, (table) => [
-	foreignKey({
-			columns: [table.teamId],
-			foreignColumns: [teams.id],
-			name: "fk_team_id"
-		}).onDelete("set null"),
-	unique("players_riot_puuid_key").on(table.riotPuuid),
-]);
-
-export const teams = pgTable("teams", {
-	id: serial().primaryKey().notNull(),
-	name: varchar({ length: 100 }).notNull(),
-	logo: text(),
-	captainId: integer("captain_id"),
-	divisionId: integer("division_id").notNull(),
-}, (table) => [
-	foreignKey({
-			columns: [table.captainId],
-			foreignColumns: [players.id],
-			name: "fk_captain_id"
-		}).onDelete("set null"),
-	foreignKey({
-			columns: [table.divisionId],
-			foreignColumns: [divisions.id],
-			name: "fk_division_id"
-		}),
-]);
 
 export const games = pgTable("games", {
 	id: serial().primaryKey().notNull(),
-	shortcode: varchar({ length: 100 }).notNull(),
+	shortcode: text().notNull(),
 	gameNum: integer("game_num").notNull(),
 	winnerId: integer("winner_id"),
 	loserId: integer("loser_id"),
 	callbackResult: jsonb("callback_result"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
-	seriesId: integer("series_id").notNull(),
+	seriesId: integer("series_id"),
 }, (table) => [
+	index("games_loser_id_idx").using("btree", table.loserId.asc().nullsLast().op("int4_ops")),
+	index("games_series_id_idx").using("btree", table.seriesId.asc().nullsLast().op("int4_ops")),
+	index("games_winner_id_idx").using("btree", table.winnerId.asc().nullsLast().op("int4_ops")),
 	foreignKey({
 			columns: [table.loserId],
 			foreignColumns: [teams.id],
@@ -87,99 +34,71 @@ export const games = pgTable("games", {
 	unique("games_shortcode_key").on(table.shortcode),
 ]);
 
-export const teamToSeries = pgTable("team_to_series", {
-	id: serial().primaryKey().notNull(),
+export const playerPerformances = pgTable("player_performances", {
+	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "player_performances_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
+	playerId: integer("player_id").notNull(),
+	gameId: integer("game_id").notNull(),
 	teamId: integer("team_id").notNull(),
-	seriesId: integer("series_id").notNull(),
-}, (table) => [
-	foreignKey({
-			columns: [table.seriesId],
-			foreignColumns: [series.id],
-			name: "fk_series_id"
-		}),
-	foreignKey({
-			columns: [table.teamId],
-			foreignColumns: [teams.id],
-			name: "fk_team_id"
-		}),
-]);
-
-export const series = pgTable("series", {
-	id: serial().primaryKey().notNull(),
 	divisionId: integer("division_id").notNull(),
-	winnerId: integer("winner_id"),
-	loserId: integer("loser_id"),
-	playoffs: boolean().default(false).notNull(),
 }, (table) => [
-	foreignKey({
-			columns: [table.loserId],
-			foreignColumns: [teams.id],
-			name: "fk_loser_id"
-		}),
-	foreignKey({
-			columns: [table.winnerId],
-			foreignColumns: [teams.id],
-			name: "fk_winner_id"
-		}),
+	index("player_performances_division_id_idx").using("btree", table.divisionId.asc().nullsLast().op("int4_ops")),
+	index("player_performances_game_id_idx").using("btree", table.gameId.asc().nullsLast().op("int4_ops")),
+	index("player_performances_player_id_idx").using("btree", table.playerId.asc().nullsLast().op("int4_ops")),
+	index("player_performances_team_id_idx").using("btree", table.teamId.asc().nullsLast().op("int4_ops")),
 	foreignKey({
 			columns: [table.divisionId],
 			foreignColumns: [divisions.id],
-			name: "series_division_id_fkey"
-		}),
-]);
-
-export const teamGameData = pgTable("team_game_data", {
-	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "team_game_data_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
-	teamPerformanceId: integer("team_performance_id").notNull(),
-	gold: integer().notNull(),
-	kills: integer().notNull(),
-	side: text().notNull(),
-	win: boolean().notNull(),
-	gameLength: integer("game_length").notNull(),
-	barons: integer().default(0).notNull(),
-	dragons: integer().default(0).notNull(),
-	grubs: integer().default(0).notNull(),
-	heralds: integer().default(0).notNull(),
-	towers: integer().default(0).notNull(),
-	inhibitors: integer().default(0).notNull(),
-	firstBaron: boolean("first_baron").default(false).notNull(),
-	firstDragon: boolean("first_dragon").default(false).notNull(),
-	firstGrub: boolean("first_grub").default(false).notNull(),
-	firstHerald: boolean("first_herald").default(false).notNull(),
-	firstTower: boolean("first_tower").default(false).notNull(),
-	firstInhibitor: boolean("first_inhibitor").default(false).notNull(),
-	firstBlood: boolean("first_blood").default(false).notNull(),
-}, (table) => [
-	foreignKey({
-			columns: [table.teamPerformanceId],
-			foreignColumns: [teamPerformances.id],
-			name: "team_game_data_team_performance_id_fkey"
-		}),
-	unique("team_game_data_team_performance_id_key").on(table.teamPerformanceId),
-]);
-
-export const teamPerformances = pgTable("team_performances", {
-	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "team_performances_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
-	teamId: integer("team_id"),
-	gameId: integer("game_id"),
-	divisionId: integer("division_id"),
-}, (table) => [
-	foreignKey({
-			columns: [table.divisionId],
-			foreignColumns: [divisions.id],
-			name: "team_performances_division_id_fkey"
+			name: "player_performances_division_id_fkey"
 		}),
 	foreignKey({
 			columns: [table.gameId],
 			foreignColumns: [games.id],
-			name: "team_performances_game_id_fkey"
+			name: "player_performances_game_id_fkey"
+		}),
+	foreignKey({
+			columns: [table.playerId],
+			foreignColumns: [players.id],
+			name: "player_performances_player_id_fkey"
 		}),
 	foreignKey({
 			columns: [table.teamId],
 			foreignColumns: [teams.id],
-			name: "team_performances_team_id_fkey"
+			name: "player_performances_team_id_fkey"
 		}),
-	unique("team_performances_team_id_game_id_key").on(table.teamId, table.gameId),
+	unique("player_performances_player_id_game_id_key").on(table.playerId, table.gameId),
+]);
+
+export const commandChannelPermissions = pgTable("command_channel_permissions", {
+	id: serial().primaryKey().notNull(),
+	name: varchar().notNull(),
+	channelId: text("channel_id").notNull(),
+});
+
+export const commandRolePermissions = pgTable("command_role_permissions", {
+	id: serial().primaryKey().notNull(),
+	name: varchar().notNull(),
+	roleId: text("role_id").notNull(),
+});
+
+export const gameDumps = pgTable("game_dumps", {
+	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "game_dumps_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
+	gameId: integer("game_id").notNull(),
+	dump: jsonb().notNull(),
+}, (table) => [
+	foreignKey({
+			columns: [table.gameId],
+			foreignColumns: [games.id],
+			name: "game_dumps_game_id_fkey"
+		}),
+	unique("game_dumps_game_id_key").on(table.gameId),
+]);
+
+export const divisions = pgTable("divisions", {
+	id: serial().primaryKey().notNull(),
+	name: text().notNull(),
+	tournamentId: integer("tournament_id").notNull(),
+}, (table) => [
+	unique("divisions_name_key").on(table.name),
 ]);
 
 export const playerGameData = pgTable("player_game_data", {
@@ -233,84 +152,165 @@ export const playerGameData = pgTable("player_game_data", {
 	unique("player_game_data_player_performance_id_key").on(table.playerPerformanceId),
 ]);
 
-export const playerPerformances = pgTable("player_performances", {
-	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "player_performances_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
-	playerId: integer("player_id").notNull(),
-	gameId: integer("game_id").notNull(),
-	teamId: integer("team_id").notNull(),
+export const meta = pgTable("meta", {
+	id: integer().primaryKey().notNull(),
+	seasonName: text("season_name").notNull(),
+	providerId: integer("provider_id").notNull(),
+});
+
+export const series = pgTable("series", {
+	id: serial().primaryKey().notNull(),
 	divisionId: integer("division_id").notNull(),
+	winnerId: integer("winner_id"),
+	loserId: integer("loser_id"),
 }, (table) => [
+	index("series_loser_id_idx").using("btree", table.loserId.asc().nullsLast().op("int4_ops")),
+	index("series_winner_id_idx").using("btree", table.winnerId.asc().nullsLast().op("int4_ops")),
 	foreignKey({
 			columns: [table.divisionId],
 			foreignColumns: [divisions.id],
-			name: "player_performances_division_id_fkey"
+			name: "fk_division_id"
 		}),
 	foreignKey({
-			columns: [table.gameId],
-			foreignColumns: [games.id],
-			name: "player_performances_game_id_fkey"
+			columns: [table.loserId],
+			foreignColumns: [teams.id],
+			name: "fk_loser_id"
 		}),
 	foreignKey({
-			columns: [table.playerId],
-			foreignColumns: [players.id],
-			name: "player_performances_player_id_fkey"
+			columns: [table.winnerId],
+			foreignColumns: [teams.id],
+			name: "fk_winner_id"
+		}),
+]);
+
+export const roleIds = pgTable("role_ids", {
+	id: serial().primaryKey().notNull(),
+	name: text().notNull(),
+	roleId: text("role_id").notNull(),
+});
+
+export const teamToSeries = pgTable("team_to_series", {
+	id: serial().primaryKey().notNull(),
+	teamId: integer("team_id").notNull(),
+	seriesId: integer("series_id").notNull(),
+}, (table) => [
+	foreignKey({
+			columns: [table.seriesId],
+			foreignColumns: [series.id],
+			name: "fk_series_id"
 		}),
 	foreignKey({
 			columns: [table.teamId],
 			foreignColumns: [teams.id],
-			name: "player_performances_team_id_fkey"
+			name: "fk_team_id"
 		}),
-	unique("player_performances_player_id_game_id_key").on(table.playerId, table.gameId),
 ]);
 
-export const gameDumps = pgTable("game_dumps", {
-	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "game_dumps_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
-	gameId: integer("game_id").notNull(),
-	dump: jsonb().notNull(),
+export const teamPerformances = pgTable("team_performances", {
+	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "team_performances_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
+	teamId: integer("team_id"),
+	gameId: integer("game_id"),
+	divisionId: integer("division_id"),
 }, (table) => [
+	index("team_performances_division_id_idx").using("btree", table.divisionId.asc().nullsLast().op("int4_ops")),
+	index("team_performances_division_id_idx1").using("btree", table.divisionId.asc().nullsLast().op("int4_ops")),
+	index("team_performances_game_id_idx").using("btree", table.gameId.asc().nullsLast().op("int4_ops")),
+	index("team_performances_team_id_idx").using("btree", table.teamId.asc().nullsLast().op("int4_ops")),
+	foreignKey({
+			columns: [table.divisionId],
+			foreignColumns: [divisions.id],
+			name: "team_performances_division_id_fkey"
+		}),
 	foreignKey({
 			columns: [table.gameId],
 			foreignColumns: [games.id],
-			name: "game_dumps_game_id_fkey"
+			name: "team_performances_game_id_fkey"
 		}),
-	unique("game_dumps_game_id_key").on(table.gameId),
+	foreignKey({
+			columns: [table.teamId],
+			foreignColumns: [teams.id],
+			name: "team_performances_team_id_fkey"
+		}),
+	unique("team_performances_team_id_game_id_key").on(table.teamId, table.gameId),
 ]);
 
-export const users = pgTable("users", {
-	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "users_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
-	username: varchar().notNull(),
-	ha1: bytea("ha1").notNull(),
-});
+export const teamGameData = pgTable("team_game_data", {
+	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "team_game_data_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
+	teamPerformanceId: integer("team_performance_id").notNull(),
+	win: boolean().notNull(),
+	side: text().notNull(),
+	gold: integer().notNull(),
+	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
+	gameLength: bigint("game_length", { mode: "number" }).notNull(),
+	kills: integer().notNull(),
+	barons: integer().default(0).notNull(),
+	dragons: integer().default(0).notNull(),
+	grubs: integer().default(0).notNull(),
+	heralds: integer().default(0).notNull(),
+	towers: integer().default(0).notNull(),
+	inhibitors: integer().default(0).notNull(),
+	firstBaron: boolean("first_baron").default(false).notNull(),
+	firstDragon: boolean("first_dragon").default(false).notNull(),
+	firstGrub: boolean("first_grub").default(false).notNull(),
+	firstHerald: boolean("first_herald").default(false).notNull(),
+	firstTower: boolean("first_tower").default(false).notNull(),
+	firstInhibitor: boolean("first_inhibitor").default(false).notNull(),
+	firstBlood: boolean("first_blood").default(false).notNull(),
+}, (table) => [
+	foreignKey({
+			columns: [table.teamPerformanceId],
+			foreignColumns: [teamPerformances.id],
+			name: "team_game_data_team_performance_id_fkey"
+		}),
+	unique("team_game_data_team_performance_id_key").on(table.teamPerformanceId),
+]);
+
+export const players = pgTable("players", {
+	id: serial().primaryKey().notNull(),
+	riotPuuid: char("riot_puuid", { length: 78 }).notNull(),
+	summonerName: text("summoner_name").notNull(),
+	teamId: integer("team_id"),
+}, (table) => [
+	index("players_summoner_name_idx").using("btree", table.summonerName.asc().nullsLast().op("text_ops")),
+	foreignKey({
+			columns: [table.teamId],
+			foreignColumns: [teams.id],
+			name: "fk_team_id"
+		}).onDelete("set null"),
+	unique("players_riot_puuid_key").on(table.riotPuuid),
+]);
 
 export const draftLobbies = pgTable("draft_lobbies", {
 	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "draft_lobbies_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
 	shortcode: varchar(),
-	blueCode: varchar("blue_code", { length: 50 }).notNull(),
-	redCode: varchar("red_code", { length: 50 }).notNull(),
-	lobbyCode: varchar("lobby_code", { length: 50 }).notNull(),
-	redName: varchar("red_name", { length: 50 }).notNull(),
-	blueName: varchar("blue_name", { length: 50 }).notNull(),
-	bPick1: varchar("b_pick_1", { length: 25 }),
-	bPick2: varchar("b_pick_2", { length: 25 }),
-	bPick3: varchar("b_pick_3", { length: 25 }),
-	bPick4: varchar("b_pick_4", { length: 25 }),
-	bPick5: varchar("b_pick_5", { length: 25 }),
-	rPick1: varchar("r_pick_1", { length: 25 }),
-	rPick2: varchar("r_pick_2", { length: 25 }),
-	rPick3: varchar("r_pick_3", { length: 25 }),
-	rPick4: varchar("r_pick_4", { length: 25 }),
-	rPick5: varchar("r_pick_5", { length: 25 }),
-	bBan1: varchar("b_ban_1", { length: 25 }),
-	bBan2: varchar("b_ban_2", { length: 25 }),
-	bBan3: varchar("b_ban_3", { length: 25 }),
-	bBan4: varchar("b_ban_4", { length: 25 }),
-	bBan5: varchar("b_ban_5", { length: 25 }),
-	rBan1: varchar("r_ban_1", { length: 25 }),
-	rBan2: varchar("r_ban_2", { length: 25 }),
-	rBan3: varchar("r_ban_3", { length: 25 }),
-	rBan4: varchar("r_ban_4", { length: 25 }),
-	rBan5: varchar("r_ban_5", { length: 25 }),
+	blueCode: text("blue_code").notNull(),
+	redCode: text("red_code").notNull(),
+	lobbyCode: text("lobby_code").notNull(),
+	redName: text("red_name").notNull(),
+	blueName: text("blue_name").notNull(),
+	bPick1: text("b_pick_1"),
+	bPick2: text("b_pick_2"),
+	bPick3: text("b_pick_3"),
+	bPick4: text("b_pick_4"),
+	bPick5: text("b_pick_5"),
+	rPick1: text("r_pick_1"),
+	rPick2: text("r_pick_2"),
+	rPick3: text("r_pick_3"),
+	rPick4: text("r_pick_4"),
+	rPick5: text("r_pick_5"),
+	bBan1: text("b_ban_1"),
+	bBan2: text("b_ban_2"),
+	bBan3: text("b_ban_3"),
+	bBan4: text("b_ban_4"),
+	bBan5: text("b_ban_5"),
+	rBan1: text("r_ban_1"),
+	rBan2: text("r_ban_2"),
+	rBan3: text("r_ban_3"),
+	rBan4: text("r_ban_4"),
+	rBan5: text("r_ban_5"),
+	draftFinished: boolean("draft_finished").default(false).notNull(),
 }, (table) => [
+	index("draft_lobbies_lobby_code_idx").using("btree", table.lobbyCode.asc().nullsLast().op("text_ops")),
 	foreignKey({
 			columns: [table.shortcode],
 			foreignColumns: [games.shortcode],
@@ -319,16 +319,22 @@ export const draftLobbies = pgTable("draft_lobbies", {
 	unique("draft_lobbies_shortcode_key").on(table.shortcode),
 ]);
 
-export const meta = pgTable("meta", {
-	id: integer().primaryKey().notNull(),
-	seasonName: varchar("season_name", { length: 20 }).notNull(),
-	providerId: integer("provider_id").notNull(),
-});
-
-export const divisions = pgTable("divisions", {
+export const teams = pgTable("teams", {
 	id: serial().primaryKey().notNull(),
-	name: varchar({ length: 20 }).notNull(),
-	tournamentId: integer("tournament_id").notNull(),
+	name: text().notNull(),
+	logo: text(),
+	captainId: integer("captain_id"),
+	divisionId: integer("division_id"),
 }, (table) => [
-	unique("divisions_name_key").on(table.name),
+	index("teams_name_idx").using("btree", table.name.asc().nullsLast().op("text_ops")),
+	foreignKey({
+			columns: [table.captainId],
+			foreignColumns: [players.id],
+			name: "fk_captain_id"
+		}).onDelete("set null"),
+	foreignKey({
+			columns: [table.divisionId],
+			foreignColumns: [divisions.id],
+			name: "fk_division_id"
+		}),
 ]);
