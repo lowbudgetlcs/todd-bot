@@ -238,14 +238,12 @@ async function handleTeamSelect(interaction: any) {
       divisionsMap
     );
     if (tournamentCode.error != null) {
-      console.log(tournamentCode);
       // Handle error: Update original interaction
       await interaction.update({
         content: tournamentCode.error,
         components: [],
       });
     } else {
-      console.log(tournamentCode);
       await interaction.update({
         content: "Your teams have been selected. Generating tournament code...",
         components: [],
