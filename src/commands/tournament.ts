@@ -388,8 +388,8 @@ async function getTournamentCode(
   }
   // shortcode = "NA003";
   try {
-    await db.transaction(async (tx) => {
-      const res = await tx
+    const res = await db.transaction(async (tx) => {
+      return await tx
         .insert(games)
         .values({
           shortcode,
@@ -397,15 +397,15 @@ async function getTournamentCode(
           gameNum: gameNumber,
         })
         .returning({ gameId: games.id });
-      if (!res) {
-        console.log(`Game insert failed:\n 
+    });
+    if (res.length === 0) {
+      console.log(`Game insert failed:\n 
           Series ID: '${seriesId}'\n
           TCode: '${shortcode}'\n
           Game Num: '${gameNumber}'\n`);
-      } else {
-        console.log(`Inserted '${res[0].gameId}' for series '${seriesId}'.`);
-      }
-    });
+    } else {
+      console.log(`Inserted '${res[0].gameId}' for series '${seriesId}'.`);
+    }
   } catch (e: any) {
     console.log(e);
     return {
