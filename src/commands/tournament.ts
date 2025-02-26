@@ -386,7 +386,8 @@ async function getTournamentCode(
       team2,
     };
   }
-  // shortcode = "NA003";
+  // let datetime = new Date();
+  // shortcode = "NA005"+datetime.getSeconds();
   try {
     const res = await db.transaction(async (tx) => {
       return await tx
