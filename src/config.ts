@@ -21,24 +21,26 @@ const riotConfig: RiotAPITypes.Config = {
 };
 const rAPI = new RiotAPI(String(RIOT_API_TOKEN), riotConfig);
 
-if (
-  !DISCORD_TOKEN ||
-  !DISCORD_CLIENT_ID ||
-  !GUILD_ID ||
-  !DATABASE_URL ||
-  !RIOT_API_TOKEN ||
-  !CHANNEL_ID ||
-  !adminRoles ||
-  !adminRoleIds ||
-  !adminChannelIds ||
-  !CAPTAIN_ROLE_ID
-) {
-  throw new Error("Missing environment variables");
+const missingEnvs = [
+  !DISCORD_TOKEN && "DISCORD_TOKEN",
+  !DISCORD_CLIENT_ID && "DISCORD_CLIENT_ID",
+  !GUILD_ID && "GUILD_ID",
+  !DATABASE_URL && "DATABASE_URL",
+  !RIOT_API_TOKEN && "RIOT_API_TOKEN",
+  !CHANNEL_ID && "CHANNEL_ID",
+  !adminRoles && "adminRoles",
+  !adminRoleIds && "adminRoleIds",
+  !adminChannelIds && "adminChannelIds",
+  !CAPTAIN_ROLE_ID && "CAPTAIN_ROLE_ID",
+].filter(Boolean);
+
+if (missingEnvs.length > 0) {
+  throw new Error(`Missing environment variables: ${missingEnvs.join(", ")}`);
 }
 
-const ADMIN_ROLES = adminRoles.split(",");
-const ADMIN_ROLE_IDS = adminRoleIds.split(",");
-const ADMIN_CHANNEL_IDS = adminChannelIds.split(",");
+const ADMIN_ROLES = (adminRoles ?? "").split(",");
+const ADMIN_ROLE_IDS = (adminRoleIds ?? "").split(",");
+const ADMIN_CHANNEL_IDS = (adminChannelIds ?? "").split(",");
 
 export const config = {
   DISCORD_TOKEN,
