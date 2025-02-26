@@ -19,12 +19,12 @@ module.exports = {
     .setRequired(true)
     .addChoices(
       // TODO: make this dynamic, I CBA doing this right now. Sorry!
-      { name: "command-config", value: "config"},
+      { name: "command-config", value: "command-config"},
       { name: "coinflip", value: "coinflip"},
-      { name: "command-toggle", value: "toggle"},
-      { name: "generate-tournament-code", value: "tournament"},
+      { name: "command-toggle", value: "command-toggle"},
+      { name: "generate-tournament-code", value: "generate-tournament-code"},
       { name: "opgg", value: "opgg"},
-      { name: "division-reset", value: "division"}
+      { name: "division-reset", value: "division-reset"}
     )
   )
   // TODO: get feedback of how this is actually used, might want to rethink this setup
@@ -98,14 +98,14 @@ module.exports = {
             await tx.delete(commandChannelPermissions).where(
               and(
                 eq(commandChannelPermissions.name, command),
-                eq(commandChannelPermissions.channelId, +channel.id)));
+                eq(commandChannelPermissions.channelId, channel.id)));
           }
           if (role != null)
           {
             await tx.delete(commandRolePermissions).where(
               and(
                 eq(commandRolePermissions.name, role.name),
-                eq(commandRolePermissions.roleId, +role.id)));
+                eq(commandRolePermissions.roleId, role.id)));
           }
         });
       } catch (error: any) {
@@ -123,13 +123,13 @@ module.exports = {
           if (channel != null)
           {
             await tx.insert(commandChannelPermissions).values({
-              name: command, channelId: +channel.id
+              name: command, channelId: channel.id
             });
           }
           if (role != null)
           {
             await tx.insert(commandRolePermissions).values({
-              name: command, roleId: +role.id
+              name: command, roleId: role.id
             });
           }
         });
