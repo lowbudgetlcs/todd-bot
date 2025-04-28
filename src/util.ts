@@ -8,6 +8,7 @@ import {
 } from "./db/schema";
 import { CacheType, GuildMember, Interaction } from "discord.js";
 import { channel } from "diagnostics_channel";
+import { config } from "./config";
 
 type DivisionsMap = Map<number, string>;
 
@@ -137,4 +138,46 @@ export async function checkDbForPermissions(
   }
 
   return roleAllowed && channelAllowed;
+}
+
+/**
+ * Calls LowBudgetLCS backend to create draft links in a markdown string.
+ *
+ * @returns markdown string with the links OR a string indicating an error has occurred.
+ */
+export async function getDraftLinksMarkdown(blueTeamName: string, redTeamName: string, tournamentCode: string, ): Promise<string>
+{
+  // TODO: fearless?
+  const endpoint = "/createDraft"
+  const url = config.LOWBUDGETLCS_BACKEND_URL + endpoint;
+  const errorString = "Error generating tournament codes! Please do so manually :)";
+  const payload = {
+    blueName: blueTeamName,
+    redName: redTeamName,
+    tournamentId: tournamentCode
+  };
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      // TODO: log
+      return errorString;
+    }
+
+    const data = await response.json();
+    const { lobbyCode, blueCode, redCode } = data.draft;
+
+    return `[Blue Team Draft Link](${config.LOWBUDGETLCS_BASE_URL}/draft/${lobbyCode}/${blueCode})
+[Red Team Draft Link](${config.LOWBUDGETLCS_BASE_URL}/draft/${lobbyCode}/${redCode})
+[Spectator Draft Link(${config.LOWBUDGETLCS_BASE_URL}/draft/${lobbyCode})]`;
+  } catch (error) {
+    console.error('Error hitting URL:', error);
+    return errorString;
+  }
 }
