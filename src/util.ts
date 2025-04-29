@@ -173,9 +173,9 @@ export async function getDraftLinksMarkdown(blueTeamName: string, redTeamName: s
     const data = await response.json();
     const { lobbyCode, blueCode, redCode } = data.draft;
 
-    return `[Blue Team Draft Link](${config.LOWBUDGETLCS_BASE_URL}/draft/${lobbyCode}/${blueCode})
-[Red Team Draft Link](${config.LOWBUDGETLCS_BASE_URL}/draft/${lobbyCode}/${redCode})
-[Spectator Draft Link(${config.LOWBUDGETLCS_BASE_URL}/draft/${lobbyCode})]`;
+    return `[Blue Team Draft Link](${config.LOWBUDGETLCS_BASE_URL}/draft/${lobbyCode}/${blueCode})\n` +
+    `[Red Team Draft Link](${config.LOWBUDGETLCS_BASE_URL}/draft/${lobbyCode}/${redCode})\n` +
+    `[Spectator Draft Link(${config.LOWBUDGETLCS_BASE_URL}/draft/${lobbyCode})]`;
   } catch (error) {
     console.error('Error hitting URL:', error);
     return errorString;
