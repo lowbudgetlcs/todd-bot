@@ -150,7 +150,7 @@ export async function getDraftLinksMarkdown(blueTeamName: string, redTeamName: s
   // TODO: fearless?
   const endpoint = "/createDraft"
   const url = config.LOWBUDGETLCS_BACKEND_URL + endpoint;
-  const errorString = "Error generating tournament codes! Please do so manually :)";
+  const errorString = "Error generating draft links! Please do so manually :)";
   const payload = {
     blueName: blueTeamName,
     redName: redTeamName,
@@ -158,7 +158,7 @@ export async function getDraftLinksMarkdown(blueTeamName: string, redTeamName: s
   };
   try {
     const response = await fetch(url, {
-      method: 'GET',
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -173,9 +173,13 @@ export async function getDraftLinksMarkdown(blueTeamName: string, redTeamName: s
     const data = await response.json();
     const { lobbyCode, blueCode, redCode } = data.draft;
 
-    return `[Blue Team Draft Link](${config.LOWBUDGETLCS_BASE_URL}/draft/${lobbyCode}/${blueCode})\n` +
-    `[Red Team Draft Link](${config.LOWBUDGETLCS_BASE_URL}/draft/${lobbyCode}/${redCode})\n` +
-    `[Spectator Draft Link(${config.LOWBUDGETLCS_BASE_URL}/draft/${lobbyCode})]`;
+    /// QUICK MARKDOWN EXPLANATION!
+    /// HYPERLINK EXAMPLE: [a](b) | a will be displayed, b will be the link TO
+    /// NO EMBED EXAMPLE: <a> | a is a link, will not show embeds in Discord.
+    /// COMBINED we get a hyperlink with no embed! [a](<b>)
+    return `[Blue Team Draft Link](<${config.LOWBUDGETLCS_BASE_URL}/draft/${lobbyCode}/${blueCode}>)\n` +
+    `[Red Team Draft Link](<${config.LOWBUDGETLCS_BASE_URL}/draft/${lobbyCode}/${redCode}>)\n` +
+    `[Spectator Draft Link](<${config.LOWBUDGETLCS_BASE_URL}/draft/${lobbyCode}>)`;
   } catch (error) {
     console.error('Error hitting URL:', error);
     return errorString;
