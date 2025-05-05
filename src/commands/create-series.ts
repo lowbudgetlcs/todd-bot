@@ -19,8 +19,8 @@ import {
   module.exports = {
     data: new SlashCommandBuilder()
       .setName("create-series")
-      .setDescription("Create a series for a matchup"),
-    //   .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
+      .setDescription("Create a series for a matchup")
+      .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
     async execute(interaction) {
       let divisionsMap = DatabaseUtil.Instance.divisionsMap;
   
@@ -212,11 +212,11 @@ import {
     try {
         let team1Data = await grabTeamInfo(state.team1);
         let team2Data = await grabTeamInfo(state.team2);
+        const newSeriesId = await db.insert(series).values({ divisionId: team1Data.divisionId }).returning({ insertedId: series.id });
         await db.transaction(async (tx) => {
-            const newSeriesId = await tx.insert(series).values({ divisionId: team1Data.divisionId }).returning({ insertedId: series.id })[0];
-            await tx.insert(teamToSeries).values({teamId: team1Data.id, seriesId: newSeriesId});
-            await tx.insert(teamToSeries).values({teamId: team2Data.id, seriesId: newSeriesId});
-            });
+            await tx.insert(teamToSeries).values({teamId: team1Data.id, seriesId: newSeriesId[0].insertedId});
+            await tx.insert(teamToSeries).values({teamId: team2Data.id, seriesId: newSeriesId[0].insertedId});
+        });
         await interaction.update({
             content: "Series has been made!",
             components: [],
