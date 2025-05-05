@@ -199,8 +199,7 @@ async function handleDivisionSelect(interaction: any, message: any) {
   });
 
   buttonCollector.on("collect", async (int) => {
-    int.deferUpdate()
-    if (interaction.customId == "confirm")
+    if (int.customId == "confirm")
     {
       handleBothTeamSubmission(int);
     } else
