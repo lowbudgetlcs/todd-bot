@@ -177,9 +177,9 @@ export async function getDraftLinksMarkdown(blueTeamName: string, redTeamName: s
     /// HYPERLINK EXAMPLE: [a](b) | a will be displayed, b will be the link TO
     /// NO EMBED EXAMPLE: <a> | a is a link, will not show embeds in Discord.
     /// COMBINED we get a hyperlink with no embed! [a](<b>)
-    return `[Blue Team Draft Link](<${config.LOWBUDGETLCS_BASE_URL}/draft/${lobbyCode}/${blueCode}>)\n` +
-    `[Red Team Draft Link](<${config.LOWBUDGETLCS_BASE_URL}/draft/${lobbyCode}/${redCode}>)\n` +
-    `[Spectator Draft Link](<${config.LOWBUDGETLCS_BASE_URL}/draft/${lobbyCode}>)`;
+    return `[Blue Team Draft Link](<${config.LOWBUDGETLCS_DRAFT_URL}/${lobbyCode}/${blueCode}>)\n` +
+    `[Red Team Draft Link](<${config.LOWBUDGETLCS_DRAFT_URL}/${lobbyCode}/${redCode}>)\n` +
+    `[Spectator Draft Link](<${config.LOWBUDGETLCS_DRAFT_URL}/${lobbyCode}>)`;
   } catch (error) {
     console.error('Error hitting URL:', error);
     return errorString;

@@ -300,7 +300,9 @@ async function handleTeamSelect(interaction: any, message) {
     cancel
   );
 
-  const content = `Please confirm all looks right\n# Blue Side: ${state.team1} vs Red Side: ${state.team2}`;
+  const content = `Please confirm all looks right\n` +
+  `# Blue Side: ${state.team1}\n` +
+  `# Red Side: ${state.team2}`;
   await interaction.update({
     content,
     components: [confirmRow],
