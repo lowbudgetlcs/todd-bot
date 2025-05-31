@@ -75,6 +75,8 @@ jobs:
             echo ADMIN_ROLE_IDS="${{ vars.ADMIN_ROLE_IDS }}" >> .env
             echo ADMIN_CHANNEL_IDS="${{ vars.ADMIN_CHANNEL_IDS }}" >> .env
             echo CAPTAIN_ROLE_ID="${{ vars.CAPTAIN_ROLE_ID }}" >> .env
+            echo LOWBUDGETLCS_BACKEND_URL="${{ vars.LOWBUDGETLCS_BACKEND_URL }}" >> .env
+            echo LOWBUDGETLCS_DRAFT_URL="${{ vars.LOWBUDGETLCS_DRAFT_URL }}" >> .env
             docker-compose down
             docker-compose pull
             docker-compose up -d
