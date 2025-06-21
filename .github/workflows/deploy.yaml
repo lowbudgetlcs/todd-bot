@@ -2,6 +2,8 @@ name: Deploy on Prod
 
 on:
   push:
+    paths-ignore:
+      - '**/README.md'
     branches: ["main"]
 
 jobs:
@@ -75,7 +77,7 @@ jobs:
             echo ADMIN_ROLE_IDS="${{ vars.ADMIN_ROLE_IDS }}" >> .env
             echo ADMIN_CHANNEL_IDS="${{ vars.ADMIN_CHANNEL_IDS }}" >> .env
             echo CAPTAIN_ROLE_ID="${{ vars.CAPTAIN_ROLE_ID }}" >> .env
-            docker-compose down
-            docker-compose pull
-            docker-compose up -d
+            docker compose down
+            docker compose pull
+            docker compose up -d
             rm -rf ./.env
