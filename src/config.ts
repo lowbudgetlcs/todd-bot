@@ -13,7 +13,9 @@ const {
   CAPTAIN_ROLE_ID,
   ADMIN_ROLES: adminRoles,
   ADMIN_ROLE_IDS: adminRoleIds,
-  ADMIN_CHANNEL_IDS: adminChannelIds
+  ADMIN_CHANNEL_IDS: adminChannelIds,
+  LOWBUDGETLCS_BACKEND_URL,
+  LOWBUDGETLCS_DRAFT_URL
 } = process.env;
 
 const riotConfig: RiotAPITypes.Config = {
@@ -32,6 +34,8 @@ const missingEnvs = [
   !adminRoleIds && "adminRoleIds",
   !adminChannelIds && "adminChannelIds",
   !CAPTAIN_ROLE_ID && "CAPTAIN_ROLE_ID",
+  !LOWBUDGETLCS_BACKEND_URL && "LOWBUDGETLCS_BACKEND_URL",
+  !LOWBUDGETLCS_DRAFT_URL && "LOWBUDGETLCS_DRAFT_URL"
 ].filter(Boolean);
 
 if (missingEnvs.length > 0) {
@@ -52,5 +56,7 @@ export const config = {
   ADMIN_ROLES,
   ADMIN_ROLE_IDS,
   ADMIN_CHANNEL_IDS,
-  CAPTAIN_ROLE_ID
+  CAPTAIN_ROLE_ID,
+  LOWBUDGETLCS_BACKEND_URL,
+  LOWBUDGETLCS_DRAFT_URL
 };
