@@ -8,16 +8,25 @@ import {
   Interaction,
   SlashCommandBuilder,
   RESTPostAPIChatInputApplicationCommandsJSONBody,
+  ButtonInteraction,
+  ButtonBuilder,
+  ButtonStyle,
+  ActionRowBuilder,
 } from "discord.js";
 import { config } from "./config";
+import { handleButtonInteraction } from "./buttonHandler";
 
 import { deployCommands } from "./deploy-commands";
-import { DatabaseUtil, checkDbForPermissions } from "./util";
+
+// Remove this foul util
+// import { DatabaseUtil, checkDbForPermissions } from "./util";
 import * as path from 'path';
 import * as fs from 'fs';
+import { handleCancelSwitch, handleEndSeries, handleGenerateAnotherCode, handleGenerateAnotherConfirm, handleSwitchSidesConfirm, command as tournamentCommand } from "./commands/tournament";
 
+// TODO: REMOVE ALL DB SHENANIGANS FROM HERE
 // We'll just do this first to initialize it since we'll need it around ;p
-let dbUtil = DatabaseUtil.Instance;
+// let dbUtil = DatabaseUtil.Instance;
 
 type ActionWrapper = {
   execute: (interaction: Interaction) => Promise<void>
@@ -62,8 +71,14 @@ const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('
 
 for (const file of commandFiles) {
   const filePath = path.join(commandsPath, file);
-  const command: CommandFileExport = require(filePath);
-  // Set a new item in the Collection with the key as the command name and the value as the exported module
+  let command: CommandFileExport;
+
+  if(file == "tournament.ts") {
+    command = tournamentCommand;
+  }
+  else{
+    command = require(filePath);
+  }
   if ('data' in command && 'execute' in command) {
     commands.push(command.data.toJSON())
     client.commands.set(command.data.name, command);
@@ -76,12 +91,19 @@ client.once("ready", async () => {
   console.log("Discord bot is ready! 🤖");
   client.user?.setPresence({ status: "online" });
   deployCommands({ guildId: guild_id! }, commands);
-  let divisionsMap = dbUtil.divisionsMap;
+
+  // We should grab events from API HERE :D
+  // let divisionsMap = dbUtil.divisionsMap;
 });
 
 const channelId = process.env.CHANNEL_ID!;
 
 client.on(Events.InteractionCreate, async interaction => {
+  if (interaction.isButton()) {
+    await handleButtonInteraction(interaction as ButtonInteraction);
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
 
   const command = client.commands.get(interaction.commandName);
@@ -92,9 +114,10 @@ client.on(Events.InteractionCreate, async interaction => {
   }
   // Base command / single command
   try {
-    if (!await checkDbForPermissions(interaction, interaction.commandName)) {
-      return;
-    }
+    // Imagine checking for permissions in the DB and not making Discord do it. What noobs we are.
+    // if (!await checkDbForPermissions(interaction, interaction.commandName)) {
+    //   return;
+    // }
     await command.execute(interaction);
   } catch (error) {
     console.error(error);
