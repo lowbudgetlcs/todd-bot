@@ -23,7 +23,7 @@ import { getDraftLinksMarkdown } from "../util";
 export const command = {
   data: new SlashCommandBuilder()
   .setName("generate-tournament-code")
-  .setDescription("Generate Next Game"),
+  .setDescription("Generate New Tournament Code"),
   execute: async(interaction) => {
     /*
     * Ok the event flow in this file is a little confusing,

@@ -22,7 +22,8 @@ import { deployCommands } from "./deploy-commands";
 // import { DatabaseUtil, checkDbForPermissions } from "./util";
 import * as path from 'path';
 import * as fs from 'fs';
-import { handleCancelSwitch, handleEndSeries, handleGenerateAnotherCode, handleGenerateAnotherConfirm, handleSwitchSidesConfirm, command as tournamentCommand } from "./commands/tournament";
+import { command, handleCancelSwitch, handleEndSeries, handleGenerateAnotherCode, handleGenerateAnotherConfirm, handleSwitchSidesConfirm, command as tournamentCommand } from "./commands/tournament";
+import { fileURLToPath } from "url";
 
 // TODO: REMOVE ALL DB SHENANIGANS FROM HERE
 // We'll just do this first to initialize it since we'll need it around ;p
@@ -71,14 +72,7 @@ const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('
 
 for (const file of commandFiles) {
   const filePath = path.join(commandsPath, file);
-  let command: CommandFileExport;
-
-  if(file == "tournament.ts") {
-    command = tournamentCommand;
-  }
-  else{
-    command = require(filePath);
-  }
+  let command: CommandFileExport = require(filePath);
   if ('data' in command && 'execute' in command) {
     commands.push(command.data.toJSON())
     client.commands.set(command.data.name, command);
