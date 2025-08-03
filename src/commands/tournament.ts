@@ -9,12 +9,6 @@ import {
   StringSelectMenuBuilder,
   StringSelectMenuInteraction,
 } from "discord.js";
-import { db } from "../db/db";
-import { divisions, games, series, teams, teamToSeries } from "../db/schema";
-import { and, sql, desc, eq } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
-import { config } from "../config";
-import { RiotAPITypes } from "@fightmegg/riot-api/dist/esm/@types";
 import { getDraftLinksMarkdown } from "../util";
  let divisionsMap = new Map();
       divisionsMap.set(1, "Division 1");
@@ -22,30 +16,10 @@ import { getDraftLinksMarkdown } from "../util";
 
 export const command = {
   data: new SlashCommandBuilder()
-  .setName("generate-tournament-code")
-  .setDescription("Generate New Tournament Code"),
+    .setName("generate-tournament-code")
+    .setDescription("Generate New Tournament Code"),
   execute: async(interaction) => {
-    /*
-    * Ok the event flow in this file is a little confusing,
-    * Here is it visually
-    * Execute
-    *    |
-    *    v
-    * handleDivisionSelect
-    *    |
-    *    v
-    * handleTeamSelect -> (can loop) -> handleTeamSelect
-    *    |
-    *    v
-    * handleBothTeamSubmission
-    *
-    * Verbally:
-    * 1. We will get the Division of the user
-    * 2. An event for selecting both of the teams
-    * 3. Finally, an event for handling final submission of both of the teams and returning a generated tournament code
-    */
-    
-
+    // Move your existing execute logic here
     if (divisionsMap.size == 0) {
       await interaction.reply({
         content: "No divisions found.",
@@ -54,6 +28,7 @@ export const command = {
       });
       return;
     }
+    
     const divisionDropdown = new StringSelectMenuBuilder()
       .setCustomId("division_select")
       .setPlaceholder("Select a Division")

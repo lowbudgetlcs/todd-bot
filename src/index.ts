@@ -22,8 +22,8 @@ import { deployCommands } from "./deploy-commands";
 // import { DatabaseUtil, checkDbForPermissions } from "./util";
 import * as path from 'path';
 import * as fs from 'fs';
-import { command, handleCancelSwitch, handleEndSeries, handleGenerateAnotherCode, handleGenerateAnotherConfirm, handleSwitchSidesConfirm, command as tournamentCommand } from "./commands/tournament";
-import { fileURLToPath } from "url";
+import { handleCancelSwitch, handleEndSeries, handleGenerateAnotherCode,
+   handleGenerateAnotherConfirm, handleSwitchSidesConfirm, command as tournamentCommand } from "./commands/tournament";
 
 // TODO: REMOVE ALL DB SHENANIGANS FROM HERE
 // We'll just do this first to initialize it since we'll need it around ;p
@@ -69,10 +69,16 @@ const commands: RESTPostAPIChatInputApplicationCommandsJSONBody[] = []
 // Populate commands property of the Client, currently only works for commands/ and not subfolders cuz not needed
 const commandsPath = path.join(__dirname, 'commands');
 const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.ts') || file.endsWith('js'));
+let command: CommandFileExport;
 
 for (const file of commandFiles) {
   const filePath = path.join(commandsPath, file);
-  let command: CommandFileExport = require(filePath);
+  let command: CommandFileExport; 
+  if(file=="tournament.ts") {
+    command = tournamentCommand as CommandFileExport;
+  } else {
+    command = require(filePath) as CommandFileExport;
+  }
   if ('data' in command && 'execute' in command) {
     commands.push(command.data.toJSON())
     client.commands.set(command.data.name, command);
