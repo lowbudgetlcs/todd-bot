@@ -52,7 +52,7 @@ module.exports = {
   // TODO: Confirm base level of permission 
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .setContexts(InteractionContextType.Guild),
-  async execute(interaction) {
+  async execute(interaction: { options: { getString: (arg0: string) => string; getChannel: (arg0: string) => Channel | null; getRole: (arg0: string) => Role | null; getBoolean: (arg0: string) => boolean; }; reply: (arg0: { content: string; }) => any; }) {
     const command : string = interaction.options.getString('command');
     const channel : Channel | null = interaction.options.getChannel('channel');
     const role : Role | null = interaction.options.getRole('role');
@@ -108,7 +108,7 @@ module.exports = {
                 eq(commandRolePermissions.roleId, role.id)));
           }
         });
-      } catch (error: any) {
+      } catch (error: unknown) {
         // TODO: this is where we should log this out in an audit channel or log collector
         // if we are chill like that
         await interaction.reply({

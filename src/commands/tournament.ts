@@ -3,22 +3,21 @@ import {
   ButtonBuilder,
   ButtonInteraction,
   ButtonStyle,
-  CacheType,
   ComponentType,
+  Interaction,
   SlashCommandBuilder,
   StringSelectMenuBuilder,
-  StringSelectMenuInteraction,
 } from "discord.js";
 import { getDraftLinksMarkdown } from "../util";
  let divisionsMap = new Map();
       divisionsMap.set(1, "Division 1");
       divisionsMap.set(2, "Division 2");
-
+import { InteractionBasic, User } from "../interfaces";
 export const command = {
   data: new SlashCommandBuilder()
     .setName("generate-tournament-code")
     .setDescription("Generate New Tournament Code"),
-  execute: async(interaction) => {
+  execute: async(interaction: { reply: (arg0: { content: string; components: never[] | ActionRowBuilder<StringSelectMenuBuilder>[]; flags: string; withResponse?: boolean; }) => any; user:  User}) => {
     // Move your existing execute logic here
     if (divisionsMap.size == 0) {
       await interaction.reply({
@@ -55,12 +54,12 @@ export const command = {
     const collector =
       response.resource!.message!.createMessageComponentCollector({
         componentType: ComponentType.StringSelect,
-        filter: (i) =>
+        filter: (i: { user: User; customId: string; }) =>
           i.user === interaction.user && i.customId == "division_select",
         time: 5 * 60 * 1000,
       });
 
-    collector.on("collect", async (interaction) => {
+    collector.on("collect", async (interaction: any) => {
       handleDivisionSelect(interaction, message);
     });
     return;
@@ -134,37 +133,37 @@ async function handleDivisionSelect(interaction: any, message: any) {
   );
   const collector = message.createMessageComponentCollector({
     componentType: ComponentType.StringSelect,
-    filter: (i) =>
+    filter: (i: { user: User; customId: string; }) =>
       i.user === interaction.user &&
       ["team1_select", "team2_select"].includes(i.customId),
     time: 5 * 60 * 1000,
   });
 
-  collector.on("collect", async (interaction) => {
-    handleTeamSelect(interaction, message);
+  collector.on("collect", async (interaction: any) => {
+    handleTeamSelect(interaction);
   });
 
   // We will need this for handleTeamSelect
   const buttonCollector = message.createMessageComponentCollector({
     componentType: ComponentType.Button,
-    filter: (i) =>
+    filter: (i: { user: User; customId: string; }) =>
       i.user === interaction.user &&
       ["confirm", "switch_sides", "cancel"].includes(i.customId),
     time: 5 * 60 * 1000,
   });
 
-  buttonCollector.on("collect", async (int) => {
+  buttonCollector.on("collect", async (int: ButtonInteraction) => {
     if (int.customId == "confirm")
     {
       handleBothTeamSubmission(int);
     } else
     {
-      handleTeamSelect(int, message);
+      handleTeamSelect(int);
     }
   });
 }
 
-async function handleTeamSelect(interaction: any, message) {
+async function handleTeamSelect(interaction: any) {
   const { customId, values, user } = interaction;
   let selectedTeam = "";
 
@@ -201,7 +200,7 @@ async function handleTeamSelect(interaction: any, message) {
     .setCustomId("team1_select")
     .setPlaceholder("Select Team 1")
     .addOptions(
-      state.teams.map((team: { name: any }) => ({
+      state.teams.map((team: { name: string }) => ({
         label: team.name,
         value: team.name,
         default: state.team1 === team.name,
@@ -212,7 +211,7 @@ async function handleTeamSelect(interaction: any, message) {
     .setCustomId("team2_select")
     .setPlaceholder("Select Team 2")
     .addOptions(
-      state.teams.map((team: { name: any }) => ({
+      state.teams.map((team: { name: string }) => ({
         label: team.name,
         value: team.name,
         default: state.team2 === team.name,
@@ -267,7 +266,7 @@ async function handleTeamSelect(interaction: any, message) {
   });
 }
 
-async function handleBothTeamSubmission(interaction)
+async function handleBothTeamSubmission(interaction: ButtonInteraction)
 {
   const { user } = interaction;
 
@@ -301,7 +300,7 @@ async function handleBothTeamSubmission(interaction)
         .addComponents(generateButton);
 
       await interaction.followUp({
-        content: tournamentCode.discordResponse?.toString(),
+        content: tournamentCode.discordResponse?.toString()!,
         components: [buttonRow],
         ephemeral: false,
       });
@@ -322,8 +321,8 @@ async function handleBothTeamSubmission(interaction)
 async function getTournamentCode(
   team1: string,
   team2: string,
-  interaction: any,
-  divisionsMap: Map<any, any>
+  interaction: ButtonInteraction,
+  divisionsMap: Map<number, string>
 ): Promise<{
   discordResponse: string | null;
   shortcode: string | null;
@@ -436,7 +435,7 @@ async function getTournamentCode(
     // });
     // shortcode = riotResponse[0];
     
-  } catch (e: any) {
+  } catch (e: unknown) {
     return {
       discordResponse: null,
       shortcode: null,
