@@ -1,6 +1,7 @@
 import {
   ActionRowBuilder,
   ButtonBuilder,
+  ButtonInteraction,
   ButtonStyle,
   CacheType,
   ComponentType,
@@ -8,40 +9,17 @@ import {
   StringSelectMenuBuilder,
   StringSelectMenuInteraction,
 } from "discord.js";
-import { db } from "../db/db";
-import { divisions, games, series, teams, teamToSeries } from "../db/schema";
-import { and, sql, desc, eq } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
-import { config } from "../config";
-import { RiotAPITypes } from "@fightmegg/riot-api/dist/esm/@types";
-import { DatabaseUtil, getDraftLinksMarkdown } from "../util";
+import { getDraftLinksMarkdown } from "../util";
+ let divisionsMap = new Map();
+      divisionsMap.set(1, "Division 1");
+      divisionsMap.set(2, "Division 2");
 
-module.exports = {
+export const command = {
   data: new SlashCommandBuilder()
     .setName("generate-tournament-code")
-    .setDescription("Generate Tournament Code"),
-  async execute(interaction) {
-    /*
-    * Ok the event flow in this file is a little confusing,
-    * Here is it visually
-    * Execute
-    *    |
-    *    v
-    * handleDivisionSelect
-    *    |
-    *    v
-    * handleTeamSelect -> (can loop) -> handleTeamSelect
-    *    |
-    *    v
-    * handleBothTeamSubmission
-    *
-    * Verbally:
-    * 1. We will get the Division of the user
-    * 2. An event for selecting both of the teams
-    * 3. Finally, an event for handling final submission of both of the teams and returning a generated tournament code
-    */
-    let divisionsMap = DatabaseUtil.Instance.divisionsMap;
-
+    .setDescription("Generate New Tournament Code"),
+  execute: async(interaction) => {
+    // Move your existing execute logic here
     if (divisionsMap.size == 0) {
       await interaction.reply({
         content: "No divisions found.",
@@ -50,6 +28,7 @@ module.exports = {
       });
       return;
     }
+    
     const divisionDropdown = new StringSelectMenuBuilder()
       .setCustomId("division_select")
       .setPlaceholder("Select a Division")
@@ -85,55 +64,31 @@ module.exports = {
       handleDivisionSelect(interaction, message);
     });
     return;
+
+
   },
 };
 
 async function grabTeamInfo(name: String) {
-  let data = await db
-    .select({ id: teams.id, divisionId: teams.divisionId })
-    .from(teams)
-    .where(sql`lower(${teams.name}) = lower(${name})`);
-  return data[0];
+  // TODO: Call API
+  return {"id": 1, "divisionId": 1, "name": "team1"}; // Placeholder for actual team fetching logic
+}
+//TODO: Remove this, its just testing info
+async function grabTeam2Info(name: String) {
+  // TODO: Call API
+  return {"id": 2, "divisionId": 1, "name": "team2"}; // Placeholder for actual team fetching logic
 }
 const userState = new Map();
 
 async function getTeamsByDivision(division: number) {
-  let data = await db
-    .select()
-    .from(teams)
-    .where(eq(teams.divisionId, division));
-  return data;
+  // TODO: Call API
+  return [{"name":"team1"}, {"name":"team2"}]; // Placeholder for actual team fetching logic
 }
 
-async function checkSeries(team1Data: any, team2Data: any) {
-  const st1 = alias(teamToSeries, "st1");
-  const st2 = alias(teamToSeries, "st2");
-  try {
-    let response = await db
-      .select({ seriesId: series.id }) // Specify the column(s) to retrieve
-      .from(series)
-      .innerJoin(
-        st1, // First join for team1
-        eq(st1.seriesId, series.id) // Match team1
-      )
-      .innerJoin(
-        st2, // Second join for team2 with alias "st2"
-        eq(st2.seriesId, series.id) // Match team2 using alias
-      )
-      .where(and(eq(st1.teamId, team1Data.id), eq(st2.teamId, team2Data.id))) // Ensure both teams are in the same series
-      .limit(1); // Optionally limit to one result if needed
-
-    return response[0];
-  } catch (e) {
-    console.log(e);
-    return null;
-  }
-}
 // TODO: we should NOT use any here if we know what it's going to be.
 // i don't know what it is going to be LMFAO
 async function handleDivisionSelect(interaction: any, message: any) {
   const { customId, values, user } = interaction;
-  let divisionsMap = DatabaseUtil.Instance.divisionsMap;
   const divisionKey = parseInt(values[0]);
   const divisionName = divisionsMap.get(divisionKey);
   const teams = (await getTeamsByDivision(divisionKey)) || [];
@@ -282,17 +237,20 @@ async function handleTeamSelect(interaction: any, message) {
   const confirm = new ButtonBuilder()
     .setCustomId("confirm")
     .setLabel("Confirm")
-    .setStyle(ButtonStyle.Success);
+    .setStyle(ButtonStyle.Success)
+    .setEmoji('✅');
 
   const switchSides = new ButtonBuilder()
     .setCustomId("switch_sides")
     .setLabel("Switch Sides")
-    .setStyle(ButtonStyle.Primary);
+    .setStyle(ButtonStyle.Primary)
+    .setEmoji('🔄');
 
   const cancel = new ButtonBuilder()
     .setCustomId("cancel")
     .setLabel("Cancel")
-    .setStyle(ButtonStyle.Danger);
+    .setStyle(ButtonStyle.Danger)
+    .setEmoji('❌'); 
 
   const confirmRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     confirm,
@@ -311,8 +269,7 @@ async function handleTeamSelect(interaction: any, message) {
 
 async function handleBothTeamSubmission(interaction)
 {
-  const { customId, values, user } = interaction;
-  let divisionsMap = DatabaseUtil.Instance.divisionsMap;
+  const { user } = interaction;
 
   const state = userState.get(user.id)
   try {
@@ -333,8 +290,19 @@ async function handleBothTeamSubmission(interaction)
         content: "Your teams have been selected. Generating tournament code...",
         components: [],
       });
+
+      const buttonCustomId = `generate_another:${state.team1}:${state.team2}:${user.id}`;
+      const generateButton = new ButtonBuilder()
+        .setCustomId(buttonCustomId)
+        .setLabel('Generate Next Game')
+        .setStyle(ButtonStyle.Success)
+        .setEmoji('⚔️');
+        const buttonRow = new ActionRowBuilder<ButtonBuilder>()
+        .addComponents(generateButton);
+
       await interaction.followUp({
         content: tournamentCode.discordResponse?.toString(),
+        components: [buttonRow],
         ephemeral: false,
       });
     }
@@ -350,10 +318,11 @@ async function handleBothTeamSubmission(interaction)
   }
 }
 
+// TODO: Fix this as to not need to send interaction
 async function getTournamentCode(
   team1: string,
   team2: string,
-  interaction: StringSelectMenuInteraction<CacheType>,
+  interaction: any,
   divisionsMap: Map<any, any>
 ): Promise<{
   discordResponse: string | null;
@@ -364,12 +333,14 @@ async function getTournamentCode(
   team1: string;
   team2: string;
 }> {
+  //TODO: Call api with this informatio nand let it handle all this logic
   let gameNumber = 1;
   let team1Data = await grabTeamInfo(team1);
-  let team2Data = await grabTeamInfo(team2);
+  let team2Data = await grabTeam2Info(team2);
 
   if (!team1Data || !team2Data) {
     return {
+      discordResponse: null,
       shortcode: null,
       gameNumber,
       error: `Are you sure ${!team1Data ? team1 : team2} is a real team?`,
@@ -380,6 +351,7 @@ async function getTournamentCode(
   }
   if (team1Data.id === team2Data.id) {
     return {
+      discordResponse: null,
       shortcode: null,
       gameNumber,
       error: "This is not One For All. No picking the same champs/teams",
@@ -389,9 +361,10 @@ async function getTournamentCode(
     };
   }
 
-  const seriesCheck = await checkSeries(team1Data, team2Data);
+  const seriesCheck = {"seriesId": 0}; // Placeholder for actual series check logic
   if (!seriesCheck) {
     return {
+      discordResponse: null,
       shortcode: null,
       gameNumber,
       error: "There is no series for those two teams.",
@@ -402,17 +375,19 @@ async function getTournamentCode(
   }
 
   const seriesId = seriesCheck.seriesId;
-  const gameResult = await db
-    .select({ gameNum: games.gameNum })
-    .from(games)
-    .where(eq(games.seriesId, seriesId))
-    .orderBy(desc(games.gameNum));
+  // Going to be removed later
+  // const gameResult = await db
+  //   .select({ gameNum: games.gameNum })
+  //   .from(games)
+  //   .where(eq(games.seriesId, seriesId))
+  //   .orderBy(desc(games.gameNum));
 
-  if (gameResult && gameResult[0]) {
-    gameNumber = gameResult[0].gameNum + 1;
-  }
+  // if (gameResult && gameResult[0]) {
+  //   gameNumber = gameResult[0].gameNum + 1;
+  // }
   if (gameNumber > 10) {
     return {
+      discordResponse: null,
       shortcode: null,
       gameNumber,
       error:
@@ -423,45 +398,47 @@ async function getTournamentCode(
     };
   }
 
-  const response = await db
-    .select({
-      tournamentId: divisions.tournamentId,
-    })
-    .from(divisions)
-    .where(eq(divisions.id, team1Data.divisionId ?? 0));
+  // const response = await db
+  //   .select({
+  //     tournamentId: divisions.tournamentId,
+  //   })
+  //   .from(divisions)
+  //   .where(eq(divisions.id, team1Data.divisionId ?? 0));
 
-  const tid = response[0]?.tournamentId;
-  if (!tid) {
-    return {
-      shortcode: null,
-      gameNumber,
-      error: "Tournament code not found for the given division.",
-      divisionId: team1Data.divisionId,
-      team1,
-      team2,
-    };
-  }
-
-  let shortcode;
+  // const tid = response[0]?.tournamentId;
+  // if (!tid) {
+  //   return {
+  //     discordResponse: null,
+  //     shortcode: null,
+  //     gameNumber,
+  //     error: "Tournament code not found for the given division.",
+  //     divisionId: team1Data.divisionId,
+  //     team1,
+  //     team2,
+  //   };
+  const tid = 1; // Placeholder for actual tournament ID logic
+  let shortcode = "SHORTCODE_PLACEHOLDER"; // Placeholder for actual shortcode generation logic
   try {
     let meta = JSON.stringify({ gameNum: gameNumber, seriesId: seriesId });
-    const riotResponse = await config.rAPI.tournamentV5.createCodes({
-      params: {
-        count: 1,
-        tournamentId: tid,
-      },
-      body: {
-        teamSize: 5,
-        pickType: RiotAPITypes.TournamentV5.PICKTYPE.TOURNAMENT_DRAFT,
-        mapType: RiotAPITypes.TournamentV5.MAPTYPE.SUMMONERS_RIFT,
-        spectatorType: RiotAPITypes.TournamentV5.SPECTATORTYPE.ALL,
-        enoughPlayers: false,
-        metadata: meta,
-      },
-    });
-    shortcode = riotResponse[0];
+    // const riotResponse = await config.rAPI.tournamentV5.createCodes({
+    //   params: {
+    //     count: 1,
+    //     tournamentId: tid,
+    //   },
+    //   body: {
+    //     teamSize: 5,
+    //     pickType: RiotAPITypes.TournamentV5.PICKTYPE.TOURNAMENT_DRAFT,
+    //     mapType: RiotAPITypes.TournamentV5.MAPTYPE.SUMMONERS_RIFT,
+    //     spectatorType: RiotAPITypes.TournamentV5.SPECTATORTYPE.ALL,
+    //     enoughPlayers: false,
+    //     metadata: meta,
+    //   },
+    // });
+    // shortcode = riotResponse[0];
+    
   } catch (e: any) {
     return {
+      discordResponse: null,
       shortcode: null,
       gameNumber,
       error:
@@ -473,39 +450,42 @@ async function getTournamentCode(
   }
   // let datetime = new Date();
   // shortcode = "NA005"+datetime.getSeconds();
-  try {
-    const res = await db.transaction(async (tx) => {
-      return await tx
-        .insert(games)
-        .values({
-          shortcode,
-          seriesId,
-          gameNum: gameNumber,
-        })
-        .returning({ gameId: games.id });
-    });
-    if (res.length === 0) {
-      console.log(`Game insert failed:\n 
-          Series ID: '${seriesId}'\n
-          TCode: '${shortcode}'\n
-          Game Num: '${gameNumber}'\n`);
-    } else {
-      console.log(`Inserted '${res[0].gameId}' for series '${seriesId}'.`);
-    }
-  } catch (e: any) {
-    console.log(e);
-    return {
-      shortcode,
-      gameNumber,
-      error:
-        "Something went wrong with saving the code: " +
-        shortcode +
-        " . Please make an URGENT admin ticket.",
-      divisionId: team1Data.divisionId,
-      team1,
-      team2,
-    };
-  }
+
+  // WOW, ITS LIKE THE API WILL DO THIS NOW. CRAZYYYYY
+  // try {
+  //   const res = await db.transaction(async (tx) => {
+  //     return await tx
+  //       .insert(games)
+  //       .values({
+  //         shortcode,
+  //         seriesId,
+  //         gameNum: gameNumber,
+  //       })
+  //       .returning({ gameId: games.id });
+  //   });
+  //   if (res.length === 0) {
+  //     console.log(`Game insert failed:\n 
+  //         Series ID: '${seriesId}'\n
+  //         TCode: '${shortcode}'\n
+  //         Game Num: '${gameNumber}'\n`);
+  //   } else {
+  //     console.log(`Inserted '${res[0].gameId}' for series '${seriesId}'.`);
+  //   }
+  // } catch (e: any) {
+  //   console.log(e);
+  //   return {
+  //     discordResponse: null,
+  //     shortcode,
+  //     gameNumber,
+  //     error:
+  //       "Something went wrong with saving the code: " +
+  //       shortcode +
+  //       " . Please make an URGENT admin ticket.",
+  //     divisionId: team1Data.divisionId,
+  //     team1,
+  //     team2,
+  //   };
+  // }
 
   let division_name = divisionsMap.get(team1Data.divisionId);
   const member = await interaction.guild!.members.fetch(interaction.user.id);
@@ -531,4 +511,244 @@ async function getTournamentCode(
     team1,
     team2,
   };
+}
+
+export async function handleGenerateAnotherCode(interaction: ButtonInteraction) {
+  try {
+    const [_, team1, team2, originalUserId] = interaction.customId.split(':');
+    if (interaction.user.id !== originalUserId) {
+      await interaction.reply({
+        content: "Only the person who generated the original code can generate another one.",
+        ephemeral: true
+      });
+      return;
+    }
+
+    const generateButton = new ButtonBuilder()
+      .setCustomId(`generate_another_confirm:${team1}:${team2}:${originalUserId}`)
+      .setLabel('Generate Same Sides')
+      .setStyle(ButtonStyle.Success)
+      .setEmoji('⚔️');
+
+    const switchButton = new ButtonBuilder()
+      .setCustomId(`switch_sides_confirm:${team2}:${team1}:${originalUserId}`)
+      .setLabel('Switch Sides')
+      .setStyle(ButtonStyle.Primary)
+      .setEmoji('🔄');
+
+    // const endSeriesButton = new ButtonBuilder()
+    //   .setCustomId(`end_series:${team1}:${team2}:${originalUserId}`)
+    //   .setLabel('End Series')
+    //   .setStyle(ButtonStyle.Danger)
+    //   .setEmoji('🏁');
+
+    const buttonRow = new ActionRowBuilder<ButtonBuilder>()
+      .addComponents(generateButton, switchButton);
+
+    const content = `Current team sides:\n` +
+      `# Blue Side: ${team1}\n` +
+      `# Red Side: ${team2}\n\n` +
+      `Choose to generate with same sides or switch them:`;
+
+    // Use reply for new message when generating another code
+    await interaction.reply({
+      content: content,
+      components: [buttonRow],
+      ephemeral: true
+    });
+  } catch (error) {
+    console.error(error);
+    await interaction.followUp({
+      content: 'There was an error preparing the team selection.',
+      ephemeral: true
+    });
+  }
+}
+
+export async function handleSwitchSidesConfirm(interaction: ButtonInteraction) {
+  try {
+    const [_, team1, team2, originalUserId] = interaction.customId.split(':');
+    
+    if (interaction.user.id !== originalUserId) {
+      await interaction.reply({
+        content: "Only the person who generated the original code can switch sides.",
+        ephemeral: true
+      });
+      return;
+    }
+
+    const confirmButton = new ButtonBuilder()
+      .setCustomId(`generate_another_confirm:${team1}:${team2}:${originalUserId}`)
+      .setLabel('Confirm Sides')
+      .setStyle(ButtonStyle.Success)
+      .setEmoji('✅');
+
+    const cancelButton = new ButtonBuilder()
+      .setCustomId(`cancel_switch:${team2}:${team1}:${originalUserId}`)
+      .setLabel('Cancel')
+      .setStyle(ButtonStyle.Danger)
+      .setEmoji('❌');
+
+    const buttonRow = new ActionRowBuilder<ButtonBuilder>()
+      .addComponents(confirmButton, cancelButton);
+
+    const content = `Please confirm the new sides:\n` +
+      `# Blue Side: ${team1}\n` +
+      `# Red Side: ${team2}\n\n` +
+      `Click Confirm to generate code with these sides:`;
+
+    // Use update to modify existing message for switch/cancel flow
+    await interaction.update({
+      content: content,
+      components: [buttonRow],
+    });
+  } catch (error) {
+    console.error(error);
+    await interaction.followUp({
+      content: 'There was an error preparing the side switch confirmation.',
+      ephemeral: true
+    });
+  }
+}
+
+export async function handleGenerateAnotherConfirm(interaction: ButtonInteraction) {
+  try {
+    const [_, team1, team2, originalUserId] = interaction.customId.split(':');
+    
+    if (interaction.user.id !== originalUserId) {
+      await interaction.reply({
+        content: "Only the person who generated the original code can generate another one.",
+        ephemeral: true
+      });
+      return;
+    }
+
+    await interaction.update({
+      content: "Generating new tournament code...",
+      components: [],
+    });
+
+    const tournamentCode = await getTournamentCode(
+      team1,
+      team2,
+      interaction,
+      divisionsMap
+    );
+
+    if (tournamentCode.error) {
+      await interaction.followUp({
+        content: tournamentCode.error,
+        ephemeral: true
+      });
+      return;
+    }
+
+    // Create generate another button
+    const generateButton = new ButtonBuilder()
+      .setCustomId(`generate_another:${team1}:${team2}:${originalUserId}`)
+      .setLabel('Generate Next Game')
+      .setStyle(ButtonStyle.Success)
+      .setEmoji('⚔️');
+
+    // const endSeriesButton = new ButtonBuilder()
+    //   .setCustomId(`end_series:${team1}:${team2}:${originalUserId}`)
+    //   .setLabel('End Series')
+    //   .setStyle(ButtonStyle.Danger);
+
+    const buttonRow = new ActionRowBuilder<ButtonBuilder>()
+      .addComponents(generateButton);
+
+    // Send new message with tournament code and button
+    await interaction.followUp({
+      content: tournamentCode.discordResponse?.toString(),
+      components: [buttonRow],
+      ephemeral: false
+    });
+
+  } catch (error) {
+    console.error(error);
+    await interaction.followUp({
+      content: 'There was an error generating a new tournament code.',
+      ephemeral: true
+    });
+  }
+}
+
+export async function handleCancelSwitch(interaction: ButtonInteraction) {
+  try {
+    const [_, team1, team2, originalUserId] = interaction.customId.split(':');
+    
+    if (interaction.user.id !== originalUserId) {
+      await interaction.reply({
+        content: "Only the person who generated the original code can perform this action.",
+        ephemeral: true
+      });
+      return;
+    }
+
+    const generateButton = new ButtonBuilder()
+      .setCustomId(`generate_another_confirm:${team1}:${team2}:${originalUserId}`)
+      .setLabel('Generate Same Sides')
+      .setStyle(ButtonStyle.Success)
+      .setEmoji('⚔️');
+
+
+    const switchButton = new ButtonBuilder()
+      .setCustomId(`switch_sides_confirm:${team2}:${team1}:${originalUserId}`)
+      .setLabel('Switch Sides')
+      .setStyle(ButtonStyle.Primary)
+      .setEmoji('🔄');
+
+    // const endSeriesButton = new ButtonBuilder()
+    //   .setCustomId(`end_series:${team1}:${team2}:${originalUserId}`)
+    //   .setLabel('End Series')
+    //   .setStyle(ButtonStyle.Danger);
+
+    const buttonRow = new ActionRowBuilder<ButtonBuilder>()
+      .addComponents(generateButton, switchButton);
+
+    const content = `Current team sides:\n` +
+      `# Blue Side: ${team1}\n` +
+      `# Red Side: ${team2}\n\n` +
+      `Choose to generate with same sides or switch them:`;
+
+    // Use update to modify existing message when canceling
+    await interaction.update({
+      content: content,
+      components: [buttonRow]
+    });
+  } catch (error) {
+    console.error(error);
+    await interaction.followUp({
+      content: 'There was an error handling the cancellation.',
+      ephemeral: true
+    });
+  }
+}
+
+export async function handleEndSeries(interaction: ButtonInteraction) {
+  try {
+    const [_, team1, team2, originalUserId] = interaction.customId.split(':');
+    
+    if (interaction.user.id !== originalUserId) {
+      await interaction.reply({
+        content: "Only the person who generated the original code can end this series.",
+        ephemeral: true
+      });
+      return;
+    }
+
+    await interaction.update({
+      content: interaction.message.content,
+      components: [], // Remove all buttons
+    });
+
+
+  } catch (error) {
+    console.error(error);
+    await interaction.followUp({
+      content: 'There was an error ending the series.',
+      ephemeral: true
+    });
+  }
 }

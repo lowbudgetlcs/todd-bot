@@ -13,8 +13,11 @@ import {
   import { alias } from "drizzle-orm/pg-core";
   import { config } from "../config";
   import { RiotAPITypes } from "@fightmegg/riot-api/dist/esm/@types";
-  import { DatabaseUtil } from "../util";
+  // import { DatabaseUtil } from "../util";
 
+  let divisionsMap = new Map();
+      divisionsMap.set(1, "Division 1");
+      divisionsMap.set(2, "Division 2");
   // TODO: SINCE THIS SHARES A LOT OF CODE WITH TOURNAMENT.CS SHOULD REFACTOR AND PUT COMMON CODE
   module.exports = {
     data: new SlashCommandBuilder()
@@ -22,8 +25,8 @@ import {
       .setDescription("Create a series for a matchup")
       .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
     async execute(interaction) {
-      let divisionsMap = DatabaseUtil.Instance.divisionsMap;
-  
+      // let divisionsMap = DatabaseUtil.Instance.divisionsMap;
+
       if (divisionsMap.size == 0) {
         await interaction.reply({
           content: "No divisions found.",
@@ -91,7 +94,7 @@ import {
   // i don't know what it is going to be LMFAO
   async function handleDivisionSelect(interaction: any, message: any) {
     const { customId, values, user } = interaction;
-    let divisionsMap = DatabaseUtil.Instance.divisionsMap;
+
     const divisionKey = parseInt(values[0]);
     const divisionName = divisionsMap.get(divisionKey);
     const teams = (await getTeamsByDivision(divisionKey)) || [];
@@ -150,7 +153,6 @@ import {
   
   async function handleTeamSelect(interaction: any) {
     const { customId, values, user } = interaction;
-    let divisionsMap = DatabaseUtil.Instance.divisionsMap;
   
     const selectedTeam = values[0];
     const isTeam1 = customId === "team1_select";
@@ -212,11 +214,12 @@ import {
     try {
         let team1Data = await grabTeamInfo(state.team1);
         let team2Data = await grabTeamInfo(state.team2);
-        const newSeriesId = await db.insert(series).values({ divisionId: team1Data.divisionId }).returning({ insertedId: series.id });
-        await db.transaction(async (tx) => {
-            await tx.insert(teamToSeries).values({teamId: team1Data.id, seriesId: newSeriesId[0].insertedId});
-            await tx.insert(teamToSeries).values({teamId: team2Data.id, seriesId: newSeriesId[0].insertedId});
-        });
+        // imagine doing a db call xD
+        // const newSeriesId = await db.insert(series).values({ divisionId: team1Data.divisionId }).returning({ insertedId: series.id });
+        // await db.transaction(async (tx) => {
+        //     await tx.insert(teamToSeries).values({teamId: team1Data.id, seriesId: newSeriesId[0].insertedId});
+        //     await tx.insert(teamToSeries).values({teamId: team2Data.id, seriesId: newSeriesId[0].insertedId});
+        // });
         await interaction.update({
             content: "Series has been made!",
             components: [],

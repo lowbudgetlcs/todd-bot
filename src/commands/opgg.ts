@@ -3,7 +3,7 @@ import { Interaction, StringSelectMenuBuilder, ActionRowBuilder, StringSelectMen
 import { db } from "../db/db";
 import { players} from "../db/schema";
 import { eq } from "drizzle-orm";
-import { DatabaseUtil, getTeamsByDivision } from "../util";
+//import { DatabaseUtil, getTeamsByDivision } from "../util";
 
 module.exports = {
   data: new SlashCommandBuilder()
