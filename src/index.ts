@@ -14,7 +14,7 @@ import {
   ActionRowBuilder,
 } from "discord.js";
 import { config } from "./config";
-import { handleButtonInteraction } from "./buttonHandler";
+import { getButtonHandler } from "./buttonHandler";
 
 import { deployCommands } from "./deploy-commands";
 
@@ -100,7 +100,9 @@ const channelId = process.env.CHANNEL_ID!;
 
 client.on(Events.InteractionCreate, async interaction => {
   if (interaction.isButton()) {
-    await handleButtonInteraction(interaction as ButtonInteraction);
+    const customId = interaction.customId;
+    const handler = getButtonHandler(customId);
+    if (handler != null && handler != undefined) await handler(interaction);
     return;
   }
 

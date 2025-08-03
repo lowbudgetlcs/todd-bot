@@ -1,4 +1,3 @@
-import { ButtonInteraction } from "discord.js";
 import { 
     handleGenerateAnotherCode, 
     handleGenerateAnotherConfirm, 
@@ -7,27 +6,18 @@ import {
     handleCancelSwitch 
 } from "./commands/tournament";
 
-export async function handleButtonInteraction(interaction: ButtonInteraction) {
-    const customId = interaction.customId;
-
-    if (customId.startsWith('generate_another:')) {
-        await handleGenerateAnotherCode(interaction);
-        return;
-    }
-    if (customId.startsWith('generate_another_confirm:')) {
-        await handleGenerateAnotherConfirm(interaction);
-        return;
-    }
-    if (customId.startsWith('switch_sides_confirm:')) {
-        await handleSwitchSidesConfirm(interaction);
-        return;
-    }
-    if (customId.startsWith('end_series:')) {
-        await handleEndSeries(interaction);
-        return;
-    }
-    if (customId.startsWith('cancel_switch:')) {
-        await handleCancelSwitch(interaction);
-        return;
-    }
+/* Maps customId to button handler callback */
+export function getButtonHandler(customId: string) {
+  switch(customId.substring(0, customId.indexOf(':'))) {
+    case 'generate_another':
+        return handleGenerateAnotherCode;
+    case 'generate_another_confirm':
+      return handleGenerateAnotherConfirm;
+    case 'switch_sides_confirm':
+      return handleSwitchSidesConfirm;
+    case 'end_series':
+      return handleEndSeries;
+    case 'cancel_switch': 
+      return handleCancelSwitch;
+  }
 }
