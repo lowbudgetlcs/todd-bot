@@ -8,10 +8,6 @@ import {
   Interaction,
   SlashCommandBuilder,
   RESTPostAPIChatInputApplicationCommandsJSONBody,
-  ButtonInteraction,
-  ButtonBuilder,
-  ButtonStyle,
-  ActionRowBuilder,
 } from "discord.js";
 import { config } from "./config";
 import { getButtonHandler } from "./buttonHandler";

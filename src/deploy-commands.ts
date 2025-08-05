@@ -1,7 +1,7 @@
 import { REST, Routes, RESTPostAPIChatInputApplicationCommandsJSONBody } from "discord.js";
 import { config } from "./config";
 
-const rest = new REST({ version: "10" }).setToken(config.DISCORD_TOKEN);
+const rest = new REST({ version: "10" }).setToken(config.DISCORD_TOKEN!);
 
 type DeployCommandsProps = {
   guildId: string;
@@ -11,12 +11,12 @@ export async function deployCommands({ guildId }: DeployCommandsProps, commands:
   try {
     console.log("Started refreshing application (/) commands.");
     await rest
-      .put(Routes.applicationGuildCommands(config.DISCORD_CLIENT_ID, guildId), {
+      .put(Routes.applicationGuildCommands(config.DISCORD_CLIENT_ID!, guildId), {
         body: [],
       })
     console.log("Successfully deleted guild commands");
     await rest.put(
-      Routes.applicationGuildCommands(config.DISCORD_CLIENT_ID, guildId),
+      Routes.applicationGuildCommands(config.DISCORD_CLIENT_ID!, guildId),
       {
         body: commands,
       },

@@ -1,20 +1,19 @@
 import {
     ActionRowBuilder,
     CacheType,
+    ChatInputCommandInteraction,
     ComponentType,
     PermissionFlagsBits,
     SlashCommandBuilder,
     StringSelectMenuBuilder,
     StringSelectMenuInteraction,
+    User
   } from "discord.js";
   import { db } from "../db/db";
   import { divisions, games, series, teams, teamToSeries } from "../db/schema";
   import { and, sql, desc, eq } from "drizzle-orm";
-  import { alias } from "drizzle-orm/pg-core";
-  import { config } from "../config";
-  import { RiotAPITypes } from "@fightmegg/riot-api/dist/esm/@types";
   // import { DatabaseUtil } from "../util";
-
+  
   let divisionsMap = new Map();
       divisionsMap.set(1, "Division 1");
       divisionsMap.set(2, "Division 2");
@@ -24,7 +23,7 @@ import {
       .setName("create-series")
       .setDescription("Create a series for a matchup")
       .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
-    async execute(interaction) {
+    async execute(interaction: { reply: (arg0: { content: string; components: never[] | ActionRowBuilder<StringSelectMenuBuilder>[]; flags: string; withResponse?: boolean; }) => any; user: User }) {
       // let divisionsMap = DatabaseUtil.Instance.divisionsMap;
 
       if (divisionsMap.size == 0) {
@@ -59,14 +58,14 @@ import {
       // As we traverse through each menu.
       const message = response.resource!.message;
       const collector =
-        response.resource!.message!.createMessageComponentCollector({
+        message.createMessageComponentCollector({
           componentType: ComponentType.StringSelect,
-          filter: (i) =>
-            i.user === interaction.user && i.customId == "division_select",
+          filter: (i: StringSelectMenuInteraction) =>
+        i.user.id === interaction.user.id && i.customId === "division_select",
           time: 5 * 60 * 1000,
         });
   
-      collector.on("collect", async (interaction) => {
+      collector.on("collect", async (interaction: StringSelectMenuInteraction) => {
         handleDivisionSelect(interaction, message);
       });
       return;
@@ -140,13 +139,13 @@ import {
     );
     const collector = message.createMessageComponentCollector({
       componentType: ComponentType.StringSelect,
-      filter: (i) =>
-        i.user === interaction.user &&
-        ["team1_select", "team2_select"].includes(i.customId),
+      filter: (i: StringSelectMenuInteraction) =>
+      i.user.id === interaction.user.id &&
+      ["team1_select", "team2_select"].includes(i.customId),
       time: 5 * 60 * 1000,
     });
   
-    collector.on("collect", async (interaction) => {
+    collector.on("collect", async (interaction: StringSelectMenuInteraction) => {
       handleTeamSelect(interaction);
     });
   }
@@ -177,7 +176,7 @@ import {
       .setCustomId("team1_select")
       .setPlaceholder("Select Team 1")
       .addOptions(
-        state.teams.map((team: { name: any }) => ({
+        state.teams.map((team: { name: string }) => ({
           label: team.name,
           value: team.name,
           default: state.team1 === team.name,
@@ -188,7 +187,7 @@ import {
       .setCustomId("team2_select")
       .setPlaceholder("Select Team 2")
       .addOptions(
-        state.teams.map((team: { name: any }) => ({
+        state.teams.map((team: { name: string }) => ({
           label: team.name,
           value: team.name,
           default: state.team2 === team.name,

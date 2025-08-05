@@ -78,67 +78,68 @@ function getUserRoles(interaction: Interaction<CacheType>) {
   return member.roles.cache.map((role) => role.id);
 }
 
+// TODO: Remove this?
 /**
  * Calls the db to check if the command is good to execute.
  * By default if there are no rows in the role / channel permissions, commands are good to go.
  * Checks both role + channel perms, must need both to execute.
  * @returns command is good to execute
  */
-export async function checkDbForPermissions(
-  interaction: Interaction,
-  commandName: string
-) {
-  let roleAllowed = false;
-  let channelAllowed = false;
-  // i don't know how joins work so we will live with 2 queries
-  // TODO: cache these results, maybe like every 5 minutes?
-  // excluding some commands maybe api dependant ones so we don't get abusers?
-  let rolesToCheck = await db
-    .select()
-    .from(commandRolePermissions)
-    .where(eq(commandRolePermissions.name, commandName));
-  let channelsToCheck = await db
-    .select()
-    .from(commandChannelPermissions)
-    .where(eq(commandChannelPermissions.name, commandName));
+// export async function checkDbForPermissions(
+//   interaction: ,
+//   commandName: string
+// ) {
+//   let roleAllowed = false;
+//   let channelAllowed = false;
+//   // i don't know how joins work so we will live with 2 queries
+//   // TODO: cache these results, maybe like every 5 minutes?
+//   // excluding some commands maybe api dependant ones so we don't get abusers?
+//   let rolesToCheck = await db
+//     .select()
+//     .from(commandRolePermissions)
+//     .where(eq(commandRolePermissions.name, commandName));
+//   let channelsToCheck = await db
+//     .select()
+//     .from(commandChannelPermissions)
+//     .where(eq(commandChannelPermissions.name, commandName));
 
-  if (rolesToCheck.length > 0) {
-    let roleIds = rolesToCheck.map((x) => x.roleId);
-    const member = interaction.member as GuildMember;
-    roleAllowed = member.roles.cache.some((role) => roleIds.includes(role.id));
-  } else {
-    roleAllowed = true;
-  }
+//   if (rolesToCheck.length > 0) {
+//     let roleIds = rolesToCheck.map((x) => x.roleId);
+//     const member = interaction.member as GuildMember;
+//     roleAllowed = member.roles.cache.some((role) => roleIds.includes(role.id));
+//   } else {
+//     roleAllowed = true;
+//   }
 
-  if (channelsToCheck.length > 0) {
-    let channelIds = channelsToCheck.map((x) => x.channelId);
-    const messageChannel = interaction.channelId ?? "";
-    if (channelIds.includes(messageChannel)) {
-      channelAllowed = true;
-    }
-  } else {
-    channelAllowed = true;
-  }
-  if (!roleAllowed && !channelAllowed) {
-    await interaction.reply({
-      content:
-        "Sorry, you can't run this command with your roles and in this channel!",
-      flags: "Ephemeral",
-    });
-  } else if (!roleAllowed) {
-    await interaction.reply({
-      content: "Sorry, you aren't cool enough for this command.",
-      flags: "Ephemeral",
-    });
-  } else if (!channelAllowed) {
-    await interaction.reply({
-      content: "Sorry, you can't run that in this channel!",
-      flags: "Ephemeral",
-    });
-  }
+//   if (channelsToCheck.length > 0) {
+//     let channelIds = channelsToCheck.map((x) => x.channelId);
+//     const messageChannel = interaction.channelId ?? "";
+//     if (channelIds.includes(messageChannel)) {
+//       channelAllowed = true;
+//     }
+//   } else {
+//     channelAllowed = true;
+//   }
+//   if (!roleAllowed && !channelAllowed) {
+//     await interaction.reply({
+//       content:
+//         "Sorry, you can't run this command with your roles and in this channel!",
+//       flags: "Ephemeral",
+//     });
+//   } else if (!roleAllowed) {
+//     await interaction.reply({
+//       content: "Sorry, you aren't cool enough for this command.",
+//       flags: "Ephemeral",
+//     });
+//   } else if (!channelAllowed) {
+//     await interaction.reply({
+//       content: "Sorry, you can't run that in this channel!",
+//       flags: "Ephemeral",
+//     });
+//   }
 
-  return roleAllowed && channelAllowed;
-}
+//   return roleAllowed && channelAllowed;
+// }
 
 /**
  * Calls LowBudgetLCS backend to create draft links in a markdown string.
