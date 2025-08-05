@@ -14,16 +14,10 @@ import { getButtonHandler } from "./buttonHandler";
 
 import { deployCommands } from "./deploy-commands";
 
-// Remove this foul util
-// import { DatabaseUtil, checkDbForPermissions } from "./util";
 import * as path from 'path';
 import * as fs from 'fs';
 import { handleCancelSwitch, handleEndSeries, handleGenerateAnotherCode,
    handleGenerateAnotherConfirm, handleSwitchSidesConfirm, command as tournamentCommand } from "./commands/tournament";
-
-// TODO: REMOVE ALL DB SHENANIGANS FROM HERE
-// We'll just do this first to initialize it since we'll need it around ;p
-// let dbUtil = DatabaseUtil.Instance;
 
 type ActionWrapper = {
   execute: (interaction: Interaction) => Promise<void>
@@ -89,7 +83,6 @@ client.once("ready", async () => {
   deployCommands({ guildId: guild_id! }, commands);
 
   // We should grab events from API HERE :D
-  // let divisionsMap = dbUtil.divisionsMap;
 });
 
 const channelId = process.env.CHANNEL_ID!;
@@ -112,10 +105,6 @@ client.on(Events.InteractionCreate, async interaction => {
   }
   // Base command / single command
   try {
-    // Imagine checking for permissions in the DB and not making Discord do it. What noobs we are.
-    // if (!await checkDbForPermissions(interaction, interaction.commandName)) {
-    //   return;
-    // }
     await command.execute(interaction);
   } catch (error) {
     console.error(error);
