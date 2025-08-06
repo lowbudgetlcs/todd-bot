@@ -1,10 +1,4 @@
-import { 
-    handleGenerateAnotherCode, 
-    handleGenerateAnotherConfirm, 
-    handleSwitchSidesConfirm, 
-    handleEndSeries, 
-    handleCancelSwitch 
-} from "./commands/tournament";
+import { handleCancelSwitch, handleEndSeries, handleGenerateAnotherCode, handleGenerateAnotherConfirm, handleSwitchSidesConfirm } from "./codeGenerators";
 
 /* Maps customId to button handler callback */
 export function getButtonHandler(customId: string) {
