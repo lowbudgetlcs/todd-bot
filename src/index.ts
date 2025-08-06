@@ -10,14 +10,14 @@ import {
   RESTPostAPIChatInputApplicationCommandsJSONBody,
 } from "discord.js";
 import { config } from "./config";
-import { getButtonHandler } from "./buttonHandler";
 
 import { deployCommands } from "./deploy-commands";
 
 import * as path from 'path';
 import * as fs from 'fs';
-import { handleCancelSwitch, handleEndSeries, handleGenerateAnotherCode,
-   handleGenerateAnotherConfirm, handleSwitchSidesConfirm, command as tournamentCommand } from "./commands/tournament";
+import { command as tournamentCommand } from "./commands/tournament";
+import { parseButtonData } from "./buttons/button";
+import { getButtonHandler } from "./buttons/handlers";
 
 type ActionWrapper = {
   execute: (interaction: Interaction) => Promise<void>
@@ -85,12 +85,10 @@ client.once("ready", async () => {
   // We should grab events from API HERE :D
 });
 
-const channelId = process.env.CHANNEL_ID!;
-
 client.on(Events.InteractionCreate, async interaction => {
   if (interaction.isButton()) {
-    const customId = interaction.customId;
-    const handler = getButtonHandler(customId);
+    const data = parseButtonData(interaction.customId);
+    const handler = getButtonHandler(data.tag);
     if (handler != null && handler != undefined) await handler(interaction);
     return;
   }

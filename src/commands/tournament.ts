@@ -13,6 +13,7 @@ import { getDraftLinksMarkdown } from "../util";
       divisionsMap.set(1, "Division 1");
       divisionsMap.set(2, "Division 2");
 import { InteractionBasic, User } from "../interfaces";
+import { createButton, createButtonData } from "../buttons/button";
 export const command = {
   data: new SlashCommandBuilder()
     .setName("generate-tournament-code")
@@ -142,37 +143,19 @@ async function handleDivisionSelect(interaction: any, message: any) {
   collector.on("collect", async (interaction: any) => {
     handleTeamSelect(interaction);
   });
-
-  // We will need this for handleTeamSelect
-  const buttonCollector = message.createMessageComponentCollector({
-    componentType: ComponentType.Button,
-    filter: (i: { user: User; customId: string; }) =>
-      i.user === interaction.user &&
-      ["confirm", "switch_sides", "cancel"].includes(i.customId),
-    time: 5 * 60 * 1000,
-  });
-
-  buttonCollector.on("collect", async (int: ButtonInteraction) => {
-    if (int.customId == "confirm")
-    {
-      handleBothTeamSubmission(int);
-    } else
-    {
-      handleTeamSelect(int);
-    }
-  });
 }
 
-async function handleTeamSelect(interaction: any) {
+export async function handleTeamSelect(interaction: any) {
   const { customId, values, user } = interaction;
   let selectedTeam = "";
 
   const state = userState.get(user.id);
-  if (customId == "cancel")
+  console.log(customId);
+  if (customId.substring(0,customId.indexOf(':')) === ("cancel"))
   {
     state.team1 = ""
     state.team2 = ""
-  } else if (customId == "switch_sides")
+  } else if (customId.substring(0,customId.indexOf(':')) === ("switch"))
   {
     const temp = state.team1;
     state.team1 = state.team2;
@@ -233,23 +216,15 @@ async function handleTeamSelect(interaction: any) {
     });
     return;
   }
-  const confirm = new ButtonBuilder()
-    .setCustomId("confirm")
-    .setLabel("Confirm")
-    .setStyle(ButtonStyle.Success)
-    .setEmoji('✅');
 
-  const switchSides = new ButtonBuilder()
-    .setCustomId("switch_sides")
-    .setLabel("Switch Sides")
-    .setStyle(ButtonStyle.Primary)
-    .setEmoji('🔄');
+  const confirmButtonData = createButtonData("confirm", user.id, [state.team1, state.team2]);
+  const confirm = createButton(confirmButtonData, "Confirm", ButtonStyle.Success, '✅');
 
-  const cancel = new ButtonBuilder()
-    .setCustomId("cancel")
-    .setLabel("Cancel")
-    .setStyle(ButtonStyle.Danger)
-    .setEmoji('❌'); 
+  const switchSidesButtonData = createButtonData("switch", user.id, [state.team2, state.team1]);
+  const switchSides = createButton(switchSidesButtonData, "Switch Sides", ButtonStyle.Primary, '🔄');
+  const cancelButtonData = createButtonData("cancel", user.id, [state.team1, state.team2]);
+  const cancel = createButton(cancelButtonData, "Cancel", ButtonStyle.Danger, '❌');  
+
 
   const confirmRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     confirm,
@@ -266,7 +241,7 @@ async function handleTeamSelect(interaction: any) {
   });
 }
 
-async function handleBothTeamSubmission(interaction: ButtonInteraction)
+export async function handleBothTeamSubmission(interaction: ButtonInteraction)
 {
   const { user } = interaction;
 
@@ -275,8 +250,7 @@ async function handleBothTeamSubmission(interaction: ButtonInteraction)
     const tournamentCode = await getTournamentCode(
       state.team1,
       state.team2,
-      interaction,
-      divisionsMap
+      interaction
     );
     if (tournamentCode.error != null) {
       // Handle error: Update original interaction
@@ -290,13 +264,10 @@ async function handleBothTeamSubmission(interaction: ButtonInteraction)
         components: [],
       });
 
-      const buttonCustomId = `generate_another:${state.team1}:${state.team2}:${user.id}`;
-      const generateButton = new ButtonBuilder()
-        .setCustomId(buttonCustomId)
-        .setLabel('Generate Next Game')
-        .setStyle(ButtonStyle.Success)
-        .setEmoji('⚔️');
-        const buttonRow = new ActionRowBuilder<ButtonBuilder>()
+      const generateButtonData = createButtonData("generate_another", user.id, [state.team1, state.team2]);
+      const generateButton = createButton(generateButtonData, "Generate Next Game", ButtonStyle.Success, '⚔️');
+
+      const buttonRow = new ActionRowBuilder<ButtonBuilder>()
         .addComponents(generateButton);
 
       await interaction.followUp({
@@ -318,11 +289,10 @@ async function handleBothTeamSubmission(interaction: ButtonInteraction)
 }
 
 // TODO: Fix this as to not need to send interaction
-async function getTournamentCode(
+export async function getTournamentCode(
   team1: string,
   team2: string,
-  interaction: ButtonInteraction,
-  divisionsMap: Map<number, string>
+  interaction: ButtonInteraction
 ): Promise<{
   discordResponse: string | null;
   shortcode: string | null;
@@ -492,7 +462,7 @@ async function getTournamentCode(
 
   let discordResponse =
     `## ${division_name}\n` +
-    `**__*${team2}*__ vs __*${team2}*__**\n` +
+    `**__*${team1}*__ vs __*${team2}*__**\n` +
     `Game ${gameNumber} Code: \`\`\`${shortcode}\`\`\`\n` +
     draftLinkMarkdown +
     `Generated By: <@${member.id}>`;
@@ -512,242 +482,5 @@ async function getTournamentCode(
   };
 }
 
-export async function handleGenerateAnotherCode(interaction: ButtonInteraction) {
-  try {
-    const [_, team1, team2, originalUserId] = interaction.customId.split(':');
-    if (interaction.user.id !== originalUserId) {
-      await interaction.reply({
-        content: "Only the person who generated the original code can generate another one.",
-        ephemeral: true
-      });
-      return;
-    }
-
-    const generateButton = new ButtonBuilder()
-      .setCustomId(`generate_another_confirm:${team1}:${team2}:${originalUserId}`)
-      .setLabel('Generate Same Sides')
-      .setStyle(ButtonStyle.Success)
-      .setEmoji('⚔️');
-
-    const switchButton = new ButtonBuilder()
-      .setCustomId(`switch_sides_confirm:${team2}:${team1}:${originalUserId}`)
-      .setLabel('Switch Sides')
-      .setStyle(ButtonStyle.Primary)
-      .setEmoji('🔄');
-
-    // const endSeriesButton = new ButtonBuilder()
-    //   .setCustomId(`end_series:${team1}:${team2}:${originalUserId}`)
-    //   .setLabel('End Series')
-    //   .setStyle(ButtonStyle.Danger)
-    //   .setEmoji('🏁');
-
-    const buttonRow = new ActionRowBuilder<ButtonBuilder>()
-      .addComponents(generateButton, switchButton);
-
-    const content = `Current team sides:\n` +
-      `# Blue Side: ${team1}\n` +
-      `# Red Side: ${team2}\n\n` +
-      `Choose to generate with same sides or switch them:`;
-
-    // Use reply for new message when generating another code
-    await interaction.reply({
-      content: content,
-      components: [buttonRow],
-      ephemeral: true
-    });
-  } catch (error) {
-    console.error(error);
-    await interaction.followUp({
-      content: 'There was an error preparing the team selection.',
-      ephemeral: true
-    });
-  }
-}
-
-export async function handleSwitchSidesConfirm(interaction: ButtonInteraction) {
-  try {
-    const [_, team1, team2, originalUserId] = interaction.customId.split(':');
-    
-    if (interaction.user.id !== originalUserId) {
-      await interaction.reply({
-        content: "Only the person who generated the original code can switch sides.",
-        ephemeral: true
-      });
-      return;
-    }
-
-    const confirmButton = new ButtonBuilder()
-      .setCustomId(`generate_another_confirm:${team1}:${team2}:${originalUserId}`)
-      .setLabel('Confirm Sides')
-      .setStyle(ButtonStyle.Success)
-      .setEmoji('✅');
-
-    const cancelButton = new ButtonBuilder()
-      .setCustomId(`cancel_switch:${team2}:${team1}:${originalUserId}`)
-      .setLabel('Cancel')
-      .setStyle(ButtonStyle.Danger)
-      .setEmoji('❌');
-
-    const buttonRow = new ActionRowBuilder<ButtonBuilder>()
-      .addComponents(confirmButton, cancelButton);
-
-    const content = `Please confirm the new sides:\n` +
-      `# Blue Side: ${team1}\n` +
-      `# Red Side: ${team2}\n\n` +
-      `Click Confirm to generate code with these sides:`;
-
-    // Use update to modify existing message for switch/cancel flow
-    await interaction.update({
-      content: content,
-      components: [buttonRow],
-    });
-  } catch (error) {
-    console.error(error);
-    await interaction.followUp({
-      content: 'There was an error preparing the side switch confirmation.',
-      ephemeral: true
-    });
-  }
-}
-
-export async function handleGenerateAnotherConfirm(interaction: ButtonInteraction) {
-  try {
-    const [_, team1, team2, originalUserId] = interaction.customId.split(':');
-    
-    if (interaction.user.id !== originalUserId) {
-      await interaction.reply({
-        content: "Only the person who generated the original code can generate another one.",
-        ephemeral: true
-      });
-      return;
-    }
-
-    await interaction.update({
-      content: "Generating new tournament code...",
-      components: [],
-    });
-
-    const tournamentCode = await getTournamentCode(
-      team1,
-      team2,
-      interaction,
-      divisionsMap
-    );
-
-    if (tournamentCode.error) {
-      await interaction.followUp({
-        content: tournamentCode.error,
-        ephemeral: true
-      });
-      return;
-    }
-
-    // Create generate another button
-    const generateButton = new ButtonBuilder()
-      .setCustomId(`generate_another:${team1}:${team2}:${originalUserId}`)
-      .setLabel('Generate Next Game')
-      .setStyle(ButtonStyle.Success)
-      .setEmoji('⚔️');
-
-    // const endSeriesButton = new ButtonBuilder()
-    //   .setCustomId(`end_series:${team1}:${team2}:${originalUserId}`)
-    //   .setLabel('End Series')
-    //   .setStyle(ButtonStyle.Danger);
-
-    const buttonRow = new ActionRowBuilder<ButtonBuilder>()
-      .addComponents(generateButton);
-
-    // Send new message with tournament code and button
-    await interaction.followUp({
-      content: tournamentCode.discordResponse?.toString(),
-      components: [buttonRow],
-      ephemeral: false
-    });
-
-  } catch (error) {
-    console.error(error);
-    await interaction.followUp({
-      content: 'There was an error generating a new tournament code.',
-      ephemeral: true
-    });
-  }
-}
-
-export async function handleCancelSwitch(interaction: ButtonInteraction) {
-  try {
-    const [_, team1, team2, originalUserId] = interaction.customId.split(':');
-    
-    if (interaction.user.id !== originalUserId) {
-      await interaction.reply({
-        content: "Only the person who generated the original code can perform this action.",
-        ephemeral: true
-      });
-      return;
-    }
-
-    const generateButton = new ButtonBuilder()
-      .setCustomId(`generate_another_confirm:${team1}:${team2}:${originalUserId}`)
-      .setLabel('Generate Same Sides')
-      .setStyle(ButtonStyle.Success)
-      .setEmoji('⚔️');
 
 
-    const switchButton = new ButtonBuilder()
-      .setCustomId(`switch_sides_confirm:${team2}:${team1}:${originalUserId}`)
-      .setLabel('Switch Sides')
-      .setStyle(ButtonStyle.Primary)
-      .setEmoji('🔄');
-
-    // const endSeriesButton = new ButtonBuilder()
-    //   .setCustomId(`end_series:${team1}:${team2}:${originalUserId}`)
-    //   .setLabel('End Series')
-    //   .setStyle(ButtonStyle.Danger);
-
-    const buttonRow = new ActionRowBuilder<ButtonBuilder>()
-      .addComponents(generateButton, switchButton);
-
-    const content = `Current team sides:\n` +
-      `# Blue Side: ${team1}\n` +
-      `# Red Side: ${team2}\n\n` +
-      `Choose to generate with same sides or switch them:`;
-
-    // Use update to modify existing message when canceling
-    await interaction.update({
-      content: content,
-      components: [buttonRow]
-    });
-  } catch (error) {
-    console.error(error);
-    await interaction.followUp({
-      content: 'There was an error handling the cancellation.',
-      ephemeral: true
-    });
-  }
-}
-
-export async function handleEndSeries(interaction: ButtonInteraction) {
-  try {
-    const [_, team1, team2, originalUserId] = interaction.customId.split(':');
-    
-    if (interaction.user.id !== originalUserId) {
-      await interaction.reply({
-        content: "Only the person who generated the original code can end this series.",
-        ephemeral: true
-      });
-      return;
-    }
-
-    await interaction.update({
-      content: interaction.message.content,
-      components: [], // Remove all buttons
-    });
-
-
-  } catch (error) {
-    console.error(error);
-    await interaction.followUp({
-      content: 'There was an error ending the series.',
-      ephemeral: true
-    });
-  }
-}
