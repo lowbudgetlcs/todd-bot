@@ -10,7 +10,6 @@ import {
   RESTPostAPIChatInputApplicationCommandsJSONBody,
 } from "discord.js";
 import { config } from "./config";
-import { getButtonHandler } from "./buttons/buttonHandler";
 
 import { deployCommands } from "./deploy-commands";
 
@@ -18,6 +17,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { command as tournamentCommand } from "./commands/tournament";
 import { parseButtonData } from "./buttons/button";
+import { getButtonHandler } from "./buttons/handlers";
 
 type ActionWrapper = {
   execute: (interaction: Interaction) => Promise<void>
