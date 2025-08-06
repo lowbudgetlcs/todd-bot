@@ -17,6 +17,7 @@ import { deployCommands } from "./deploy-commands";
 import * as path from 'path';
 import * as fs from 'fs';
 import { command as tournamentCommand } from "./commands/tournament";
+import { parseButtonData } from "./buttons/button";
 
 type ActionWrapper = {
   execute: (interaction: Interaction) => Promise<void>
@@ -86,8 +87,8 @@ client.once("ready", async () => {
 
 client.on(Events.InteractionCreate, async interaction => {
   if (interaction.isButton()) {
-    const customId = interaction.customId;
-    const handler = getButtonHandler(customId);
+    const data = parseButtonData(interaction.customId);
+    const handler = getButtonHandler(data.tag);
     if (handler != null && handler != undefined) await handler(interaction);
     return;
   }

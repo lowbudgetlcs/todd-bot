@@ -13,6 +13,7 @@ import { getDraftLinksMarkdown } from "../util";
       divisionsMap.set(1, "Division 1");
       divisionsMap.set(2, "Division 2");
 import { InteractionBasic, User } from "../interfaces";
+import { createButton, createButtonData } from "../buttons/button";
 export const command = {
   data: new SlashCommandBuilder()
     .setName("generate-tournament-code")
@@ -142,37 +143,19 @@ async function handleDivisionSelect(interaction: any, message: any) {
   collector.on("collect", async (interaction: any) => {
     handleTeamSelect(interaction);
   });
-
-  // We will need this for handleTeamSelect
-  const buttonCollector = message.createMessageComponentCollector({
-    componentType: ComponentType.Button,
-    filter: (i: { user: User; customId: string; }) =>
-      i.user === interaction.user &&
-      ["confirm", "switch_sides", "cancel"].includes(i.customId),
-    time: 5 * 60 * 1000,
-  });
-
-  buttonCollector.on("collect", async (int: ButtonInteraction) => {
-    if (int.customId == "confirm")
-    {
-      handleBothTeamSubmission(int);
-    } else
-    {
-      handleTeamSelect(int);
-    }
-  });
 }
 
-async function handleTeamSelect(interaction: any) {
+export async function handleTeamSelect(interaction: any) {
   const { customId, values, user } = interaction;
   let selectedTeam = "";
 
   const state = userState.get(user.id);
-  if (customId == "cancel")
+  console.log(customId);
+  if (customId.substring(0,customId.indexOf(':')) === ("cancel"))
   {
     state.team1 = ""
     state.team2 = ""
-  } else if (customId == "switch_sides")
+  } else if (customId.substring(0,customId.indexOf(':')) === ("switch"))
   {
     const temp = state.team1;
     state.team1 = state.team2;
@@ -233,23 +216,15 @@ async function handleTeamSelect(interaction: any) {
     });
     return;
   }
-  const confirm = new ButtonBuilder()
-    .setCustomId("confirm")
-    .setLabel("Confirm")
-    .setStyle(ButtonStyle.Success)
-    .setEmoji('✅');
 
-  const switchSides = new ButtonBuilder()
-    .setCustomId("switch_sides")
-    .setLabel("Switch Sides")
-    .setStyle(ButtonStyle.Primary)
-    .setEmoji('🔄');
+  const confirmButtonData = createButtonData("confirm", user.id, [state.team1, state.team2]);
+  const confirm = createButton(confirmButtonData, "Confirm", ButtonStyle.Success, '✅');
 
-  const cancel = new ButtonBuilder()
-    .setCustomId("cancel")
-    .setLabel("Cancel")
-    .setStyle(ButtonStyle.Danger)
-    .setEmoji('❌'); 
+  const switchSidesButtonData = createButtonData("switch", user.id, [state.team2, state.team1]);
+  const switchSides = createButton(switchSidesButtonData, "Switch Sides", ButtonStyle.Primary, '🔄');
+  const cancelButtonData = createButtonData("cancel", user.id, [state.team1, state.team2]);
+  const cancel = createButton(cancelButtonData, "Cancel", ButtonStyle.Danger, '❌');  
+
 
   const confirmRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     confirm,
@@ -266,7 +241,7 @@ async function handleTeamSelect(interaction: any) {
   });
 }
 
-async function handleBothTeamSubmission(interaction: ButtonInteraction)
+export async function handleBothTeamSubmission(interaction: ButtonInteraction)
 {
   const { user } = interaction;
 
@@ -289,13 +264,10 @@ async function handleBothTeamSubmission(interaction: ButtonInteraction)
         components: [],
       });
 
-      const buttonCustomId = `generate_another:${state.team1}:${state.team2}:${user.id}`;
-      const generateButton = new ButtonBuilder()
-        .setCustomId(buttonCustomId)
-        .setLabel('Generate Next Game')
-        .setStyle(ButtonStyle.Success)
-        .setEmoji('⚔️');
-        const buttonRow = new ActionRowBuilder<ButtonBuilder>()
+      const generateButtonData = createButtonData("generate_another", user.id, [state.team1, state.team2]);
+      const generateButton = createButton(generateButtonData, "Generate Next Game", ButtonStyle.Success, '⚔️');
+
+      const buttonRow = new ActionRowBuilder<ButtonBuilder>()
         .addComponents(generateButton);
 
       await interaction.followUp({

@@ -1,55 +1,13 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle } from "discord.js";
 import { getTournamentCode } from "../commands/tournament";
+import { createButton, createButtonData, parseButtonData } from "./button";
 
-export async function handleCancelSwitch(interaction: ButtonInteraction) {
+
+export async function handleSwitchSides(interaction: ButtonInteraction) {
   try {
-    const [_, team1, team2, originalUserId] = interaction.customId.split(':');
+    const data = parseButtonData(interaction.customId);
     
-    if (interaction.user.id !== originalUserId) {
-      await interaction.reply({
-        content: "Only the person who generated the original code can perform this action.",
-        ephemeral: true
-      });
-      return;
-    }
-
-    const generateButton = createButton("Generate Same Sides", "generate_another_confirm", team1, team2, originalUserId, ButtonStyle.Success, '⚔️');
-
-    const switchButton = createButton("Switch Sides", "switch_sides_confirm", team2, team1, originalUserId, ButtonStyle.Primary, '🔄')  ;
-
-
-    // const endSeriesButton = new ButtonBuilder()
-    //   .setCustomId(`end_series:${team1}:${team2}:${originalUserId}`)
-    //   .setLabel('End Series')
-    //   .setStyle(ButtonStyle.Danger);
-
-    const buttonRow = new ActionRowBuilder<ButtonBuilder>()
-      .addComponents(generateButton, switchButton);
-
-    const content = `Current team sides:\n` +
-      `# Blue Side: ${team1}\n` +
-      `# Red Side: ${team2}\n\n` +
-      `Choose to generate with same sides or switch them:`;
-
-    // Use update to modify existing message when canceling
-    await interaction.update({
-      content: content,
-      components: [buttonRow]
-    });
-  } catch (error) {
-    console.error(error);
-    await interaction.followUp({
-      content: 'There was an error handling the cancellation.',
-      ephemeral: true
-    });
-  }
-}
-
-export async function handleSwitchSidesConfirm(interaction: ButtonInteraction) {
-  try {
-    const [_, team1, team2, originalUserId] = interaction.customId.split(':');
-    
-    if (interaction.user.id !== originalUserId) {
+    if (interaction.user.id !== data.originalUserId) {
       await interaction.reply({
         content: "Only the person who generated the original code can switch sides.",
         ephemeral: true
@@ -57,9 +15,15 @@ export async function handleSwitchSidesConfirm(interaction: ButtonInteraction) {
       return;
     }
 
-    const confirmButton =  createButton("Confirm Sides", "generate_another_confirm", team1, team2, originalUserId, ButtonStyle.Success, '✅');
+    const team1 = data.metadata[0];
+    const team2 = data.metadata[1];
+    const switchTeams = [team2, team1];
 
-    const cancelButton = createButton("Cancel Switch", "cancel_switch", team2, team1, originalUserId, ButtonStyle.Danger, '❌');
+    const confirmButtonData = createButtonData("generate_another_confirm", data.originalUserId, data.metadata);
+    const confirmButton = createButton(confirmButtonData, "Generate Next Game", ButtonStyle.Success, '✅');
+
+    const cancelButtonData = createButtonData("switch_sides", data.originalUserId, switchTeams);
+    const cancelButton = createButton(cancelButtonData, "Switch Sides", ButtonStyle.Primary, '🔄');
 
     const buttonRow = new ActionRowBuilder<ButtonBuilder>()
       .addComponents(confirmButton, cancelButton);
@@ -67,9 +31,10 @@ export async function handleSwitchSidesConfirm(interaction: ButtonInteraction) {
     const content = `Please confirm the new sides:\n` +
       `# Blue Side: ${team1}\n` +
       `# Red Side: ${team2}\n\n` +
-      `Click Confirm to generate code with these sides:`;
+      `Click Generate to generate code with these sides`;
 
     // Use update to modify existing message for switch/cancel flow
+
     await interaction.update({
       content: content,
       components: [buttonRow],
@@ -85,20 +50,17 @@ export async function handleSwitchSidesConfirm(interaction: ButtonInteraction) {
 
 export async function handleGenerateAnotherConfirm(interaction: ButtonInteraction) {
   try {
-    const [_, team1, team2, originalUserId] = interaction.customId.split(':');
-    
-    if (interaction.user.id !== originalUserId) {
+    const data = parseButtonData(interaction.customId);
+    const team1 = data.metadata[0];
+    const team2 = data.metadata[1];
+    const switchTeams = [team2, team1];
+    if (interaction.user.id !== data.originalUserId) {
       await interaction.reply({
         content: "Only the person who generated the original code can generate another one.",
         ephemeral: true
       });
       return;
     }
-
-    await interaction.update({
-      content: "Generating new tournament code...",
-      components: [],
-    });
 
     const tournamentCode = await getTournamentCode(
       team1,
@@ -115,7 +77,8 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
     }
 
     // Create generate another button
-    const generateButton = createButton("Generate Next Game", "generate_another", team1, team2, originalUserId, ButtonStyle.Success, '⚔️');
+    const generateButtonData = createButtonData("generate_another", data.originalUserId, data.metadata);
+    const generateButton = createButton(generateButtonData, "Generate Next Game", ButtonStyle.Success, '⚔️');
 
 
     // const endSeriesButton = new ButtonBuilder()
@@ -127,6 +90,11 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
       .addComponents(generateButton);
 
     // Send new message with tournament code and button
+    await interaction.update({
+      content: "Generating new tournament code...",
+      components: [],
+    });
+
     await interaction.followUp({
       content: tournamentCode.discordResponse?.toString(),
       components: [buttonRow],
@@ -144,8 +112,8 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
 
 export async function handleGenerateAnotherCode(interaction: ButtonInteraction) {
   try {
-    const [_, team1, team2, originalUserId] = interaction.customId.split(':');
-    if (interaction.user.id !== originalUserId) {
+    const data = parseButtonData(interaction.customId);
+    if (interaction.user.id !== data.originalUserId) {
       await interaction.reply({
         content: "Only the person who generated the original code can generate another one.",
         ephemeral: true
@@ -153,9 +121,14 @@ export async function handleGenerateAnotherCode(interaction: ButtonInteraction) 
       return;
     }
 
-    const generateButton = createButton("Generate Same Sides", "generate_another_confirm", team1, team2, originalUserId, ButtonStyle.Success, '⚔️');
+    const generateButtonData = createButtonData("generate_another_confirm", data.originalUserId, data.metadata);
+    const generateButton = createButton(generateButtonData, "Generate Next Game", ButtonStyle.Success, '⚔️');
 
-    const switchButton = createButton("Switch Sides", "switch_sides_confirm", team2, team1, originalUserId, ButtonStyle.Primary, '🔄')  ;
+    const team1 = data.metadata[0];
+    const team2 = data.metadata[1];
+    const switchTeams = [team2, team1];
+    const switchButtonData = createButtonData("switch_sides", data.originalUserId, switchTeams);  
+    const switchButton = createButton(switchButtonData, "Switch Sides",ButtonStyle.Primary, '🔄')  ;
 
 
     // const endSeriesButton = new ButtonBuilder()
@@ -170,7 +143,7 @@ export async function handleGenerateAnotherCode(interaction: ButtonInteraction) 
     const content = `Current team sides:\n` +
       `# Blue Side: ${team1}\n` +
       `# Red Side: ${team2}\n\n` +
-      `Choose to generate with same sides or switch them:`;
+      `Choose to generate with same sides or switch them`;
 
     // Use reply for new message when generating another code
     await interaction.reply({
@@ -189,9 +162,9 @@ export async function handleGenerateAnotherCode(interaction: ButtonInteraction) 
 
 export async function handleEndSeries(interaction: ButtonInteraction) {
   try {
-    const [_, team1, team2, originalUserId] = interaction.customId.split(':');
+    const data = parseButtonData(interaction.customId);
     
-    if (interaction.user.id !== originalUserId) {
+    if (interaction.user.id !== data.originalUserId) {
       await interaction.reply({
         content: "Only the person who generated the original code can end this series.",
         ephemeral: true
@@ -214,11 +187,3 @@ export async function handleEndSeries(interaction: ButtonInteraction) {
   }
 }
 
-function createButton(label: string, customId: string, team1: string, team2: string, 
-  originalUserId: string, style: ButtonStyle, emoji: string) {
-  return new ButtonBuilder()
-    .setCustomId(`${customId}:${team1}:${team2}:${originalUserId}`)
-    .setLabel(label)
-    .setStyle(style)
-    .setEmoji(emoji);
-}
