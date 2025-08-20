@@ -1,41 +1,30 @@
-name: Deploy on Prod
+name: Deploy production application
 
 on:
   push:
     paths-ignore:
-      - '**/README.md'
-    branches: ["main"]
+      - 'docker/**'
+      - '.gitignore'
+      - '*.md'
+      - '*.txt'
+      - 'shell.nix'
+      - 'Makefile'
+      - 'compose.yml'
+
+    branches:
+      - 'main'
 
 jobs:
-  env:
-    uses: ./.github/workflows/build-env.yaml
-
   build:
-    needs: env
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
-      - name: Download env artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: env
-
-      - name: Import env
-        shell: bash
-        run: |
-          while read env; do
-            echo $env >> $GITHUB_ENV
-          done <<< $(cat .env.art)
-
       - uses: actions/checkout@v4
-      
+
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PAT }}
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -43,26 +32,14 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          platforms: linux/arm64
+          file: docker/Dockerfile
           push: true
-          tags: lblcs/${{ env.APP }}:latest
+          tags: lblcs/todd-bot:latest
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Download env artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: env
-
-      - name: Import env
-        shell: bash
-        run: |
-          while read env; do
-            echo $env >> $GITHUB_ENV
-          done <<< $( cat .env.art)
-
       - name: Execute docker compose on prod server
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -71,17 +48,11 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            cd /lblcs/docker/${{ env.APP }}
-            echo DATABASE_URL="${{ secrets.DATABASE_URL }}" > .env
-            echo RIOT_API_TOKEN="${{ secrets.RIOT_API_TOKEN }}" >> .env
+            cd /lblcs/docker/todd-bot
+            echo DISCORD_TOKEN="${{ secrets.DISCORD_TOKEN }}" > .env
             echo DISCORD_CLIENT_ID="${{ secrets.DISCORD_CLIENT_ID }}" >> .env
             echo GUILD_ID="${{ vars.GUILD_ID }}" >> .env
-            echo DISCORD_TOKEN="${{ secrets.DISCORD_TOKEN }}" >> .env
-            echo CHANNEL_ID="${{ vars.CHANNEL_ID }}" >> .env
-            echo ADMIN_ROLES="${{ vars.ADMIN_ROLES }}" >> .env
-            echo ADMIN_ROLE_IDS="${{ vars.ADMIN_ROLE_IDS }}" >> .env
-            echo ADMIN_CHANNEL_IDS="${{ vars.ADMIN_CHANNEL_IDS }}" >> .env
-            echo CAPTAIN_ROLE_ID="${{ vars.CAPTAIN_ROLE_ID }}" >> .env
+            echo RIOT_API_TOKEN="${{ secrets.RIOT_API_TOKEN }}" >> .env
             echo LOWBUDGETLCS_BACKEND_URL="${{ vars.LOWBUDGETLCS_BACKEND_URL }}" >> .env
             echo LOWBUDGETLCS_DRAFT_URL="${{ vars.LOWBUDGETLCS_DRAFT_URL }}" >> .env
             docker-compose down
