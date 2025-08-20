@@ -59,7 +59,6 @@ const commands: RESTPostAPIChatInputApplicationCommandsJSONBody[] = []
 // Populate commands property of the Client, currently only works for commands/ and not subfolders cuz not needed
 const commandsPath = path.join(__dirname, 'commands');
 const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.ts') || file.endsWith('js'));
-let command: CommandFileExport;
 
 for (const file of commandFiles) {
   const filePath = path.join(commandsPath, file);
@@ -69,7 +68,8 @@ for (const file of commandFiles) {
   } else {
     command = require(filePath) as CommandFileExport;
   }
-  if ('data' in command && 'execute' in command) {
+  if ('data' in command || 'execute' in command) {
+    console.log(`Loading command from ${filePath}`);
     commands.push(command.data.toJSON())
     client.commands.set(command.data.name, command);
   } else {

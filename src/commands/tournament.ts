@@ -4,7 +4,6 @@ import {
   ButtonInteraction,
   ButtonStyle,
   ComponentType,
-  Interaction,
   SlashCommandBuilder,
   StringSelectMenuBuilder,
 } from "discord.js";
@@ -12,7 +11,7 @@ import { getDraftLinksMarkdown } from "../util";
  let divisionsMap = new Map();
       divisionsMap.set(1, "Division 1");
       divisionsMap.set(2, "Division 2");
-import { InteractionBasic, User } from "../interfaces";
+import {  User } from "../interfaces";
 import { createButton, createButtonData } from "../buttons/button";
 export const command = {
   data: new SlashCommandBuilder()
