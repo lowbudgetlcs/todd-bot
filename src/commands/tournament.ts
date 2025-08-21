@@ -13,7 +13,8 @@ import { getDraftLinksMarkdown } from "../util";
       divisionsMap.set(2, "Division 2");
 import {  User } from "../interfaces";
 import { createButton, createButtonData } from "../buttons/button";
-export const command = {
+
+module.exports = {
   data: new SlashCommandBuilder()
     .setName("generate-tournament-code")
     .setDescription("Generate New Tournament Code"),

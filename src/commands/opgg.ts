@@ -1,14 +1,16 @@
-// import { Interaction, StringSelectMenuBuilder, ActionRowBuilder, StringSelectMenuInteraction, SlashCommandBuilder, InteractionReplyOptions, MessagePayload, ComponentType } from "discord.js";
-// // import { getTeamsByDivision } from "./tournnament"; // Assuming you have this for getting teams
-// import { eq } from "drizzle-orm";
+import { Interaction, StringSelectMenuBuilder, ActionRowBuilder, StringSelectMenuInteraction, SlashCommandBuilder, InteractionReplyOptions, MessagePayload, ComponentType } from "discord.js";
 
-// module.exports = {
-//   data: new SlashCommandBuilder()
-//   .setName("team-opgg")
-//   .setDescription("Generates Team op.gg link"),
-//   async execute(interaction : Interaction) {
-//     if (!interaction.isChatInputCommand()) return;
+module.exports = {
+  data: new SlashCommandBuilder()
+  .setName("team-opgg")
+  .setDescription("Generates Team op.gg link"),
+  async execute(interaction : Interaction) {
+    throw "Not Implemented";
+  }
+}
+    // if (!interaction.isChatInputCommand()) return;
 
+//     let divisionsMap = DatabaseUtil.Instance.divisionsMap;
 //     // console.log(divisionsMap)
 //     if(divisionsMap.size==0) {
 //       await interaction.reply({
@@ -76,6 +78,7 @@
 // }
 
 // async function handleDivisionSelectOpgg(interaction: StringSelectMenuInteraction, division: number) {
+//   let divisionsMap = DatabaseUtil.Instance.divisionsMap;
 //   const divisionName = divisionsMap.get(division);
 //   const teams = await getTeamsByDivision(division) || [];
 

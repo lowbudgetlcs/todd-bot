@@ -15,7 +15,6 @@ import { deployCommands } from "./deploy-commands";
 
 import * as path from 'path';
 import * as fs from 'fs';
-import { command as tournamentCommand } from "./commands/tournament";
 import { parseButtonData } from "./buttons/button";
 import { getButtonHandler } from "./buttons/handlers";
 
@@ -62,13 +61,8 @@ const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('
 
 for (const file of commandFiles) {
   const filePath = path.join(commandsPath, file);
-  let command: CommandFileExport; 
-  if(file=="tournament.ts") {
-    command = tournamentCommand as CommandFileExport;
-  } else {
-    command = require(filePath) as CommandFileExport;
-  }
-  if ('data' in command || 'execute' in command) {
+  const command: CommandFileExport = require(filePath);
+  if ('data' in command && 'execute' in command) {
     console.log(`Loading command from ${filePath}`);
     commands.push(command.data.toJSON())
     client.commands.set(command.data.name, command);
