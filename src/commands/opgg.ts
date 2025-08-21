@@ -1,14 +1,12 @@
-import { Interaction, StringSelectMenuBuilder, ActionRowBuilder, StringSelectMenuInteraction, SlashCommandBuilder, InteractionReplyOptions, MessagePayload, ComponentType } from "discord.js";
+import { Interaction, SlashCommandBuilder } from 'discord.js';
 
 module.exports = {
-  data: new SlashCommandBuilder()
-  .setName("team-opgg")
-  .setDescription("Generates Team op.gg link"),
-  async execute(interaction : Interaction) {
-    throw "Not Implemented";
-  }
-}
-    // if (!interaction.isChatInputCommand()) return;
+  data: new SlashCommandBuilder().setName('team-opgg').setDescription('Generates Team op.gg link'),
+  async execute(interaction: Interaction) {
+    throw 'Not Implemented';
+  },
+};
+// if (!interaction.isChatInputCommand()) return;
 
 //     let divisionsMap = DatabaseUtil.Instance.divisionsMap;
 //     // console.log(divisionsMap)
@@ -52,7 +50,7 @@ module.exports = {
 //     collector.on('collect', async (interaction) =>{
 //       handleDivisionSelectOpgg(interaction, Number(interaction.values.at(0)!) );
 //     } );
-//     return;  
+//     return;
 //   }
 // }
 

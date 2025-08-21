@@ -6,83 +6,88 @@ import {
   ComponentType,
   SlashCommandBuilder,
   StringSelectMenuBuilder,
-} from "discord.js";
-import { getDraftLinksMarkdown } from "../util";
- let divisionsMap = new Map();
-      divisionsMap.set(1, "Division 1");
-      divisionsMap.set(2, "Division 2");
-import {  User } from "../interfaces";
-import { createButton, createButtonData } from "../buttons/button";
+} from 'discord.js';
+import { getDraftLinksMarkdown } from '../util';
+import { User } from '../interfaces';
+import { createButton, createButtonData } from '../buttons/button';
 
+// TODO: Use dennys stubs instead of hardcoded values
+const divisionsMap = new Map();
+divisionsMap.set(1, 'Division 1');
+divisionsMap.set(2, 'Division 2');
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName("generate-tournament-code")
-    .setDescription("Generate New Tournament Code"),
-  execute: async(interaction: { reply: (arg0: { content: string; components: never[] | ActionRowBuilder<StringSelectMenuBuilder>[]; flags: string; withResponse?: boolean; }) => any; user:  User}) => {
+    .setName('generate-tournament-code')
+    .setDescription('Generate New Tournament Code'),
+  execute: async (interaction: {
+    reply: (arg0: {
+      content: string;
+      components: never[] | ActionRowBuilder<StringSelectMenuBuilder>[];
+      flags: string;
+      withResponse?: boolean;
+    }) => any;
+    user: User;
+  }) => {
     // Move your existing execute logic here
     if (divisionsMap.size == 0) {
       await interaction.reply({
-        content: "No divisions found.",
+        content: 'No divisions found.',
         components: [],
-        flags: "Ephemeral",
+        flags: 'Ephemeral',
       });
       return;
     }
-    
+
     const divisionDropdown = new StringSelectMenuBuilder()
-      .setCustomId("division_select")
-      .setPlaceholder("Select a Division")
+      .setCustomId('division_select')
+      .setPlaceholder('Select a Division')
       .addOptions(
         Array.from(divisionsMap.entries()).map(([key, value]) => ({
           label: value.toString(),
           value: key.toString(),
-        }))
+        })),
       );
-    const divisionRow =
-      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-        divisionDropdown
-      );
+    const divisionRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+      divisionDropdown,
+    );
 
     const response = await interaction.reply({
-      content: "Please select a division:",
+      content: 'Please select a division:',
       components: [divisionRow],
-      flags: "Ephemeral",
+      flags: 'Ephemeral',
       withResponse: true,
     });
     // Since we're not making any NEW messages we'll have to pass this fella around to keep listening to him
     // As we traverse through each menu.
     const message = response.resource!.message;
-    const collector =
-      response.resource!.message!.createMessageComponentCollector({
-        componentType: ComponentType.StringSelect,
-        filter: (i: { user: User; customId: string; }) =>
-          i.user === interaction.user && i.customId == "division_select",
-        time: 5 * 60 * 1000,
-      });
+    const collector = response.resource!.message!.createMessageComponentCollector({
+      componentType: ComponentType.StringSelect,
+      filter: (i: { user: User; customId: string }) =>
+        i.user === interaction.user && i.customId == 'division_select',
+      time: 5 * 60 * 1000,
+    });
 
-    collector.on("collect", async (interaction: any) => {
+    collector.on('collect', async (interaction: any) => {
       handleDivisionSelect(interaction, message);
     });
     return;
-
-
   },
 };
 
 async function grabTeamInfo(name: String) {
   // TODO: Call API
-  return {"id": 1, "divisionId": 1, "name": "team1"}; // Placeholder for actual team fetching logic
+  return { id: 1, divisionId: 1, name: 'team1' }; // Placeholder for actual team fetching logic
 }
 //TODO: Remove this, its just testing info
 async function grabTeam2Info(name: String) {
   // TODO: Call API
-  return {"id": 2, "divisionId": 1, "name": "team2"}; // Placeholder for actual team fetching logic
+  return { id: 2, divisionId: 1, name: 'team2' }; // Placeholder for actual team fetching logic
 }
 const userState = new Map();
 
 async function getTeamsByDivision(division: number) {
   // TODO: Call API
-  return [{"name":"team1"}, {"name":"team2"}]; // Placeholder for actual team fetching logic
+  return [{ name: 'team1' }, { name: 'team2' }]; // Placeholder for actual team fetching logic
 }
 
 // TODO: we should NOT use any here if we know what it's going to be.
@@ -95,7 +100,7 @@ async function handleDivisionSelect(interaction: any, message: any) {
 
   if (!teams.length) {
     await interaction.update({
-      content: "No teams found for the selected division.",
+      content: 'No teams found for the selected division.',
       components: [],
     });
     userState.delete(user.id);
@@ -103,21 +108,17 @@ async function handleDivisionSelect(interaction: any, message: any) {
   }
 
   const team1Dropdown = new StringSelectMenuBuilder()
-    .setCustomId("team1_select")
-    .setPlaceholder("Select Team 1")
-    .addOptions(teams.map((team) => ({ label: team.name, value: team.name })));
+    .setCustomId('team1_select')
+    .setPlaceholder('Select Team 1')
+    .addOptions(teams.map(team => ({ label: team.name, value: team.name })));
 
   const team2Dropdown = new StringSelectMenuBuilder()
-    .setCustomId("team2_select")
-    .setPlaceholder("Select Team 2")
-    .addOptions(teams.map((team) => ({ label: team.name, value: team.name })));
+    .setCustomId('team2_select')
+    .setPlaceholder('Select Team 2')
+    .addOptions(teams.map(team => ({ label: team.name, value: team.name })));
 
-  const row1 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-    team1Dropdown
-  );
-  const row2 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-    team2Dropdown
-  );
+  const row1 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(team1Dropdown);
+  const row2 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(team2Dropdown);
 
   userState.set(user.id, { divisionName, teams, team1: null, team2: null });
 
@@ -130,86 +131,78 @@ async function handleDivisionSelect(interaction: any, message: any) {
       userState.delete(user.id);
       console.log(`User state for ${user.id} cleared due to inactivity.`);
     },
-    5 * 60 * 1000
+    5 * 60 * 1000,
   );
   const collector = message.createMessageComponentCollector({
     componentType: ComponentType.StringSelect,
-    filter: (i: { user: User; customId: string; }) =>
-      i.user === interaction.user &&
-      ["team1_select", "team2_select"].includes(i.customId),
+    filter: (i: { user: User; customId: string }) =>
+      i.user === interaction.user && ['team1_select', 'team2_select'].includes(i.customId),
     time: 5 * 60 * 1000,
   });
 
-  collector.on("collect", async (interaction: any) => {
+  collector.on('collect', async (interaction: any) => {
     handleTeamSelect(interaction);
   });
 }
 
 export async function handleTeamSelect(interaction: any) {
   const { customId, values, user } = interaction;
-  let selectedTeam = "";
+  let selectedTeam = '';
 
   const state = userState.get(user.id);
   console.log(customId);
-  if (customId.substring(0,customId.indexOf(':')) === ("cancel"))
-  {
-    state.team1 = ""
-    state.team2 = ""
-  } else if (customId.substring(0,customId.indexOf(':')) === ("switch"))
-  {
+  if (customId.substring(0, customId.indexOf(':')) === 'cancel') {
+    state.team1 = '';
+    state.team2 = '';
+  } else if (customId.substring(0, customId.indexOf(':')) === 'switch') {
     const temp = state.team1;
     state.team1 = state.team2;
     state.team2 = temp;
   } else {
-    selectedTeam = values[0]
+    selectedTeam = values[0];
   }
 
   if (!state) {
     await interaction.update({
-      content:
-        "Error: Unable to retrieve state. Please restart the interaction.",
+      content: 'Error: Unable to retrieve state. Please restart the interaction.',
       components: [],
     });
     return;
   }
 
-  if (customId === "team1_select") {
+  if (customId === 'team1_select') {
     state.team1 = selectedTeam;
-  } else if (customId === "team2_select"){
+  } else if (customId === 'team2_select') {
     state.team2 = selectedTeam;
   }
 
   const team1Dropdown = new StringSelectMenuBuilder()
-    .setCustomId("team1_select")
-    .setPlaceholder("Select Team 1")
+    .setCustomId('team1_select')
+    .setPlaceholder('Select Team 1')
     .addOptions(
       state.teams.map((team: { name: string }) => ({
         label: team.name,
         value: team.name,
         default: state.team1 === team.name,
-      }))
+      })),
     );
 
   const team2Dropdown = new StringSelectMenuBuilder()
-    .setCustomId("team2_select")
-    .setPlaceholder("Select Team 2")
+    .setCustomId('team2_select')
+    .setPlaceholder('Select Team 2')
     .addOptions(
       state.teams.map((team: { name: string }) => ({
         label: team.name,
         value: team.name,
         default: state.team2 === team.name,
-      }))
+      })),
     );
 
-  const row1 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-    team1Dropdown
-  );
-  const row2 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-    team2Dropdown
-  );
+  const row1 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(team1Dropdown);
+  const row2 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(team2Dropdown);
 
   if (!(state.team1 && state.team2)) {
-    const content = `You selected **${state.team1 || "Team 1 not selected"}** for Team 1 and **${state.team2 || "Team 2 not selected"}** for Team 2.`;
+    const content = `You selected **${state.team1 || 'Team 1 not selected'}** for Team 1 and **${state.team2 || 'Team 2 not selected'}** for Team 2.`;
     await interaction.update({
       content,
       components: [row1, row2],
@@ -217,41 +210,41 @@ export async function handleTeamSelect(interaction: any) {
     return;
   }
 
-  const confirmButtonData = createButtonData("confirm", user.id, [state.team1, state.team2]);
-  const confirm = createButton(confirmButtonData, "Confirm", ButtonStyle.Success, '✅');
+  const confirmButtonData = createButtonData('confirm', user.id, [state.team1, state.team2]);
+  const confirm = createButton(confirmButtonData, 'Confirm', ButtonStyle.Success, '✅');
 
-  const switchSidesButtonData = createButtonData("switch", user.id, [state.team2, state.team1]);
-  const switchSides = createButton(switchSidesButtonData, "Switch Sides", ButtonStyle.Primary, '🔄');
-  const cancelButtonData = createButtonData("cancel", user.id, [state.team1, state.team2]);
-  const cancel = createButton(cancelButtonData, "Cancel", ButtonStyle.Danger, '❌');  
-
+  const switchSidesButtonData = createButtonData('switch', user.id, [state.team2, state.team1]);
+  const switchSides = createButton(
+    switchSidesButtonData,
+    'Switch Sides',
+    ButtonStyle.Primary,
+    '🔄',
+  );
+  const cancelButtonData = createButtonData('cancel', user.id, [state.team1, state.team2]);
+  const cancel = createButton(cancelButtonData, 'Cancel', ButtonStyle.Danger, '❌');
 
   const confirmRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     confirm,
     switchSides,
-    cancel
+    cancel,
   );
 
-  const content = `Please confirm all looks right\n` +
-  `# Blue Side: ${state.team1}\n` +
-  `# Red Side: ${state.team2}`;
+  const content =
+    `Please confirm all looks right\n` +
+    `# Blue Side: ${state.team1}\n` +
+    `# Red Side: ${state.team2}`;
   await interaction.update({
     content,
     components: [confirmRow],
   });
 }
 
-export async function handleBothTeamSubmission(interaction: ButtonInteraction)
-{
+export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
   const { user } = interaction;
 
-  const state = userState.get(user.id)
+  const state = userState.get(user.id);
   try {
-    const tournamentCode = await getTournamentCode(
-      state.team1,
-      state.team2,
-      interaction
-    );
+    const tournamentCode = await getTournamentCode(state.team1, state.team2, interaction);
     if (tournamentCode.error != null) {
       // Handle error: Update original interaction
       await interaction.update({
@@ -260,15 +253,22 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction)
       });
     } else {
       await interaction.update({
-        content: "Your teams have been selected. Generating tournament code...",
+        content: 'Your teams have been selected. Generating tournament code...',
         components: [],
       });
 
-      const generateButtonData = createButtonData("generate_another", user.id, [state.team1, state.team2]);
-      const generateButton = createButton(generateButtonData, "Generate Next Game", ButtonStyle.Success, '⚔️');
+      const generateButtonData = createButtonData('generate_another', user.id, [
+        state.team1,
+        state.team2,
+      ]);
+      const generateButton = createButton(
+        generateButtonData,
+        'Generate Next Game',
+        ButtonStyle.Success,
+        '⚔️',
+      );
 
-      const buttonRow = new ActionRowBuilder<ButtonBuilder>()
-        .addComponents(generateButton);
+      const buttonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(generateButton);
 
       await interaction.followUp({
         content: tournamentCode.discordResponse?.toString()!,
@@ -279,8 +279,7 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction)
   } catch (error) {
     console.error(error);
     await interaction.update({
-      content:
-        "An error occurred while generating the tournament code. Please try again later.",
+      content: 'An error occurred while generating the tournament code. Please try again later.',
       components: [],
     });
   } finally {
@@ -292,7 +291,7 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction)
 export async function getTournamentCode(
   team1: string,
   team2: string,
-  interaction: ButtonInteraction
+  interaction: ButtonInteraction,
 ): Promise<{
   discordResponse: string | null;
   shortcode: string | null;
@@ -323,20 +322,20 @@ export async function getTournamentCode(
       discordResponse: null,
       shortcode: null,
       gameNumber,
-      error: "This is not One For All. No picking the same champs/teams",
+      error: 'This is not One For All. No picking the same champs/teams',
       divisionId: team1Data.divisionId,
       team1,
       team2,
     };
   }
 
-  const seriesCheck = {"seriesId": 0}; // Placeholder for actual series check logic
+  const seriesCheck = { seriesId: 0 }; // Placeholder for actual series check logic
   if (!seriesCheck) {
     return {
       discordResponse: null,
       shortcode: null,
       gameNumber,
-      error: "There is no series for those two teams.",
+      error: 'There is no series for those two teams.',
       divisionId: team1Data.divisionId,
       team1,
       team2,
@@ -360,7 +359,7 @@ export async function getTournamentCode(
       shortcode: null,
       gameNumber,
       error:
-        "We do not allow more than 10 codes for a single series. Please open an URGENT admin ticket if you are having issues with your tournament codes.",
+        'We do not allow more than 10 codes for a single series. Please open an URGENT admin ticket if you are having issues with your tournament codes.',
       divisionId: team1Data.divisionId,
       team1,
       team2,
@@ -386,7 +385,7 @@ export async function getTournamentCode(
   //     team2,
   //   };
   const tid = 1; // Placeholder for actual tournament ID logic
-  let shortcode = "SHORTCODE_PLACEHOLDER"; // Placeholder for actual shortcode generation logic
+  let shortcode = 'SHORTCODE_PLACEHOLDER'; // Placeholder for actual shortcode generation logic
   try {
     let meta = JSON.stringify({ gameNum: gameNumber, seriesId: seriesId });
     // const riotResponse = await config.rAPI.tournamentV5.createCodes({
@@ -404,14 +403,12 @@ export async function getTournamentCode(
     //   },
     // });
     // shortcode = riotResponse[0];
-    
   } catch (e: unknown) {
     return {
       discordResponse: null,
       shortcode: null,
       gameNumber,
-      error:
-        "Something went wrong on Riot's end. Please make an URGENT admin ticket.",
+      error: "Something went wrong on Riot's end. Please make an URGENT admin ticket.",
       divisionId: team1Data.divisionId,
       team1,
       team2,
@@ -433,7 +430,7 @@ export async function getTournamentCode(
   //       .returning({ gameId: games.id });
   //   });
   //   if (res.length === 0) {
-  //     console.log(`Game insert failed:\n 
+  //     console.log(`Game insert failed:\n
   //         Series ID: '${seriesId}'\n
   //         TCode: '${shortcode}'\n
   //         Game Num: '${gameNumber}'\n`);
@@ -458,7 +455,7 @@ export async function getTournamentCode(
 
   let division_name = divisionsMap.get(team1Data.divisionId);
   const member = await interaction.guild!.members.fetch(interaction.user.id);
-  const draftLinkMarkdown = await getDraftLinksMarkdown(team1, team2, shortcode) + '\n';
+  const draftLinkMarkdown = (await getDraftLinksMarkdown(team1, team2, shortcode)) + '\n';
 
   let discordResponse =
     `## ${division_name}\n` +
@@ -481,6 +478,3 @@ export async function getTournamentCode(
     team2,
   };
 }
-
-
-

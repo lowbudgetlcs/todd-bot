@@ -1,5 +1,5 @@
-import dotenv from "dotenv";
-import { RiotAPI, RiotAPITypes } from "@fightmegg/riot-api";
+import dotenv from 'dotenv';
+import { RiotAPI, RiotAPITypes } from '@fightmegg/riot-api';
 
 dotenv.config();
 
@@ -9,7 +9,7 @@ const {
   GUILD_ID,
   RIOT_API_TOKEN,
   LOWBUDGETLCS_BACKEND_URL,
-  LOWBUDGETLCS_DRAFT_URL
+  LOWBUDGETLCS_DRAFT_URL,
 } = process.env;
 
 const riotConfig: RiotAPITypes.Config = {
@@ -18,18 +18,17 @@ const riotConfig: RiotAPITypes.Config = {
 const rAPI = new RiotAPI(String(RIOT_API_TOKEN), riotConfig);
 
 const missingEnvs = [
-  !DISCORD_TOKEN && "DISCORD_TOKEN",
-  !DISCORD_CLIENT_ID && "DISCORD_CLIENT_ID",
-  !GUILD_ID && "GUILD_ID",
-  !RIOT_API_TOKEN && "RIOT_API_TOKEN",
-  !LOWBUDGETLCS_BACKEND_URL && "LOWBUDGETLCS_BACKEND_URL",
-  !LOWBUDGETLCS_DRAFT_URL && "LOWBUDGETLCS_DRAFT_URL"
+  !DISCORD_TOKEN && 'DISCORD_TOKEN',
+  !DISCORD_CLIENT_ID && 'DISCORD_CLIENT_ID',
+  !GUILD_ID && 'GUILD_ID',
+  !RIOT_API_TOKEN && 'RIOT_API_TOKEN',
+  !LOWBUDGETLCS_BACKEND_URL && 'LOWBUDGETLCS_BACKEND_URL',
+  !LOWBUDGETLCS_DRAFT_URL && 'LOWBUDGETLCS_DRAFT_URL',
 ].filter(Boolean);
 
 if (missingEnvs.length > 0) {
-  throw new Error(`Missing environment variables: ${missingEnvs.join(", ")}`);
+  throw new Error(`Missing environment variables: ${missingEnvs.join(', ')}`);
 }
-
 
 export const config = {
   DISCORD_TOKEN,
@@ -37,5 +36,5 @@ export const config = {
   GUILD_ID,
   rAPI,
   LOWBUDGETLCS_BACKEND_URL,
-  LOWBUDGETLCS_DRAFT_URL
+  LOWBUDGETLCS_DRAFT_URL,
 };

@@ -1,8 +1,5 @@
-
-import { CacheType, GuildMember, Interaction } from "discord.js";
-import { config } from "./config";
-
-
+import { CacheType, GuildMember, Interaction } from 'discord.js';
+import { config } from './config';
 
 /**
  * Parses an interaction to get the user roles.
@@ -18,7 +15,7 @@ function getUserRoles(interaction: Interaction<CacheType>) {
   // member.roles.cache.each(x => {
   //   console.log(`Role name=${x.name}, role id=${x.id}`);
   // });
-  return member.roles.cache.map((role) => role.id);
+  return member.roles.cache.map(role => role.id);
 }
 
 /**
@@ -26,17 +23,20 @@ function getUserRoles(interaction: Interaction<CacheType>) {
  *
  * @returns markdown string with the links OR a string indicating an error has occurred.
  */
-export async function getDraftLinksMarkdown(blueTeamName: string, redTeamName: string, tournamentCode: string, ): Promise<string>
-{
+export async function getDraftLinksMarkdown(
+  blueTeamName: string,
+  redTeamName: string,
+  tournamentCode: string,
+): Promise<string> {
   // TODO: fearless?
-  return "https://example.com"; // Placeholder for actual URL generation logic
-  const endpoint = "/createDraft"
+  return 'https://example.com'; // Placeholder for actual URL generation logic
+  const endpoint = '/createDraft';
   const url = config.LOWBUDGETLCS_BACKEND_URL + endpoint;
-  const errorString = "Error generating draft links! Please do so manually :)";
+  const errorString = 'Error generating draft links! Please do so manually :)';
   const payload = {
     blueName: blueTeamName,
     redName: redTeamName,
-    tournamentId: tournamentCode
+    tournamentId: tournamentCode,
   };
   try {
     const response = await fetch(url, {
@@ -44,7 +44,7 @@ export async function getDraftLinksMarkdown(blueTeamName: string, redTeamName: s
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
@@ -59,9 +59,11 @@ export async function getDraftLinksMarkdown(blueTeamName: string, redTeamName: s
     /// HYPERLINK EXAMPLE: [a](b) | a will be displayed, b will be the link TO
     /// NO EMBED EXAMPLE: <a> | a is a link, will not show embeds in Discord.
     /// COMBINED we get a hyperlink with no embed! [a](<b>)
-    return `[Blue Team Draft Link](<${config.LOWBUDGETLCS_DRAFT_URL}/${lobbyCode}/${blueCode}>)\n` +
-    `[Red Team Draft Link](<${config.LOWBUDGETLCS_DRAFT_URL}/${lobbyCode}/${redCode}>)\n` +
-    `[Spectator Draft Link](<${config.LOWBUDGETLCS_DRAFT_URL}/${lobbyCode}>)`;
+    return (
+      `[Blue Team Draft Link](<${config.LOWBUDGETLCS_DRAFT_URL}/${lobbyCode}/${blueCode}>)\n` +
+      `[Red Team Draft Link](<${config.LOWBUDGETLCS_DRAFT_URL}/${lobbyCode}/${redCode}>)\n` +
+      `[Spectator Draft Link](<${config.LOWBUDGETLCS_DRAFT_URL}/${lobbyCode}>)`
+    );
   } catch (error) {
     console.error('Error hitting URL:', error);
     return errorString;

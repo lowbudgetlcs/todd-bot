@@ -8,73 +8,78 @@ import {
   Interaction,
   SlashCommandBuilder,
   RESTPostAPIChatInputApplicationCommandsJSONBody,
-} from "discord.js";
-import { config } from "./config";
+} from 'discord.js';
+import { config } from './config';
 
-import { deployCommands } from "./deploy-commands";
+import { deployCommands } from './deploy-commands';
 
 import * as path from 'path';
 import * as fs from 'fs';
+<<<<<<< Updated upstream
 import { parseButtonData } from "./buttons/button";
 import { getButtonHandler } from "./buttons/handlers";
+=======
+import { command as tournamentCommand } from './commands/tournament';
+import { parseButtonData } from './buttons/button';
+import { getButtonHandler } from './buttons/handlers';
+>>>>>>> Stashed changes
 
 type ActionWrapper = {
-  execute: (interaction: Interaction) => Promise<void>
-}
+  execute: (interaction: Interaction) => Promise<void>;
+};
 class DiscordClient extends Client {
-  commands: Collection<string, ActionWrapper> = new Collection;
+  commands: Collection<string, ActionWrapper> = new Collection();
 }
 
 type CommandFileExport = {
-  data: SlashCommandBuilder,
-  execute: (interaction: Interaction) => Promise<void>
-}
+  data: SlashCommandBuilder;
+  execute: (interaction: Interaction) => Promise<void>;
+};
 
 // Create a new client instance
 const client = new DiscordClient({
-  intents: [
-    GatewayIntentBits.Guilds,
-    "Guilds",
-    "GuildMessages",
-    "DirectMessages",
-  ],
+  intents: [GatewayIntentBits.Guilds, 'Guilds', 'GuildMessages', 'DirectMessages'],
   presence: {
     activities: [
       {
-        state: "Flipping pancakes at the Dennys",
+        state: 'Flipping pancakes at the Dennys',
         type: ActivityType.Custom,
-        name: "Flipping pancakes at the Dennys",
+        name: 'Flipping pancakes at the Dennys',
       },
     ],
-    status: "online",
+    status: 'online',
   },
 });
 
 const guild_id = process.env.GUILD_ID;
 
 // For sending to discord to register commands I don't know how to make this not look like garbo
-const commands: RESTPostAPIChatInputApplicationCommandsJSONBody[] = []
+const commands: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [];
 
 // Populate commands property of the Client, currently only works for commands/ and not subfolders cuz not needed
 const commandsPath = path.join(__dirname, 'commands');
-const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.ts') || file.endsWith('js'));
+const commandFiles = fs
+  .readdirSync(commandsPath)
+  .filter(file => file.endsWith('.ts') || file.endsWith('js'));
 
 for (const file of commandFiles) {
   const filePath = path.join(commandsPath, file);
   const command: CommandFileExport = require(filePath);
   if ('data' in command && 'execute' in command) {
     console.log(`Loading command from ${filePath}`);
-    commands.push(command.data.toJSON())
+    commands.push(command.data.toJSON());
     client.commands.set(command.data.name, command);
   } else {
-    console.log(command);
-    console.log(`[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`);
+    console.log(`Failed command: ${command}`);
+    console.log(
+      `[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`,
+    );
   }
 }
 
-client.once("ready", async () => {
-  console.log("Discord bot is ready! 🤖");
-  client.user?.setPresence({ status: "online" });
+client.once('ready', async () => {
+  console.log('Discord bot is ready! 🤖');
+  client.user?.setPresence({ status: 'online' });
   deployCommands({ guildId: guild_id! }, commands);
 
   // We should grab events from API HERE :D
@@ -102,9 +107,15 @@ client.on(Events.InteractionCreate, async interaction => {
   } catch (error) {
     console.error(error);
     if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ content: 'There was an error while executing this command!', flags: MessageFlags.Ephemeral });
+      await interaction.followUp({
+        content: 'There was an error while executing this command!',
+        flags: MessageFlags.Ephemeral,
+      });
     } else {
-      await interaction.reply({ content: 'There was an error while executing this command!', flags: MessageFlags.Ephemeral });
+      await interaction.reply({
+        content: 'There was an error while executing this command!',
+        flags: MessageFlags.Ephemeral,
+      });
     }
   }
 });
