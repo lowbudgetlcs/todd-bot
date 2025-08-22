@@ -18,6 +18,7 @@ import * as fs from 'fs';
 import { parseButtonData } from "./buttons/button";
 import { getButtonHandler } from "./buttons/handlers/handlers";
 import log from 'loglevel';
+import { handleModal } from "./modals/playerPoint.ts";
 
 const logger =log.getLogger('index.ts');
 logger.setLevel('info');
@@ -63,7 +64,6 @@ const commandFiles = fs
 
 for (const file of commandFiles) {
   const filePath = path.join(commandsPath, file);
-
   const imported = require(filePath);
   const command = imported?.default ?? imported;
   if ('data' in command && 'execute' in command) {
@@ -91,7 +91,11 @@ client.on(Events.InteractionCreate, async interaction => {
     if (handler != null && handler != undefined) await handler(interaction);
     return;
   }
-
+  if(interaction.isModalSubmit()) {
+    logger.info(`Modal interaction received with customId: ${interaction.customId}`);
+    await handleModal(interaction);
+    return;
+  }
   if (!interaction.isChatInputCommand()) return;
 
   const command = client.commands.get(interaction.commandName);
