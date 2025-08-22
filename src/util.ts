@@ -1,5 +1,5 @@
 import { CacheType, GuildMember, Interaction } from 'discord.js';
-import { config } from './config';
+import { config } from './config.ts';
 
 /**
  * Parses an interaction to get the user roles.

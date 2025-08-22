@@ -1,11 +1,11 @@
-FROM node:22-alpine as builder
+FROM node:22-alpine AS builder
 WORKDIR /build
 COPY package*.json ./
 RUN npm ci --omit-dev
 COPY . .
 RUN npm run build
 
-FROM node:22-alpine as runner
+FROM node:22-alpine AS runner
 WORKDIR /app
 RUN npm i -g pm2
 COPY --from=builder /build/dist ./dist

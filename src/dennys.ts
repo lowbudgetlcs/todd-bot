@@ -34,6 +34,7 @@ export type Game = {
   blueSide: Team;
   redSide: Team;
   shortcode: string;
+  gameNumber: number;
 };
 
 // Data
@@ -73,7 +74,7 @@ export const getEvents = async (): Promise<Event[]> => {
 };
 
 export const getEvent = async (eventId: number): Promise<Event | undefined> => {
-  return events.find(e => (e.id = eventId));
+  return events.find(e => (e.id === eventId));
 };
 
 export const getEventWithTeams = async (eventId: number): Promise<EventWithTeams | undefined> => {
@@ -87,13 +88,13 @@ export const getTeams = async (): Promise<Team[]> => {
 };
 
 export const getTeam = async (teamId: number): Promise<Team | undefined> => {
-  return teams.find(t => (t.id = teamId));
+  return teams.find(t => (t.id === teamId));
 };
 
 export const getTeamsFromEvent = async (eventId: number): Promise<Team[]> => {
-  return teams.filter(t => (t.eventId = eventId));
+  return teams.filter(t => (t.eventId === eventId));
 };
 
 export const createGame = async (blueside: Team, redside: Team): Promise<Game> => {
-  return { id: 1, blueSide: blueside, redSide: redside, shortcode: 'SHORTCODE_PLACEHOLDER' };
+  return { id: 1, blueSide: blueside, redSide: redside, shortcode: 'SHORTCODE_PLACEHOLDER', gameNumber: 1 };
 };

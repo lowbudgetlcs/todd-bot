@@ -1,17 +1,21 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "commonjs",
+    "target": "ES2022",
+    "module": "Commonjs",
     "rootDir": "./src",
     "outDir": "./dist",
     "removeComments": true,
-    "resolveJsonModule": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "strict": true,
+    "moduleResolution": "Node",
     "strictNullChecks": true,
     "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
     "noImplicitAny": true,
+    "noEmit": true,
     "noImplicitReturns": true
   }
 }
+
+
