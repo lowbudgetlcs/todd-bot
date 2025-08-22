@@ -16,7 +16,11 @@ import { deployCommands } from './deploy-commands';
 import * as path from 'path';
 import * as fs from 'fs';
 import { parseButtonData } from "./buttons/button";
-import { getButtonHandler } from "./buttons/handlers";
+import { getButtonHandler } from "./buttons/handlers/handlers";
+import log from 'loglevel';
+
+const logger =log.getLogger('index.ts');
+logger.setLevel('info');
 
 type ActionWrapper = {
   execute: (interaction: Interaction) => Promise<void>;
@@ -54,25 +58,25 @@ const commands: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [];
 const commandsPath = path.join(__dirname, 'commands');
 const commandFiles = fs
   .readdirSync(commandsPath)
-  .filter(file => file.endsWith('.ts') || file.endsWith('js'));
+  .filter(file => file.endsWith('.js'));
+
 
 for (const file of commandFiles) {
   const filePath = path.join(commandsPath, file);
-  const command: CommandFileExport = require(filePath);
+
+  const imported = require(filePath);
+  const command = imported?.default ?? imported;
   if ('data' in command && 'execute' in command) {
-    console.log(`Loading command from ${filePath}`);
+    logger.info(`Loading command from ${filePath}`);
   commands.push(command.data.toJSON());
     client.commands.set(command.data.name, command);
   } else {
-    console.log(`Failed command: ${command}`);
-    console.log(
-      `[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`,
-    );
+    logger.error(`Failed command: ${JSON.stringify(command)}`);
   }
 }
 
 client.once('ready', async () => {
-  console.log('Discord bot is ready! 🤖');
+  logger.info('Discord bot is ready! 🤖');
   client.user?.setPresence({ status: 'online' });
   deployCommands({ guildId: guild_id! }, commands);
 
@@ -81,6 +85,7 @@ client.once('ready', async () => {
 
 client.on(Events.InteractionCreate, async interaction => {
   if (interaction.isButton()) {
+    logger.info(`Button interaction received with customId: ${interaction.customId}`);
     const data = parseButtonData(interaction.customId);
     const handler = getButtonHandler(data.tag);
     if (handler != null && handler != undefined) await handler(interaction);
@@ -92,14 +97,14 @@ client.on(Events.InteractionCreate, async interaction => {
   const command = client.commands.get(interaction.commandName);
 
   if (!command) {
-    console.error(`No command matching ${interaction.commandName} was found.`);
+    logger.error(`No command matching ${interaction.commandName} was found.`);
     return;
   }
   // Base command / single command
   try {
     await command.execute(interaction);
   } catch (error) {
-    console.error(error);
+    logger.error(error);
     if (interaction.replied || interaction.deferred) {
       await interaction.followUp({
         content: 'There was an error while executing this command!',

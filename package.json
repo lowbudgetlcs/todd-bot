@@ -2,13 +2,14 @@
   "name": "todd-bot",
   "version": "0.0.4",
   "description": "",
+  "types": "dist/index.d.ts",
   "main": "dist/index.js",
   "scripts": {
     "format": "prettier --write .",
     "dev": "tsx watch src/index.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsup src/* --minify",
-    "build-ws": "tsup src/*/** --minify",
+    "build-ws": "tsup src/**/* --minify",
     "start": "pm2-runtime ./dist/index.js ",
     "go": "tsup src/* --minify && pm2-runtime ./dist/index.js",
     "go-ws": "tsup src/*/** --minify && pm2-runtime ./dist/index.js"
@@ -23,6 +24,7 @@
     "dotenv": "^16.4.5",
     "drizzle-orm": "^0.38.4",
     "eslint": "^8.57.0",
+    "loglevel": "^1.9.2",
     "npm": "^11.0.0",
     "pg": "^8.13.1",
     "pm2": "^5.4.2"
@@ -30,6 +32,7 @@
   "devDependencies": {
     "@eslint/compat": "^1.3.2",
     "@eslint/js": "^9.33.0",
+    "@types/loglevel": "^1.5.4",
     "@types/node": "^22.13.1",
     "drizzle-kit": "^0.30.4",
     "eslint-config-prettier": "^10.1.8",
