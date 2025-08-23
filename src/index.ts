@@ -16,7 +16,7 @@ import { deployCommands } from './deploy-commands';
 import * as path from 'path';
 import * as fs from 'fs';
 import { parseButtonData } from "./buttons/button";
-import { getButtonHandler } from "./buttons/handlers/handlers";
+import { getButtonHandler } from "./buttons/handlers.ts";
 import log from 'loglevel';
 import { handleModal } from "./modals/playerPoint.ts";
 

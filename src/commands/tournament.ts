@@ -186,6 +186,11 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
         '⚔️',
       );
 
+      // data.metadata[3] = tournamentCode.gameId.toString(); 
+      // logger.info(data.metadata);
+      // const regenerateButtonData = createButtonData("regenerate_code", data.originalUserId, data.metadata);
+      // const regenerateButton = createButton(regenerateButtonData, "Code Not Work?", ButtonStyle.Secondary, '❓');
+
       const buttonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(generateButton);
 
       await interaction.followUp({
@@ -217,6 +222,7 @@ export async function getTournamentCode(
   divisionId: number | null;
   team1: string;
   team2: string;
+  gameId: number;
 }> {
   //TODO: Call api with this informatio nand let it handle all this logic
   const division  = divisionId? Number(divisionId) : null
@@ -230,6 +236,7 @@ export async function getTournamentCode(
       divisionId: division,
       team1,
       team2,
+      gameId:0
     };
   }
   logger.info(`Fetching teams: ${team1}, ${team2}`);
@@ -250,6 +257,7 @@ export async function getTournamentCode(
       divisionId: division,
       team1,
       team2,
+      gameId:0
     };
   }
 
@@ -264,13 +272,14 @@ export async function getTournamentCode(
       divisionId: division,
       team1,
       team2,
+      gameId:game.id
     };
   }
  
   let division_name = (await getEvent(Number(division)))?.name || 'Unknown Division';
   const member = await interaction.guild!.members.fetch(interaction.user.id);
   const draftLinkMarkdown = (await getDraftLinksMarkdown(team1, team2, shortcode)) + '\n';
-  
+  const gameId = game.id || 0;
   let discordResponse =
     `## ${division_name}\n` +
     `**🟦 __${team1Name}__ v.s. __${team2Name}__ 🟥**\n` +
@@ -290,6 +299,7 @@ export async function getTournamentCode(
     divisionId: division,
     team1,
     team2,
+    gameId
   };
 }
 module.exports =  {
