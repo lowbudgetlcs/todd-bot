@@ -83,10 +83,6 @@ export const getEventWithTeams = async (eventId: number): Promise<EventWithTeams
   return { ...event, teams: await getTeamsFromEvent(eventId) };
 };
 
-export const getTeams = async (): Promise<Team[]> => {
-  return teams;
-};
-
 export const getTeam = async (teamId: number): Promise<Team | undefined> => {
   return teams.find(t => (t.id === teamId));
 };
@@ -97,4 +93,8 @@ export const getTeamsFromEvent = async (eventId: number): Promise<Team[]> => {
 
 export const createGame = async (blueside: Team, redside: Team): Promise<Game> => {
   return { id: 1, blueSide: blueside, redSide: redside, shortcode: 'SHORTCODE_PLACEHOLDER', gameNumber: 1 };
+};
+
+export const regenerateGameCode = async (gameId: number): Promise<Game> => {
+  return { id: 1, blueSide: teams[0], redSide: teams[1], shortcode: 'SHORTCODE_PLACEHOLDER', gameNumber: 1 };
 };

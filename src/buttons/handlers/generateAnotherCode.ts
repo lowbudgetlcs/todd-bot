@@ -23,10 +23,20 @@ export async function handleGenerateAnotherCode(interaction: ButtonInteraction) 
     const team2 = data.metadata[1];
     const switchTeams = [team2, team1, data.metadata[2]]; // Switch teams and keep the rest of the metadata
     const switchButtonData = createButtonData("switch_sides", data.originalUserId, switchTeams);  
-    const switchButton = createButton(switchButtonData, "Switch Sides",ButtonStyle.Primary, '🔄')  ;
-
+    const switchButton = createButton(switchButtonData, "Switch Sides",ButtonStyle.Primary, '🔄');
+    const cancelButtonData = createButtonData(
+      "cancel_flow",
+      data.originalUserId,
+      data.metadata
+    );
+    const cancelButton = createButton(
+      cancelButtonData,
+      "Cancel",
+      ButtonStyle.Danger,
+      '❌'
+    );
     const buttonRow = new ActionRowBuilder<ButtonBuilder>()
-      .addComponents(generateButton, switchButton);
+      .addComponents(generateButton, switchButton, cancelButton);
 
     const content = `Current team sides:\n` +
       `# Blue Side: ${team1}\n` +

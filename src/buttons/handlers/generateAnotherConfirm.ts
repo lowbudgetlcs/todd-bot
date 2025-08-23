@@ -12,7 +12,6 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
     const team1 = data.metadata[0];
     const team2 = data.metadata[1];
     const division = data.metadata[2];
-    const switchTeams = [team2, team1];
     if (interaction.user.id !== data.originalUserId) {
       await interaction.reply({
         content: "Only the person who generated the original code can generate another one.",
@@ -39,6 +38,12 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
     // Create generate another button
     const generateButtonData = createButtonData("generate_another", data.originalUserId, data.metadata);
     const generateButton = createButton(generateButtonData, "Generate Next Game", ButtonStyle.Success, '⚔️');
+
+    // Regenerate button row
+    // data.metadata[3] = tournamentCode.gameId.toString(); 
+    // logger.info(data.metadata);
+    // const regenerateButtonData = createButtonData("regenerate_code", data.originalUserId, data.metadata);
+    // const regenerateButton = createButton(regenerateButtonData, "Code Not Work?", ButtonStyle.Secondary, '❓');
 
     const buttonRow = new ActionRowBuilder<ButtonBuilder>()
       .addComponents(generateButton);
