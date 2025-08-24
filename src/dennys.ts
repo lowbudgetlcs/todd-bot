@@ -1,4 +1,10 @@
-// Types
+
+import { config } from './config.ts';
+import log from 'loglevel';
+
+const logger =log.getLogger('dennys');
+logger.setLevel('info');
+
 export type Event = {
   id: number;
   name: string;
@@ -37,6 +43,7 @@ export type Game = {
   gameNumber: number;
 };
 
+const API_URL = config.API_URL;
 // Data
 const teams: Team[] = [
   { id: 1, name: 'team 1', logoName: null, eventId: 1 },
@@ -45,50 +52,44 @@ const teams: Team[] = [
   { id: 3, name: 'team 3', logoName: null, eventId: 2 },
   { id: 4, name: 'team 4', logoName: null, eventId: 2 },
 ];
-const events: Event[] = [
-  {
-    id: 1,
-    name: 'Season 14 Commercial',
-    description: "Season 14's plat-emerald league!",
-    createdAt: '2025-08-21T03:54:08.602Z',
-    startDate: '2025-08-21T03:54:08.602Z',
-    endDate: '2025-08-21T03:54:08.602Z',
-    status: 'NOT_STARTED',
-    tournamentId: 1234,
-  },
-  {
-    id: 2,
-    name: 'Season 14 CEO',
-    description: "Season 14's diamond-masters league!",
-    createdAt: '2025-08-21T03:54:08.602Z',
-    startDate: '2025-08-21T03:54:08.602Z',
-    endDate: '2025-08-21T03:54:09.602Z',
-    status: 'CANCELED',
-    tournamentId: 1235,
-  },
-];
+
 
 // Interface
 export const getEvents = async (): Promise<Event[]> => {
-  return events;
+  const response = await fetch(`${API_URL}/event`);
+  if (response.ok) {
+    const data: Event[] = await response.json();
+    return data;
+  }
+  throw new Error(`Failed to fetch events: ${response.statusText}`);
 };
 
-export const getEvent = async (eventId: number): Promise<Event | undefined> => {
-  return events.find(e => (e.id === eventId));
+export const getEvent = async (eventId: number): Promise<Event> => {
+  const response = await fetch(`${API_URL}/event/${eventId}`);
+  logger.info(`Fetching event ${eventId} from ${API_URL}/event/${eventId}`);
+  if (response.ok) {
+    const data:Event = await response.json();
+    return data;
+  }
+  throw new Error(`Failed to fetch event: ${response.statusText}`);
+}
+
+export const getEventWithTeams = async (eventId: number): Promise<EventWithTeams> => {
+  const response = await fetch(`${API_URL}/event/${eventId}/teams`);
+  if (response.ok) {
+    const data: EventWithTeams = await response.json();
+    return data;
+  }
+  throw new Error(`Failed to fetch event with teams: ${response.statusText}`);
 };
 
-export const getEventWithTeams = async (eventId: number): Promise<EventWithTeams | undefined> => {
-  const event = await getEvent(eventId);
-  if (event === undefined) return undefined;
-  return { ...event, teams: await getTeamsFromEvent(eventId) };
-};
-
-export const getTeam = async (teamId: number): Promise<Team | undefined> => {
-  return teams.find(t => (t.id === teamId));
-};
-
-export const getTeamsFromEvent = async (eventId: number): Promise<Team[]> => {
-  return teams.filter(t => (t.eventId === eventId));
+export const getTeam = async (teamId: number): Promise<Team> => {
+  const response = await fetch(`${API_URL}/team/${teamId}`);
+  if (response.ok) {
+    const data: Team = await response.json();
+    return data;
+  }
+  throw new Error(`Failed to fetch team: ${response.statusText}`);
 };
 
 export const createGame = async (blueside: Team, redside: Team): Promise<Game> => {

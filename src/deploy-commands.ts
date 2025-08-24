@@ -1,4 +1,4 @@
-import { REST, Routes, RESTPostAPIChatInputApplicationCommandsJSONBody } from 'discord.js';
+import { REST, Routes, RESTPostAPIChatInputApplicationCommandsJSONBody, APIApplication, APIApplicationCommand } from 'discord.js';
 import { config } from './config.ts';
 import log from 'loglevel';
 
@@ -16,6 +16,12 @@ export async function deployCommands(
   commands: RESTPostAPIChatInputApplicationCommandsJSONBody[],
 ) {
   try {
+    const oldCommands = (await rest.get(Routes.applicationCommands(config.DISCORD_CLIENT_ID!))) as APIApplicationCommand[];
+    console.log(`Deleting ${commands.length} global commands...`);
+
+    for (const cmd of oldCommands) {
+      await rest.delete(Routes.applicationCommand(config.DISCORD_CLIENT_ID!, cmd.id));
+    }
     logger.info('Started refreshing application (/) commands.');
     await rest.put(Routes.applicationGuildCommands(config.DISCORD_CLIENT_ID!, guildId), {
       body: [],
