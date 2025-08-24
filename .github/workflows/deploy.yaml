@@ -54,7 +54,7 @@ jobs:
             echo RIOT_API_TOKEN="${{ secrets.RIOT_API_TOKEN }}" >> .env
             echo LOWBUDGETLCS_BACKEND_URL="${{ vars.LOWBUDGETLCS_BACKEND_URL }}" >> .env
             echo LOWBUDGETLCS_DRAFT_URL="${{ vars.LOWBUDGETLCS_DRAFT_URL }}" >> .env
+            echo API_URL="${{ secrets.DENNYS_URL_API }}" >> env
             docker compose down
             docker compose pull
             docker compose up -d
-            rm -rf ./.env
