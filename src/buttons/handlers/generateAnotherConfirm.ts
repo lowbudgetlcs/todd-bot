@@ -54,11 +54,15 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
       components: [],
     });
 
+    await interaction.deleteReply();
+
     await interaction.followUp({
       content: tournamentCode.discordResponse?.toString(),
       components: [buttonRow],
-      ephemeral: false
+      ephemeral: false,
+      flags: 1 << 2
     });
+
 
   } catch (error) {
     console.error(error);

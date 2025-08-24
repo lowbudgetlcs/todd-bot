@@ -10,6 +10,7 @@ const {
   RIOT_API_TOKEN,
   LOWBUDGETLCS_BACKEND_URL,
   LOWBUDGETLCS_DRAFT_URL,
+  API_URL,
 } = process.env;
 
 const riotConfig: RiotAPITypes.Config = {
@@ -24,6 +25,7 @@ const missingEnvs = [
   !RIOT_API_TOKEN && 'RIOT_API_TOKEN',
   !LOWBUDGETLCS_BACKEND_URL && 'LOWBUDGETLCS_BACKEND_URL',
   !LOWBUDGETLCS_DRAFT_URL && 'LOWBUDGETLCS_DRAFT_URL',
+  !API_URL && 'API_URL',
 ].filter(Boolean);
 
 if (missingEnvs.length > 0) {
@@ -37,4 +39,5 @@ export const config = {
   rAPI,
   LOWBUDGETLCS_BACKEND_URL,
   LOWBUDGETLCS_DRAFT_URL,
+  API_URL,
 };

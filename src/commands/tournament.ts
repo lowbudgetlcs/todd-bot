@@ -40,12 +40,12 @@ export async function handleDivisionSelect(interaction: any, message: any) {
 
   const team1Dropdown = new StringSelectMenuBuilder()
     .setCustomId(customId1.serialize())
-    .setPlaceholder('Select Team 1')
+    .setPlaceholder('Select Blue Side')
     .addOptions(teams.map(team => ({ label: team.name, value: String(team.id) })));
 
   const team2Dropdown = new StringSelectMenuBuilder()
     .setCustomId(customId2.serialize())
-    .setPlaceholder('Select Team 2')
+    .setPlaceholder('Select Red Side')
     .addOptions(teams.map(team => ({ label: team.name, value: String(team.id) })));
 
   const row1 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(team1Dropdown);
@@ -96,19 +96,19 @@ export async function handleTeamSelect(interaction: any) {
     team2 = selectedTeam;
   }
   
-  const teams = await grabTeams(Number(division));
+  const teams:Team[] = await grabTeams(Number(division));
 
   const customId1 = createButtonData('team1_select', interaction.user.id, [team1, team2, String(division)]);
   const customId2 = createButtonData('team2_select', interaction.user.id, [team1, team2, String(division)]);
   const team1Dropdown = new StringSelectMenuBuilder()
     .setCustomId(customId1.serialize())
-    .setPlaceholder('Select Team 1')
+    .setPlaceholder('Select Blue side')
     .addOptions(
       teams.map(team => ({ label: team.name, value: String(team.id), default: String(team.id) === team1 })),);
 
   const team2Dropdown = new StringSelectMenuBuilder()
     .setCustomId(customId2.serialize())
-    .setPlaceholder('Select Team 2')
+    .setPlaceholder('Select Red Side')
     .addOptions(
       teams.map(team => ({ label: team.name, value: String(team.id),  default: String(team.id) === team2  })),);
   
@@ -174,6 +174,8 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
         components: [],
       });
 
+      await interaction.deleteReply();
+
       const generateButtonData = createButtonData('generate_another', user.id, [
         data.metadata[0],
         data.metadata[1],
@@ -193,20 +195,47 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
 
       const buttonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(generateButton);
 
-      await interaction.followUp({
-        content: tournamentCode.discordResponse?.toString()!,
+      // try {
+      //   await interaction.user.send({
+      //     content: tournamentCode.draftLinks?.toString()!,
+      //   });
+      // } catch (err) {
+      //   console.error(`Couldn't DM ${interaction.user.tag}`, err);
+      //   // (Optional) Fallback to ephemeral if DM fails
+      //   await interaction.followUp({
+      //     content: `I couldn't DM you the draft links (your DMs might be closed). Please SAVE THESE ASAP before this message goes away.\n`
+      //     + tournamentCode.draftLinks?.toString()!,
+      //     ephemeral: true
+      //   });
+      // }
+
+      const publicMessage = await interaction.followUp({
+        content: tournamentCode.discordResponse?.toString(),
         components: [buttonRow],
         ephemeral: false,
       });
-    }
-  } catch (error) {
-    console.error(error);
-    await interaction.update({
-      content: 'An error occurred while generating the tournament code. Please try again later.',
-      components: [],
-    });
-  } 
-}
+
+// Create a thread from the public message
+      const thread = await publicMessage.startThread({
+        name: `${tournamentCode.team1Name} vs ${tournamentCode.team2Name} Draft Links`,
+        autoArchiveDuration: 60, // in minutes
+        reason: `Draft links thread for tournament code ${tournamentCode.shortcode}`,
+      });
+
+      // Post the draft links in the thread
+      await thread.send({
+        content: tournamentCode.draftLinks?.toString()!,
+        flags: 1 << 2
+      });
+          }
+        } catch (error) {
+          console.error(error);
+          await interaction.update({
+            content: 'An error occurred while generating the tournament code. Please try again later.',
+            components: [],
+          });
+        } 
+      }
 
 // TODO: Fix this as to not need to send interaction
 export async function getTournamentCode(
@@ -216,12 +245,13 @@ export async function getTournamentCode(
   interaction: ButtonInteraction,
 ): Promise<{
   discordResponse: string | null;
+  draftLinks: string | null;
   shortcode: string | null;
   gameNumber: number;
   error: string | null;
   divisionId: number | null;
-  team1: string;
-  team2: string;
+  team1Name: string;
+  team2Name: string;
   gameId: number;
 }> {
   //TODO: Call api with this informatio nand let it handle all this logic
@@ -230,12 +260,13 @@ export async function getTournamentCode(
   if (team1 === team2) {
     return {
       discordResponse: null,
+      draftLinks: null,
       shortcode: null,
       gameNumber: 0,
       error: 'This is not One For All. No picking the same champs/teams',
       divisionId: division,
-      team1,
-      team2,
+      team1Name: team1,
+      team2Name: team2,
       gameId:0
     };
   }
@@ -251,54 +282,37 @@ export async function getTournamentCode(
   if (!game) {
     return {
       discordResponse: null,
+      draftLinks: null,
       shortcode: null,
       gameNumber: gameNumber,
       error: 'Failed to create game. Please try again later.',
       divisionId: division,
-      team1,
-      team2,
+      team1Name,
+      team2Name,
       gameId:0
-    };
-  }
-
-  // Need to see if game number will be given by dennys
-  if (gameNumber > 10) {
-    return {
-      discordResponse: null,
-      shortcode: shortcode,
-      gameNumber,
-      error:
-        'We do not allow more than 10 codes for a single series. Please open an URGENT admin ticket if you are having issues with your tournament codes.',
-      divisionId: division,
-      team1,
-      team2,
-      gameId:game.id
     };
   }
  
   let division_name = (await getEvent(Number(division)))?.name || 'Unknown Division';
   const member = await interaction.guild!.members.fetch(interaction.user.id);
-  const draftLinkMarkdown = (await getDraftLinksMarkdown(team1, team2, shortcode)) + '\n';
+  const draftLinkMarkdown = gameNumber===1? (await getDraftLinksMarkdown(team1Data.name, team2Data.name, shortcode)) + '\n': "";
   const gameId = game.id || 0;
   let discordResponse =
     `## ${division_name}\n` +
     `**🟦 __${team1Name}__ v.s. __${team2Name}__ 🟥**\n` +
     `Game ${gameNumber} Code: \`\`\`${shortcode}\`\`\`\n` +
-    draftLinkMarkdown +
     `Generated By: <@${member.id}>`;
   // TODO: reusing series codes in playoffs is making this message a bit obsolete
-  // if (gameNumber! > 5)
-  //   discordResponse = discordResponse.concat(
-  //     "\nYou have generated more codes than required for this series. If you are experiencing issues, please open an URGENT admin ticket. " //<@247886805821685761>",
-  //   );
+
   return {
     discordResponse,
     shortcode,
+    draftLinks: draftLinkMarkdown,
     gameNumber,
     error: null,
     divisionId: division,
-    team1,
-    team2,
+    team1Name,
+    team2Name,
     gameId
   };
 }

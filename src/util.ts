@@ -1,6 +1,9 @@
 import { CacheType, GuildMember, Interaction } from 'discord.js';
 import { config } from './config.ts';
+import log from 'loglevel';
 
+const logger =log.getLogger('utils');
+logger.setLevel('info');
 /**
  * Parses an interaction to get the user roles.
  * @returns collection of role ids.
@@ -28,17 +31,17 @@ export async function getDraftLinksMarkdown(
   redTeamName: string,
   tournamentCode: string,
 ): Promise<string> {
-  // TODO: fearless?
-  return 'https://example.com'; // Placeholder for actual URL generation logic
-  const endpoint = '/createDraft';
+  const endpoint = '/createFearlessDraft';
   const url = config.LOWBUDGETLCS_BACKEND_URL + endpoint;
   const errorString = 'Error generating draft links! Please do so manually :)';
   const payload = {
-    blueName: blueTeamName,
-    redName: redTeamName,
-    tournamentId: tournamentCode,
+    team1Name: blueTeamName,
+    team2Name: redTeamName,
+    tournamentID: tournamentCode,
+    draftCount: 3
   };
   try {
+    logger.info(`Hitting URL: ${url} with payload: ${JSON.stringify(payload)}`);
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -46,24 +49,25 @@ export async function getDraftLinksMarkdown(
       },
       body: JSON.stringify(payload),
     });
-
     if (!response.ok) {
       // TODO: log
+      logger.info(`Error Reponse: ${response}`);
       return errorString;
     }
 
     const data = await response.json();
-    const { lobbyCode, blueCode, redCode } = data.draft;
+    const { fearlessCode, team1Code, team2Code } = data;
 
-    /// QUICK MARKDOWN EXPLANATION!
-    /// HYPERLINK EXAMPLE: [a](b) | a will be displayed, b will be the link TO
-    /// NO EMBED EXAMPLE: <a> | a is a link, will not show embeds in Discord.
-    /// COMBINED we get a hyperlink with no embed! [a](<b>)
     return (
-      `[Blue Team Draft Link](<${config.LOWBUDGETLCS_DRAFT_URL}/${lobbyCode}/${blueCode}>)\n` +
-      `[Red Team Draft Link](<${config.LOWBUDGETLCS_DRAFT_URL}/${lobbyCode}/${redCode}>)\n` +
-      `[Spectator Draft Link](<${config.LOWBUDGETLCS_DRAFT_URL}/${lobbyCode}>)`
-    );
+      `[${blueTeamName} Link](${config.LOWBUDGETLCS_DRAFT_URL}/fearless/${fearlessCode}/${team1Code})\n` +
+      `\`\`\`${config.LOWBUDGETLCS_DRAFT_URL}/fearless/${fearlessCode}/${team1Code}\`\`\`\n`+
+      `[${redTeamName} Link](${config.LOWBUDGETLCS_DRAFT_URL}/fearless/${fearlessCode}/${team2Code})\n` +
+      `\`\`\`${config.LOWBUDGETLCS_DRAFT_URL}/fearless/${fearlessCode}/${team2Code}\`\`\`\n`+
+      `[Spectator Link](${config.LOWBUDGETLCS_DRAFT_URL}/fearless/${fearlessCode}/specator)\n` +
+      `\`\`\`${config.LOWBUDGETLCS_DRAFT_URL}/fearless/${fearlessCode}/spectator\`\`\`\n`+
+      `[Stream Link](${config.LOWBUDGETLCS_DRAFT_URL}/fearless/${fearlessCode}/stream})\n` +
+      `\`\`\`${config.LOWBUDGETLCS_DRAFT_URL}/fearless/${fearlessCode}/stream\`\`\`\n` +
+      `*💡 Tip: Hey, you should ping the other captain!*`);
   } catch (error) {
     console.error('Error hitting URL:', error);
     return errorString;

@@ -78,12 +78,13 @@ for (const file of commandFiles) {
 client.once('ready', async () => {
   logger.info('Discord bot is ready! 🤖');
   client.user?.setPresence({ status: 'online' });
-  deployCommands({ guildId: guild_id! }, commands);
 
-  // We should grab events from API HERE :D
+  // TODO: We should make command for this, ticket already made
+  deployCommands({ guildId: guild_id! }, commands);
 });
 
 client.on(Events.InteractionCreate, async interaction => {
+  
   if (interaction.isButton()) {
     logger.info(`Button interaction received with customId: ${interaction.customId}`);
     const data = parseButtonData(interaction.customId);
