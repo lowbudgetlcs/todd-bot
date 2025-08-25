@@ -277,7 +277,7 @@ export async function getTournamentCode(
   const team2Name = team2Data?.name || 'Unknown Team 2';
   logger.info(`Fetched teams - Team 1: ${team1Data?.id}  ${team1Data?.name}, Team 2: ${team2Data?.id}  ${team2Data?.name}`);
   const game = await createGame(team1Data!, team2Data!);
-  const gameNumber = game.gameNumber || 1; // Assuming gameNumber is part of the Game object
+  const gameNumber = game.number || 1; // Assuming gameNumber is part of the Game object
   let shortcode = game.shortcode;
   if (!game) {
     return {
