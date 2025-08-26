@@ -215,18 +215,20 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
         ephemeral: false,
       });
 
+      if(tournamentCode.gameNumber===1) {
 // Create a thread from the public message
-      const thread = await publicMessage.startThread({
-        name: `${tournamentCode.team1Name} vs ${tournamentCode.team2Name} Draft Links`,
-        autoArchiveDuration: 60, // in minutes
-        reason: `Draft links thread for tournament code ${tournamentCode.shortcode}`,
-      });
+        const thread = await publicMessage.startThread({
+          name: `${tournamentCode.team1Name} vs ${tournamentCode.team2Name} Draft Links`,
+          autoArchiveDuration: 60, // in minutes
+          reason: `Draft links thread for tournament code ${tournamentCode.shortcode}`,
+        });
 
-      // Post the draft links in the thread
-      await thread.send({
-        content: tournamentCode.draftLinks?.toString()!,
-        flags: 1 << 2
-      });
+        // Post the draft links in the thread
+        await thread.send({
+          content: tournamentCode.draftLinks?.toString()!,
+          flags: 1 << 2
+        });
+      }
           }
         } catch (error) {
           console.error(error);
