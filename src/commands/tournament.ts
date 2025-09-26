@@ -9,13 +9,14 @@ import {
 } from 'discord.js';
 import { getDraftLinksMarkdown } from '../util.ts';
 import { User } from '../interfaces.ts';
-import { createButton, createButtonData, parseButtonData } from '../buttons/button.ts';
+import { createButton, createButtonData, parseButtonData, ButtonData } from '../buttons/button.ts';
 import { createGame, getEvent, getEvents, getEventWithTeams, getTeam, Team } from '../dennys.ts';
 import log from 'loglevel';
 
-const logger =log.getLogger('tournament');
+const logger = log.getLogger('tournament');
 logger.setLevel('info');
 async function grabTeams(divisionId: number): Promise<Team[]> {
+  // const event = (await getEventWithTeams(divisionId)) || null;
   const event = (await getEventWithTeams(divisionId)) || null;
   const teams = event?.teams || [];
   return teams;
@@ -24,8 +25,12 @@ async function grabTeams(divisionId: number): Promise<Team[]> {
 // i don't know what it is going to be LMFAO
 export async function handleDivisionSelect(interaction: any, message: any) {
   logger.info('Handling division select interaction: ' + interaction.customId);
+  const data = parseButtonData(interaction.customId);
+  const enemyCaptainId = data.metadata[0];
+  logger.info('Enemy Captain ID: ' + enemyCaptainId);
   const {values} = interaction;
   const divisionKey = parseInt(values[0]);
+  // const divisionName = (await getEvent(divisionKey))?.name || 'Unknown Division';
   const divisionName = (await getEvent(divisionKey))?.name || 'Unknown Division';
   const teams = await grabTeams(divisionKey);
   if (!teams || teams.length === 0) {
@@ -35,8 +40,8 @@ export async function handleDivisionSelect(interaction: any, message: any) {
     });
     return;
   }
-  const customId1 = createButtonData('team1_select', interaction.user.id, ["", "", String(divisionKey)]);
-  const customId2 = createButtonData('team2_select', interaction.user.id, ["", "", String(divisionKey)]);
+  const customId1 = createButtonData('team1_select', interaction.user.id, ["", "", String(divisionKey), enemyCaptainId]);
+  const customId2 = createButtonData('team2_select', interaction.user.id, ["", "", String(divisionKey), enemyCaptainId]);
 
   const team1Dropdown = new StringSelectMenuBuilder()
     .setCustomId(customId1.serialize())
@@ -62,7 +67,7 @@ export async function handleDivisionSelect(interaction: any, message: any) {
   });
 
   collector.on('collect', async (interaction: any) => {
-    logger.log('Collecting team select interaction:', interaction.customId);
+    logger.info('Collecting team select interaction:', interaction.customId);
     handleTeamSelect(interaction);
   });
 }
@@ -75,13 +80,14 @@ export async function handleTeamSelect(interaction: any) {
   let team2 = data.metadata[1];
   let division = data.metadata[2];
   let tag = data.tag; 
-  logger.log(`Parsed data - tag: ${tag}, team1: ${team1}, team2: ${team2}, division: ${division}`);
+  let enemyCaptainId = data.metadata[3];
+  logger.info(`Parsed data - tag: ${tag}, team1: ${team1}, team2: ${team2}, division: ${division}, enemyCaptainId: ${enemyCaptainId}`);
   if (tag === 'cancel') {
-    logger.log("Removing sides");
+    logger.info("Removing sides");
     team1 = '';
     team2 = '';
   } else if (tag === 'switch') {
-    logger.log("Switching sides");
+    logger.info("Switching sides");
     let temp = team1;
     team1 = team2;
     team2 = temp;
@@ -98,8 +104,8 @@ export async function handleTeamSelect(interaction: any) {
   
   const teams:Team[] = await grabTeams(Number(division));
 
-  const customId1 = createButtonData('team1_select', interaction.user.id, [team1, team2, String(division)]);
-  const customId2 = createButtonData('team2_select', interaction.user.id, [team1, team2, String(division)]);
+  const customId1 = createButtonData('team1_select', interaction.user.id, [team1, team2, String(division), enemyCaptainId]);
+  const customId2 = createButtonData('team2_select', interaction.user.id, [team1, team2, String(division), enemyCaptainId]);
   const team1Dropdown = new StringSelectMenuBuilder()
     .setCustomId(customId1.serialize())
     .setPlaceholder('Select Blue side')
@@ -117,7 +123,7 @@ export async function handleTeamSelect(interaction: any) {
   const team1Name = teams.find(team => team.id === Number(team1))?.name || null;
   const team2Name = teams.find(team => team.id === Number(team2))?.name || null;
 
-  logger.log(`Team 1: ${team1Name} ${team1}, Team 2: ${team2Name} ${team2}`);
+  logger.info(`Team 1: ${team1Name} ${team1}, Team 2: ${team2Name} ${team2}`);
   if (!(team1Name && team2Name)) {
     const content = `Blue Team: **${team1Name || 'Not Selected!'}**\nRed Team: **${team2Name || 'Not Selected!'}**`;
     await interaction.update({
@@ -127,17 +133,17 @@ export async function handleTeamSelect(interaction: any) {
     return;
   }
 
-  const confirmButtonData = createButtonData('confirm', user.id, [team1, team2, division]);
+  const confirmButtonData = createButtonData('confirm', user.id, [team1, team2, division, enemyCaptainId]);
   const confirm = createButton(confirmButtonData, 'Confirm', ButtonStyle.Success, '✅');
 
-  const switchSidesButtonData = createButtonData('switch', user.id, [team1, team2, division]);
+  const switchSidesButtonData = createButtonData('switch', user.id, [team1, team2, division, enemyCaptainId]);
   const switchSides = createButton(
     switchSidesButtonData,
     'Switch Sides',
     ButtonStyle.Primary,
     '🔄',
   );
-  const cancelButtonData = createButtonData('cancel', user.id, [team1, team2, division]);
+  const cancelButtonData = createButtonData('cancel', user.id, [team1, team2, division, enemyCaptainId]);
   const cancel = createButton(cancelButtonData, 'Cancel', ButtonStyle.Danger, '❌');
 
   const confirmRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -159,7 +165,7 @@ export async function handleTeamSelect(interaction: any) {
 export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
   const { user } = interaction;
   const data = parseButtonData(interaction.customId);
-  logger.log(`Handle Both Team Submission - tag: ${data.tag}, team1: ${data.metadata[0]}, team2: ${data.metadata[1]}, division: ${data.metadata[2]}`);
+  logger.info(`Handle Both Team Submission - tag: ${data.tag}, team1: ${data.metadata[0]}, team2: ${data.metadata[1]}, division: ${data.metadata[2]}, enemyCaptainId: ${data.metadata[3]}`);
   try {
     const tournamentCode = await getTournamentCode(data.metadata[0], data.metadata[1], data.metadata[2], interaction);
     if (tournamentCode.error != null) {
@@ -180,6 +186,7 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
         data.metadata[0],
         data.metadata[1],
         data.metadata[2],
+        data.metadata[3],
       ]);
       const generateButton = createButton(
         generateButtonData,
@@ -194,49 +201,44 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
       // const regenerateButton = createButton(regenerateButtonData, "Code Not Work?", ButtonStyle.Secondary, '❓');
 
       const buttonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(generateButton);
-
-      // try {
-      //   await interaction.user.send({
-      //     content: tournamentCode.draftLinks?.toString()!,
-      //   });
-      // } catch (err) {
-      //   console.error(`Couldn't DM ${interaction.user.tag}`, err);
-      //   // (Optional) Fallback to ephemeral if DM fails
-      //   await interaction.followUp({
-      //     content: `I couldn't DM you the draft links (your DMs might be closed). Please SAVE THESE ASAP before this message goes away.\n`
-      //     + tournamentCode.draftLinks?.toString()!,
-      //     ephemeral: true
-      //   });
-      // }
-
+      let discordResponse =
+          `## ${tournamentCode.divisionName}\n` +
+          `**__${tournamentCode.team1Name}__ v.s. __${tournamentCode.team2Name}__**\n\n` +
+          `Series Created By: <@${user.id}>`;
       const publicMessage = await interaction.followUp({
-        content: tournamentCode.discordResponse?.toString(),
-        components: [buttonRow],
+        content: discordResponse,
         ephemeral: false,
       });
 
       if(tournamentCode.gameNumber===1) {
 // Create a thread from the public message
         const thread = await publicMessage.startThread({
-          name: `${tournamentCode.team1Name} vs ${tournamentCode.team2Name} Draft Links`,
+          name: `${tournamentCode.team1Name} vs ${tournamentCode.team2Name}`,
           autoArchiveDuration: 60, // in minutes
           reason: `Draft links thread for tournament code ${tournamentCode.shortcode}`,
         });
 
+        let links = tournamentCode.draftLinks?.toString().concat("<@"+data.metadata[3]+">") || null;
+        logger.info(`Draft Links: ${links}`);
         // Post the draft links in the thread
         await thread.send({
-          content: tournamentCode.draftLinks?.toString()!,
-          flags: 1 << 2
+          content: links!,
+          flags: 1 << 2,
+          components: [buttonRow],
+        });
+        
+        await thread.send({
+          content: tournamentCode.discordResponse?.toString() || "",
         });
       }
-          }
-        } catch (error) {
-          console.error(error);
-          await interaction.update({
-            content: 'An error occurred while generating the tournament code. Please try again later.',
-            components: [],
-          });
-        } 
+    }
+  } catch (error) {
+    console.error(error);
+    await interaction.update({
+      content: 'An error occurred while generating the tournament code. Please try again later.',
+      components: [],
+    });
+  } 
       }
 
 // TODO: Fix this as to not need to send interaction
@@ -252,6 +254,7 @@ export async function getTournamentCode(
   gameNumber: number;
   error: string | null;
   divisionId: number | null;
+  divisionName?: string;
   team1Name: string;
   team2Name: string;
   gameId: number;
@@ -273,11 +276,14 @@ export async function getTournamentCode(
     };
   }
   logger.info(`Fetching teams: ${team1}, ${team2}`);
+  // const team1Data = await getTeam(Number(team1));
   const team1Data = await getTeam(Number(team1));
+  // const team2Data = await getTeam(Number(team2));
   const team2Data = await getTeam(Number(team2));
   const team1Name = team1Data?.name || 'Unknown Team 1';
   const team2Name = team2Data?.name || 'Unknown Team 2';
   logger.info(`Fetched teams - Team 1: ${team1Data?.id}  ${team1Data?.name}, Team 2: ${team2Data?.id}  ${team2Data?.name}`);
+  // const game = await createGame(team1Data!, team2Data!);
   const game = await createGame(team1Data!, team2Data!);
   const gameNumber = game.number || 1; // Assuming gameNumber is part of the Game object
   let shortcode = game.shortcode;
@@ -295,15 +301,19 @@ export async function getTournamentCode(
     };
   }
  
-  let division_name = (await getEvent(Number(division)))?.name || 'Unknown Division';
+  // let division_name = (await getEvent(Number(division)))?.name || 'Unknown Division';
+  let division_name = division? (await getEvent(division))?.name || 'Unknown Division': 'Unknown Division';
   const member = await interaction.guild!.members.fetch(interaction.user.id);
   const draftLinkMarkdown = gameNumber===1? (await getDraftLinksMarkdown(team1Data.name, team2Data.name, shortcode)) + '\n': "";
   const gameId = game.id || 0;
-  let discordResponse =
-    `## ${division_name}\n` +
-    `**🟦 __${team1Name}__ v.s. __${team2Name}__ 🟥**\n` +
-    `Game ${gameNumber} Code: \`\`\`${shortcode}\`\`\`\n` +
-    `Generated By: <@${member.id}>`;
+  let sideShow = `# Game ${gameNumber} \n 🟦 __**${team1Name}**__ v.s.  __**${team2Name}**__ 🟥\n`;
+  let gameCode: string = `\nCode: \`\`\`${shortcode}\`\`\`\n\n`;
+  let generatedBy : string = `Game Generated By: <@${member.id}>\n`;
+  let discordResponse = sideShow.concat(gameCode).concat(generatedBy);
+  // let discordResponse =
+  //   `## ${division_name}\n` +
+  //   `**__${team1Name}__ v.s. __${team2Name}__**\n\n` +
+  //   `Series Created By: <@${member.id}>`;
   // TODO: reusing series codes in playoffs is making this message a bit obsolete
 
   return {
@@ -313,6 +323,7 @@ export async function getTournamentCode(
     gameNumber,
     error: null,
     divisionId: division,
+    divisionName: division_name,
     team1Name,
     team2Name,
     gameId
@@ -320,8 +331,12 @@ export async function getTournamentCode(
 }
 module.exports =  {
   data:  new SlashCommandBuilder()
-    .setName('generate-tournament-code')
-    .setDescription('Generate New Tournament Code'),
+    .setName('start-series')
+    .setDescription('Generate New Series')
+    .addUserOption(option =>
+      option.setName('opposing_captain')
+        .setDescription('The Enemy Team Captain')
+        .setRequired(true)),
   execute: async (interaction: {
     reply: (arg0: {
       content: string;
@@ -330,9 +345,11 @@ module.exports =  {
       withResponse?: boolean;
     }) => any;
     user: User;
+    options: { getUser: (arg0: string) => User };
   }) => {
-    logger.info('Executing /generate-tournament-code command');
+    logger.info('Executing /start-series command');
     // Move your existing execute logic here
+    // const divisionsMap = await getEvents();
     const divisionsMap = await getEvents();
     if (divisionsMap.length === 0) {
       await interaction.reply({
@@ -343,8 +360,12 @@ module.exports =  {
       return;
     }
 
+    const enemyCaptain = interaction.options.getUser('opposing_captain');
+    logger.info('Enemy Captain: ' + (enemyCaptain ? enemyCaptain.id : 'None'));
+    const customId = createButtonData('division_select', interaction.user.id, [enemyCaptain ? enemyCaptain.id : '']);
+    logger.info('Created customId for division select: ' + customId.serialize());
     const divisionDropdown = new StringSelectMenuBuilder()
-      .setCustomId('division_select')
+      .setCustomId(customId.serialize())
       .setPlaceholder('Select a Division')
       .addOptions(
         Array.from(divisionsMap).map(event => ({
@@ -362,17 +383,16 @@ module.exports =  {
       flags: 'Ephemeral',
       withResponse: true,
     });
-    // Since we're not making any NEW messages we'll have to pass this fella around to keep listening to him
-    // As we traverse through each menu.
     const message = response.resource!.message;
     const collector = response.resource!.message!.createMessageComponentCollector({
       componentType: ComponentType.StringSelect,
       filter: (i: { user: User; customId: string }) =>
-        i.user === interaction.user && i.customId == 'division_select',
+        i.user === interaction.user && i.customId.startsWith('division_select'),
       time: 5 * 60 * 1000,
     });
 
     collector.on('collect', async (interaction: any) => {
+      console.log('Collecting division select interaction:', interaction.customId);
       handleDivisionSelect(interaction, message);
     });
     return;

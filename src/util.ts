@@ -31,6 +31,7 @@ export async function getDraftLinksMarkdown(
   redTeamName: string,
   tournamentCode: string,
 ): Promise<string> {
+
   const endpoint = '/createFearlessDraft';
   const url = config.LOWBUDGETLCS_BACKEND_URL + endpoint;
   const errorString = 'Error generating draft links! Please do so manually :)';
@@ -66,8 +67,7 @@ export async function getDraftLinksMarkdown(
       `[Spectator Link](${config.LOWBUDGETLCS_DRAFT_URL}/fearless/${fearlessCode}/specator)\n` +
       `\`\`\`${config.LOWBUDGETLCS_DRAFT_URL}/fearless/${fearlessCode}/spectator\`\`\`\n`+
       `[Stream Link](${config.LOWBUDGETLCS_DRAFT_URL}/fearless/${fearlessCode}/stream})\n` +
-      `\`\`\`${config.LOWBUDGETLCS_DRAFT_URL}/fearless/${fearlessCode}/stream\`\`\`\n` +
-      `*💡 Tip: Hey, you should ping the other captain!*`);
+      `\`\`\`${config.LOWBUDGETLCS_DRAFT_URL}/fearless/${fearlessCode}/stream\`\`\``);
   } catch (error) {
     console.error('Error hitting URL:', error);
     return errorString;

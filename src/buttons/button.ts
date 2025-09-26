@@ -1,6 +1,6 @@
 import { ButtonBuilder, ButtonStyle } from "discord.js";
 
-type ButtonData = { tag: string, originalUserId: string, metadata: string[], serialize: () => string }
+export type ButtonData = { tag: string, originalUserId: string, metadata: string[], serialize: () => string }
 
 export function createButtonData(tag: string, originalUserId: string, metadata: string[]): ButtonData {
     return {
