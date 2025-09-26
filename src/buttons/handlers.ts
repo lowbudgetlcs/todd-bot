@@ -4,7 +4,7 @@ import { handleGenerateAnotherConfirm } from "./handlers/generateAnotherConfirm.
 import { handleGenerateAnotherCode } from "./handlers/generateAnotherCode.ts";
 import { handleEndSeries } from "./handlers/endSeries.ts";
 import log from 'loglevel';
-import { handleRegenerateCode } from "./handlers/regenerateCode.ts";
+// import { handleRegenerateCode } from "./handlers/regenerateCode.ts";
 import { handleCancel } from "./handlers/cancelFlow.ts";
 
 const logger =log.getLogger('handlers');
@@ -16,8 +16,8 @@ export function getButtonHandler(tag: string) {
     case 'generate_another':
     case 'cancel_switch':
         return handleGenerateAnotherCode;
-    case 'regenerate_code':
-        return handleRegenerateCode;
+    // case 'regenerate_code':
+    //     return handleRegenerateCode;
     case 'generate_another_confirm':
       return handleGenerateAnotherConfirm;
     case 'switch_sides':

@@ -1,14 +1,17 @@
 import { ButtonBuilder, ButtonStyle } from "discord.js";
+import { decodeSeriesData, encodeSeriesData, SeriesData } from "../types/toddData";
+import { encode } from "punycode";
 
-export type ButtonData = { tag: string, originalUserId: string, metadata: string[], serialize: () => string }
+export type ButtonData = { tag: string, originalUserId: string, seriesData: SeriesData, serialize: () => string }
 
-export function createButtonData(tag: string, originalUserId: string, metadata: string[]): ButtonData {
+export function createButtonData(tag: string, originalUserId: string, seriesData: SeriesData): ButtonData {
     return {
         tag: tag,
         originalUserId: originalUserId,
-        metadata: metadata,
+        seriesData: seriesData,
         serialize() {
-        return `${tag}:${originalUserId}:${metadata.join(':')}`
+          const parts = encodeSeriesData(this.seriesData);
+        return `${tag}:${originalUserId}:${parts.join(':')}`;
     }
   };
 }
@@ -25,5 +28,5 @@ export function parseButtonData(customId: string): ButtonData {
   const tag = parts[0];
   const originalUserId = parts[1];
   const metadata = parts.slice(2);
-  return { tag, originalUserId, metadata, serialize: () => customId };
+  return { tag, originalUserId, seriesData: decodeSeriesData(metadata), serialize: () => customId };
 }

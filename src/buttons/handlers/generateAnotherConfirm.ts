@@ -8,11 +8,12 @@ logger.setLevel('info');
 export async function handleGenerateAnotherConfirm(interaction: ButtonInteraction) {
   try {
     const data = parseButtonData(interaction.customId);
+    const seriesData = data.seriesData;
     logger.info(`handleGenerateAnotherConfirm called with data: ${JSON.stringify(data)}`);
-    const team1 = data.metadata[0];
-    const team2 = data.metadata[1];
-    const division = data.metadata[2];
-    const enemyCaptainId = data.metadata[3];
+    const team1 = seriesData.team1Id;
+    const team2 = seriesData.team2Id;
+    const division = seriesData.divisionId;
+    const enemyCaptainId = seriesData.enemyCaptainId;
     if (interaction.user.id !== data.originalUserId && interaction.user.id !== enemyCaptainId) {
       await interaction.reply({
         content: "Only the person who generated the original code can generate another one.",
@@ -20,12 +21,14 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
       });
       return;
     }
+    let opposing_captain = enemyCaptainId != interaction.user.id? enemyCaptainId: data.originalUserId;
 
     const tournamentCode = await getTournamentCode(
       team1,
       team2,
       division,
-      interaction
+      interaction,
+      opposing_captain
     );
 
     if (tournamentCode.error) {

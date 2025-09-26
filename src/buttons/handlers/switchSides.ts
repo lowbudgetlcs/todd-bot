@@ -2,6 +2,7 @@ import { ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle } from 
 import { createButton, createButtonData, parseButtonData } from "../button.ts";
 import log from 'loglevel';
 import { getTeam, Team } from "../../dennys.ts";
+import { SeriesData } from "../../types/toddData.ts";
 const logger =log.getLogger('switchSides');
 logger.setLevel('info');
 
@@ -9,7 +10,8 @@ export async function handleSwitchSides(interaction: ButtonInteraction) {
   try {
     const data = parseButtonData(interaction.customId);
     logger.info(`handleSwitchSides called with data: ${JSON.stringify(data)}`);
-    if (interaction.user.id !== data.originalUserId && interaction.user.id !== data.metadata[3]) {
+    const seriesData = data.seriesData;
+    if (interaction.user.id !== data.originalUserId && interaction.user.id !== seriesData.enemyCaptainId) {
       await interaction.reply({
         content: "Only the person who generated the original code can switch sides.",
         ephemeral: true
@@ -17,18 +19,22 @@ export async function handleSwitchSides(interaction: ButtonInteraction) {
       return;
     }
 
-    const team1:Team = await getTeam(Number(data.metadata[0]));
-    const team2:Team = await getTeam(Number(data.metadata[1]));
+    const team1:Team = await getTeam(seriesData.team1Id);
+    const team2:Team = await getTeam(seriesData.team2Id);
 
-    const switchTeams = [String(team2.id), String(team1.id), data.metadata[2]]; // Switch teams and keep the rest of the metadata
+    const seriesDataSwitched: SeriesData = {
+      team1Id: team2.id,
+      team2Id: team1.id,
+      divisionId: seriesData.divisionId,
+      enemyCaptainId: seriesData.enemyCaptainId,
+    };
+    const confirmButtonData = createButtonData("generate_another_confirm", data.originalUserId, seriesData);
+    const confirmButton = createButton(confirmButtonData, "Confirm", ButtonStyle.Success, '✅');
 
-    const confirmButtonData = createButtonData("generate_another_confirm", data.originalUserId, data.metadata);
-    const confirmButton = createButton(confirmButtonData, "Generate Next Game", ButtonStyle.Success, '✅');
-
-    const switchButtonData = createButtonData("switch_sides", data.originalUserId, switchTeams);
+    const switchButtonData = createButtonData("switch_sides", data.originalUserId, seriesDataSwitched);
     const switchButton = createButton(switchButtonData, "Switch Sides", ButtonStyle.Primary, '🔄');
 
-    const cancelButtonData = createButtonData("cancel_flow", data.originalUserId, data.metadata);
+    const cancelButtonData = createButtonData("cancel_flow", data.originalUserId, seriesData);
     const cancelButton = createButton(cancelButtonData, "Cancel", ButtonStyle.Danger,'❌');
 
     const buttonRow = new ActionRowBuilder<ButtonBuilder>()

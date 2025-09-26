@@ -7,8 +7,9 @@ logger.setLevel('info');
 export async function handleEndSeries(interaction: ButtonInteraction) {
   try {
     const data = parseButtonData(interaction.customId);
+    const seriesData = data.seriesData;
     logger.info(`handleEndSeries called with data: ${JSON.stringify(data)}`);
-    if (interaction.user.id !== data.originalUserId && interaction.user.id !== data.metadata[3]) {
+    if (interaction.user.id !== data.originalUserId && interaction.user.id !== seriesData.enemyCaptainId) {
       await interaction.reply({
         content: "Only the person who generated the original code can end this series.",
         ephemeral: true
