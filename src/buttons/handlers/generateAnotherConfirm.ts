@@ -8,23 +8,27 @@ logger.setLevel('info');
 export async function handleGenerateAnotherConfirm(interaction: ButtonInteraction) {
   try {
     const data = parseButtonData(interaction.customId);
+    const seriesData = data.seriesData;
     logger.info(`handleGenerateAnotherConfirm called with data: ${JSON.stringify(data)}`);
-    const team1 = data.metadata[0];
-    const team2 = data.metadata[1];
-    const division = data.metadata[2];
-    if (interaction.user.id !== data.originalUserId) {
+    const team1 = seriesData.team1Id;
+    const team2 = seriesData.team2Id;
+    const division = seriesData.divisionId;
+    const enemyCaptainId = seriesData.enemyCaptainId;
+    if (interaction.user.id !== data.originalUserId && interaction.user.id !== enemyCaptainId) {
       await interaction.reply({
         content: "Only the person who generated the original code can generate another one.",
         ephemeral: true
       });
       return;
     }
+    let opposing_captain = enemyCaptainId != interaction.user.id? enemyCaptainId: data.originalUserId;
 
     const tournamentCode = await getTournamentCode(
       team1,
       team2,
       division,
-      interaction
+      interaction,
+      opposing_captain
     );
 
     if (tournamentCode.error) {
@@ -36,8 +40,6 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
     }
 
     // Create generate another button
-    const generateButtonData = createButtonData("generate_another", data.originalUserId, data.metadata);
-    const generateButton = createButton(generateButtonData, "Generate Next Game", ButtonStyle.Success, '⚔️');
 
     // Regenerate button row
     // data.metadata[3] = tournamentCode.gameId.toString(); 
@@ -45,8 +47,6 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
     // const regenerateButtonData = createButtonData("regenerate_code", data.originalUserId, data.metadata);
     // const regenerateButton = createButton(regenerateButtonData, "Code Not Work?", ButtonStyle.Secondary, '❓');
 
-    const buttonRow = new ActionRowBuilder<ButtonBuilder>()
-      .addComponents(generateButton);
 
     // Send new message with tournament code and button
     await interaction.update({
@@ -56,9 +56,12 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
 
     await interaction.deleteReply();
 
+    let response = tournamentCode.discordResponse?.toString() || "";
+    response.concat(`\n# Game ${tournamentCode.gameNumber} Code: \`\`\`${tournamentCode.shortcode}\`\`\`\n\n`);
+
+
     await interaction.followUp({
-      content: tournamentCode.discordResponse?.toString(),
-      components: [buttonRow],
+      content: response,
       ephemeral: false,
       flags: 1 << 2
     });

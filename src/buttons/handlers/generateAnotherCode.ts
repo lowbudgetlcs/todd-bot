@@ -2,14 +2,17 @@ import { ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle } from 
 import { createButton, createButtonData, parseButtonData } from "../button.ts";
 import { getTeam, Team } from '../../dennys.ts';
 import log from 'loglevel';
+import { SeriesData } from "../../types/toddData.ts";
 
 const logger =log.getLogger('generateAnotherCode');
 logger.setLevel('info');
 export async function handleGenerateAnotherCode(interaction: ButtonInteraction) {
   try {
     const data = parseButtonData(interaction.customId);
+    const seriesData = data.seriesData;
+    const enemyCaptainId = seriesData.enemyCaptainId;
     logger.info(`handleGenerateAnotherCode called with data: ${JSON.stringify(data)}`);
-    if (interaction.user.id !== data.originalUserId) {
+    if (interaction.user.id !== data.originalUserId && interaction.user.id !== enemyCaptainId) {
       await interaction.reply({
         content: "Only the person who generated the original code can generate another one.",
         ephemeral: true
@@ -17,17 +20,22 @@ export async function handleGenerateAnotherCode(interaction: ButtonInteraction) 
       return;
     }
 
-    const generateButtonData = createButtonData("generate_another_confirm", data.originalUserId, data.metadata);
-    const generateButton = createButton(generateButtonData, "Generate Next Game", ButtonStyle.Success, '⚔️');
+    const generateButtonData = createButtonData("generate_another_confirm", data.originalUserId, seriesData);
+    const generateButton = createButton(generateButtonData, "Confirm", ButtonStyle.Success, '⚔️');
 
-    const team1:Team = await getTeam(Number(data.metadata[0]));
-    const team2:Team = await getTeam(Number(data.metadata[1]));
+    const team1:Team = await getTeam(seriesData.team1Id);
+    const team2:Team = await getTeam(seriesData.team2Id);
 
-    const switchTeams = [String(team2.id), String(team1.id), data.metadata[2]]; // Switch teams and keep the rest of the metadata
-    
-    const switchButtonData = createButtonData("switch_sides", data.originalUserId, switchTeams);  
+    const seriesDataSwitched: SeriesData = {
+          team1Id: team2.id,
+          team2Id: team1.id,
+          divisionId: seriesData.divisionId,
+          enemyCaptainId: seriesData.enemyCaptainId,
+        };
+        
+    const switchButtonData = createButtonData("switch_sides", data.originalUserId, seriesDataSwitched);  
     const switchButton = createButton(switchButtonData, "Switch Sides",ButtonStyle.Primary, '🔄');
-    const cancelButtonData = createButtonData("cancel_flow", data.originalUserId, data.metadata);
+    const cancelButtonData = createButtonData("cancel_flow", data.originalUserId, seriesData);
     const cancelButton = createButton(cancelButtonData, "Cancel", ButtonStyle.Danger, '❌');
     
     const buttonRow = new ActionRowBuilder<ButtonBuilder>()

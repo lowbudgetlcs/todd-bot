@@ -9,8 +9,9 @@ export async function handleCancel(interaction: ButtonInteraction) {
   try {
     const data = parseButtonData(interaction.customId);
     logger.info(`handleCancel called with data: ${JSON.stringify(data)}`);
+    const seriesData = data.seriesData;
 
-    if (interaction.user.id !== data.originalUserId) {
+    if (interaction.user.id !== data.originalUserId && interaction.user.id !== seriesData.enemyCaptainId) {
       await interaction.reply({
         content: "Only the original requester can cancel this action.",
         ephemeral: true,

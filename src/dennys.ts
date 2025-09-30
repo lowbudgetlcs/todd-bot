@@ -46,13 +46,7 @@ export type Game = {
 
 const API_URL = config.API_URL;
 // Data
-const teams: Team[] = [
-  { id: 1, name: 'team 1', logoName: null, eventId: 1 },
-  { id: 2, name: 'team 2', logoName: null, eventId: 1 },
-  { id: 5, name: 'team 5', logoName: null, eventId: 1 },
-  { id: 3, name: 'team 3', logoName: null, eventId: 2 },
-  { id: 4, name: 'team 4', logoName: null, eventId: 2 },
-];
+
 
 
 export const getEvents = async (): Promise<Event[]> => {
@@ -83,6 +77,7 @@ export const getEventWithTeams = async (eventId: number): Promise<EventWithTeams
   throw new Error(`Failed to fetch event with teams: ${response.statusText}`);
 };
 
+
 export const getTeam = async (teamId: number): Promise<Team> => {
   const response = await fetch(`${API_URL}/team/${teamId}`);
   if (response.ok) {
@@ -91,6 +86,7 @@ export const getTeam = async (teamId: number): Promise<Team> => {
   }
   throw new Error(`Failed to fetch team: ${response.statusText}`);
 };
+
 
 export const createGame = async (blueside: Team, redside: Team): Promise<Game> => {
   const response = await fetch(`${API_URL}/series/game`, {
@@ -111,6 +107,7 @@ export const createGame = async (blueside: Team, redside: Team): Promise<Game> =
   throw new Error(`Failed to fetch team: ${response.statusText}`);
 };
 
-export const regenerateGameCode = async (gameId: number): Promise<Game> => {
-  return { id: 1, blueTeamId: teams[0].id, redTeamId: teams[1].id, shortcode: 'SHORTCODE_PLACEHOLDER', number: 1, seriesId: 1 };
-};
+
+// export const regenerateGameCode = async (gameId: number): Promise<Game> => {
+//   return { id: 1, blueTeamId: teams[0].id, redTeamId: teams[1].id, shortcode: 'SHORTCODE_PLACEHOLDER', number: 1, seriesId: 1 };
+// };
