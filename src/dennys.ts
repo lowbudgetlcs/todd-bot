@@ -4,6 +4,11 @@ import log from 'loglevel';
 
 const logger =log.getLogger('dennys');
 logger.setLevel('info');
+[]
+export type eventGroup = {
+  id: number;
+  name: string;
+}
 
 export type Event = {
   id: number;
@@ -13,8 +18,16 @@ export type Event = {
   startDate: string;
   endDate: string;
   status: string;
-  tournamentId: number;
+  eventGroupId: number;
 };
+
+
+export type eventGroupWithEvents = {
+  id: number;
+  name: string;
+  events: Event[];
+}
+
 
 export type EventWithTeams = {
   id: number;
@@ -24,7 +37,6 @@ export type EventWithTeams = {
   startDate: string;
   endDate: string;
   status: string;
-  tournamentId: number;
   teams: Team[];
 };
 
@@ -47,13 +59,20 @@ export type Game = {
 const API_URL = config.API_URL;
 // Data
 
-
-
-export const getEvents = async (): Promise<Event[]> => {
-  const response = await fetch(`${API_URL}/event`);
+export const getEventGroups = async (): Promise<eventGroup[]> => {
+  const response = await fetch(`${API_URL}/eventGroup`);
   if (response.ok) {
-    const data: Event[] = await response.json();
+    const data: eventGroup[] = await response.json();
     return data;
+  }
+  throw new Error(`Failed to fetch event groups: ${response.statusText}`);
+}
+
+export const getEvents = async (eventGroup: number): Promise<Event[]> => {
+  const response = await fetch(`${API_URL}/eventGroup/${eventGroup}/events`);
+  if (response.ok) {
+    const data: eventGroupWithEvents = await response.json();
+    return data.events;
   }
   throw new Error(`Failed to fetch events: ${response.statusText}`);
 };

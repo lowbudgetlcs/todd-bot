@@ -351,9 +351,19 @@ module.exports =  {
     }) => any;
     user: User;
     options: { getUser: (arg0: string) => User };
-  }) => {
+  }, currentEventGroupId: number | null
+    ) => {
     logger.info('Executing /start-series command');
-    const divisionsMap = await getEvents();
+    console.log("current event id in tournament:", currentEventGroupId);
+    if (currentEventGroupId === null) {
+      await interaction.reply({
+        content: 'Event group ID is not set. Please create a dev ticket.',
+        components: [],
+        flags: 'Ephemeral',
+      });
+      return;
+    }
+    const divisionsMap = await getEvents(currentEventGroupId);
     if (divisionsMap.length === 0) {
       await interaction.reply({
         content: 'No divisions found.',
