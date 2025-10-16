@@ -224,8 +224,10 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
 
       if(tournamentCode.gameNumber===1) {
 // Create a thread from the public message
+        const now = new Date();
+        const dateString = now.toISOString().split('T')[0];
         const thread = await publicMessage.startThread({
-          name: `${tournamentCode.team1Name} vs ${tournamentCode.team2Name}`,
+          name: `${tournamentCode.team1Name} vs ${tournamentCode.team2Name} - ${dateString}`,
           autoArchiveDuration: 60, // in minutes
           reason: `Draft links thread for tournament code ${tournamentCode.shortcode}`,
         });
