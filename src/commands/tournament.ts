@@ -224,8 +224,10 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
 
       if(tournamentCode.gameNumber===1) {
 // Create a thread from the public message
+        const now = new Date();
+        const dateString = now.toISOString().split('T')[0];
         const thread = await publicMessage.startThread({
-          name: `${tournamentCode.team1Name} vs ${tournamentCode.team2Name}`,
+          name: `${tournamentCode.team1Name} vs ${tournamentCode.team2Name} - ${dateString}`,
           autoArchiveDuration: 60, // in minutes
           reason: `Draft links thread for tournament code ${tournamentCode.shortcode}`,
         });
@@ -351,9 +353,19 @@ module.exports =  {
     }) => any;
     user: User;
     options: { getUser: (arg0: string) => User };
-  }) => {
+  }, currentEventGroupId: number | null
+    ) => {
     logger.info('Executing /start-series command');
-    const divisionsMap = await getEvents();
+    console.log("current event id in tournament:", currentEventGroupId);
+    if (currentEventGroupId === null) {
+      await interaction.reply({
+        content: 'Event group ID is not set. Please create a dev ticket.',
+        components: [],
+        flags: 'Ephemeral',
+      });
+      return;
+    }
+    const divisionsMap = await getEvents(currentEventGroupId);
     if (divisionsMap.length === 0) {
       await interaction.reply({
         content: 'No divisions found.',

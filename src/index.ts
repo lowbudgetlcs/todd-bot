@@ -19,12 +19,16 @@ import { parseButtonData } from "./buttons/button";
 import { getButtonHandler } from "./buttons/handlers.ts";
 import log from 'loglevel';
 import { handleModal } from "./modals/playerPoint.ts";
+import { handleEventGroupSelect } from './commands/setEventGroup.ts';
 
 const logger =log.getLogger('index.ts');
 logger.setLevel('info');
 
+//Storing here since global file didn't work
+let currentEventGroupId: number | null = null;
+
 type ActionWrapper = {
-  execute: (interaction: Interaction) => Promise<void>;
+  execute: (interaction: Interaction, currentEventGroupId: number | null) => Promise<void>;
 };
 class DiscordClient extends Client {
   commands: Collection<string, ActionWrapper> = new Collection();
@@ -84,7 +88,7 @@ client.once('ready', async () => {
 });
 
 client.on(Events.InteractionCreate, async interaction => {
-  
+  console.log("curent eventid", currentEventGroupId);
   if (interaction.isButton()) {
     logger.info(`Button interaction received with customId: ${interaction.customId}`);
     const data = parseButtonData(interaction.customId);
@@ -97,6 +101,11 @@ client.on(Events.InteractionCreate, async interaction => {
     await handleModal(interaction);
     return;
   }
+  if (interaction.isStringSelectMenu() && interaction.customId === 'select_event_group') {
+  await handleEventGroupSelect(interaction, { setCurrentEventGroupId: (id) => { currentEventGroupId = id; } });
+  console.log(`Current Event Group ID set to: ${currentEventGroupId}`);
+  return;
+}
   if (!interaction.isChatInputCommand()) return;
 
   const command = client.commands.get(interaction.commandName);
@@ -107,7 +116,8 @@ client.on(Events.InteractionCreate, async interaction => {
   }
   // Base command / single command
   try {
-    await command.execute(interaction);
+    console.log("current event id in index:", currentEventGroupId);
+    await command.execute(interaction, currentEventGroupId);
   } catch (error) {
     logger.error(error);
     if (interaction.replied || interaction.deferred) {
