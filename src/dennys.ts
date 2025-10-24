@@ -22,6 +22,7 @@ export type Event = {
 };
 
 
+
 export type eventGroupWithEvents = {
   id: number;
   name: string;
@@ -56,6 +57,13 @@ export type Game = {
   number: number;
 };
 
+export type Series = {
+  id: number;
+  eventId: number;
+  teamIds: number[];
+  totalGames: number;
+};
+
 const API_URL = config.API_URL;
 // Data
 
@@ -87,6 +95,7 @@ export const getEvent = async (eventId: number): Promise<Event> => {
   throw new Error(`Failed to fetch event: ${response.statusText}`);
 }
 
+
 export const getEventWithTeams = async (eventId: number): Promise<EventWithTeams> => {
   const response = await fetch(`${API_URL}/event/${eventId}/teams`);
   if (response.ok) {
@@ -106,6 +115,23 @@ export const getTeam = async (teamId: number): Promise<Team> => {
   throw new Error(`Failed to fetch team: ${response.statusText}`);
 };
 
+export const getTotalGames = async (eventId: number, team1:number, team2: number): Promise<number> => {
+  const response = await fetch(`${API_URL}/event/${eventId}/series`);
+  if (response.ok) {
+    const body = await response.json();
+    const seriesList: Series[] = body.series;
+    console.log(seriesList);
+    for (const s of seriesList) {
+      if (Array.isArray(s.teamIds) && s.teamIds.includes(team1) && s.teamIds.includes(team2)) {
+        console.log(`Found matching series: ${JSON.stringify(s)} for teams ${team1} and ${team2} with totalGames: ${s.totalGames}`);
+        return s.totalGames;
+      }
+    }
+    return 0;
+  }
+  throw new Error(`Failed to fetch team: ${response.statusText}`);
+}
+
 
 export const createGame = async (blueside: Team, redside: Team): Promise<Game> => {
   const response = await fetch(`${API_URL}/series/game`, {
@@ -116,7 +142,7 @@ export const createGame = async (blueside: Team, redside: Team): Promise<Game> =
     },
     body: JSON.stringify({
       blueTeamId: blueside.id,
-      redTeamId: redside.id 
+      redTeamId: redside.id
     })
   });
   if(response.ok) {
