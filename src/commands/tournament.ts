@@ -10,7 +10,7 @@ import {
 import { getDraftLinksMarkdown } from '../util.ts';
 import { User } from '../interfaces.ts';
 import { createButton, createButtonData, parseButtonData, ButtonData } from '../buttons/button.ts';
-import { createGame, getEvent, getEvents, getEventWithTeams, getTeam, Team } from '../dennys.ts';
+import { createGame, getEvent, getEvents, getEventWithTeams, getTeam, getTotalGames, Team } from '../dennys.ts';
 import log from 'loglevel';
 import { SeriesData } from '../types/toddData.ts';
 
@@ -44,7 +44,7 @@ export async function handleDivisionSelect(interaction: any, message: any) {
     team1Id: "" as unknown as number,
     team2Id: "" as unknown as number,
     divisionId: divisionKey,
-    enemyCaptainId: enemyCaptainId,
+    enemyCaptainId: enemyCaptainId
   };
   const customId1 = createButtonData('team1_select', interaction.user.id, seriesDataUpdated);
   const customId2 = createButtonData('team2_select', interaction.user.id, seriesDataUpdated);
@@ -115,7 +115,7 @@ export async function handleTeamSelect(interaction: any) {
     team1Id: team1,
     team2Id: team2,
     divisionId: division,
-    enemyCaptainId: enemyCaptainId,
+    enemyCaptainId: enemyCaptainId
   };
 
   const customId1 = createButtonData('team1_select', interaction.user.id, seriesDataUpdated);
@@ -184,7 +184,7 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
   const seriesData = data.seriesData;
   logger.info(`Handle Both Team Submission - tag: ${data.tag}, team1: ${seriesData.team1Id}, team2: ${seriesData.team2Id}, division: ${seriesData.divisionId}, enemyCaptainId: ${seriesData.enemyCaptainId}`);
   try {
-    const tournamentCode = await getTournamentCode(seriesData.team1Id, seriesData.team2Id, seriesData.divisionId, interaction, seriesData.enemyCaptainId);
+    const tournamentCode = await getTournamentCode(seriesData.team1Id, seriesData.team2Id, seriesData.divisionId, interaction, seriesData.enemyCaptainId, true);
     if (tournamentCode.error != null) {
       // Handle error: Update original interaction
       await interaction.update({
@@ -222,7 +222,6 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
         ephemeral: false,
       });
 
-      if(tournamentCode.gameNumber===1) {
 // Create a thread from the public message
         const now = new Date();
         const dateString = now.toISOString().split('T')[0];
@@ -245,7 +244,7 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
           content: tournamentCode.discordResponse?.toString() || "",
         });
       }
-    }
+    
   } catch (error) {
     console.error(error);
     await interaction.update({
@@ -261,7 +260,8 @@ export async function getTournamentCode(
   team2: number,
   divisionId: number,
   interaction: ButtonInteraction,
-  enemyCaptainId: string
+  enemyCaptainId: string,
+  first: boolean
 ): Promise<{
   discordResponse: string | null;
   draftLinks: string | null;
@@ -273,6 +273,7 @@ export async function getTournamentCode(
   team1Name: string;
   team2Name: string;
   gameId: number;
+  totalGames: number;
 }> {
   //TODO: Call api with this informatio nand let it handle all this logic
   const division  = divisionId? Number(divisionId) : null
@@ -287,7 +288,8 @@ export async function getTournamentCode(
       divisionId: division,
       team1Name: team1.toString(),
       team2Name: team2.toString(),
-      gameId:0
+      gameId:0,
+      totalGames:0
     };
   }
   logger.info(`Fetching teams: ${team1}, ${team2}`);
@@ -309,13 +311,15 @@ export async function getTournamentCode(
       divisionId: division,
       team1Name,
       team2Name,
-      gameId:0
+      gameId:0,
+      totalGames:0
     };
   }
  
   let division_name = division? (await getEvent(division))?.name || 'Unknown Division': 'Unknown Division';
+  let totalGames = await getTotalGames(division!, team1, team2);
   const member = await interaction.guild!.members.fetch(interaction.user.id);
-  const draftLinkMarkdown = gameNumber===1? (await getDraftLinksMarkdown(team1Data.name, team2Data.name, shortcode)) + '\n': "";
+  const draftLinkMarkdown = first? (await getDraftLinksMarkdown(team1Data.name, team2Data.name, shortcode, totalGames)) + '\n': '';
   const gameId = game.id || 0;
   let sideShow = `# Game ${gameNumber} \n 🟦 __**${team1Name}**__ v.s.  __**${team2Name}**__ 🟥\n`;
   let gameCode: string = `\nCode: \`\`\`${shortcode}\`\`\`\n`;
@@ -333,7 +337,8 @@ export async function getTournamentCode(
     divisionName: division_name,
     team1Name,
     team2Name,
-    gameId
+    gameId,
+    totalGames
   };
 }
 module.exports =  {
@@ -381,7 +386,7 @@ module.exports =  {
       team1Id: "" as unknown as number,
       team2Id: "" as unknown as number,
       divisionId: 0,
-      enemyCaptainId: enemyCaptain.id,
+      enemyCaptainId: enemyCaptain.id
     };
     // Show division select menu
     const customId = createButtonData('division_select', interaction.user.id, seriesData);

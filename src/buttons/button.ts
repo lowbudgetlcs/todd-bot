@@ -1,6 +1,5 @@
 import { ButtonBuilder, ButtonStyle } from "discord.js";
 import { decodeSeriesData, encodeSeriesData, SeriesData } from "../types/toddData";
-import { encode } from "punycode";
 
 export type ButtonData = { tag: string, originalUserId: string, seriesData: SeriesData, serialize: () => string }
 

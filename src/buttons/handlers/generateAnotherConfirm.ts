@@ -28,7 +28,8 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
       team2,
       division,
       interaction,
-      opposing_captain
+      opposing_captain,
+      false
     );
 
     if (tournamentCode.error) {

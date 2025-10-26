@@ -30,6 +30,7 @@ export async function getDraftLinksMarkdown(
   blueTeamName: string,
   redTeamName: string,
   tournamentCode: string,
+  totalGames: number
 ): Promise<string> {
 
   const endpoint = '/createFearlessDraft';
@@ -39,7 +40,7 @@ export async function getDraftLinksMarkdown(
     team1Name: blueTeamName,
     team2Name: redTeamName,
     tournamentID: tournamentCode,
-    draftCount: 3
+    draftCount: totalGames
   };
   try {
     logger.info(`Hitting URL: ${url} with payload: ${JSON.stringify(payload)}`);
@@ -64,7 +65,7 @@ export async function getDraftLinksMarkdown(
       `\`\`\`${config.LOWBUDGETLCS_DRAFT_URL}/fearless/${fearlessCode}/${team1Code}\`\`\`\n`+
       `[${redTeamName} Link](${config.LOWBUDGETLCS_DRAFT_URL}/fearless/${fearlessCode}/${team2Code})\n` +
       `\`\`\`${config.LOWBUDGETLCS_DRAFT_URL}/fearless/${fearlessCode}/${team2Code}\`\`\`\n`+
-      `[Spectator Link](${config.LOWBUDGETLCS_DRAFT_URL}/fearless/${fearlessCode}/specator)\n` +
+      `[Spectator Link](${config.LOWBUDGETLCS_DRAFT_URL}/fearless/${fearlessCode}/spectator)\n` +
       `\`\`\`${config.LOWBUDGETLCS_DRAFT_URL}/fearless/${fearlessCode}/spectator\`\`\`\n`+
       `[Stream Link](${config.LOWBUDGETLCS_DRAFT_URL}/fearless/${fearlessCode}/stream})\n` +
       `\`\`\`${config.LOWBUDGETLCS_DRAFT_URL}/fearless/${fearlessCode}/stream\`\`\``);
