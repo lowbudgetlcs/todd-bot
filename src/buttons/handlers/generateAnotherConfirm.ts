@@ -27,6 +27,7 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
       team1,
       team2,
       division,
+      seriesData.stage,
       interaction,
       opposing_captain,
       false

@@ -10,7 +10,7 @@ import {
 import { getDraftLinksMarkdown } from '../util.ts';
 import { User } from '../interfaces.ts';
 import { createButton, createButtonData, parseButtonData, ButtonData } from '../buttons/button.ts';
-import { createGame, getEvent, getEvents, getEventWithTeams, getTeam, getTotalGames, Team } from '../dennys.ts';
+import { createGame, getEvent, getEvents, getEventWithTeams, getSeriesId, getTeam, getTotalGames, Team } from '../dennys.ts';
 import log from 'loglevel';
 import { SeriesData } from '../types/toddData.ts';
 
@@ -31,7 +31,16 @@ export async function handleDivisionSelect(interaction: any, message: any) {
   logger.info('Enemy Captain ID: ' + enemyCaptainId);
   const {values} = interaction;
   const divisionKey = parseInt(values[0]);
-  const divisionName = (await getEvent(divisionKey))?.name || 'Unknown Division';
+  const divisionEvent = await getEvent(divisionKey);
+  const divisionName = divisionEvent?.name || 'Unknown Division';
+  const stages = divisionEvent?.eventStages || [];
+  if (stages.length === 0) {
+    await interaction.update({
+      content: 'No stages found for the selected division.',
+      components: [],
+    });
+    return;
+  }
   const teams = await grabTeams(divisionKey);
   if (!teams || teams.length === 0) {
     await interaction.update({
@@ -44,10 +53,12 @@ export async function handleDivisionSelect(interaction: any, message: any) {
     team1Id: "" as unknown as number,
     team2Id: "" as unknown as number,
     divisionId: divisionKey,
-    enemyCaptainId: enemyCaptainId
+    enemyCaptainId: enemyCaptainId,
+    stage: ""
   };
   const customId1 = createButtonData('team1_select', interaction.user.id, seriesDataUpdated);
   const customId2 = createButtonData('team2_select', interaction.user.id, seriesDataUpdated);
+  const customId3 = createButtonData('stage_select', interaction.user.id, seriesDataUpdated);
 
   const team1Dropdown = new StringSelectMenuBuilder()
     .setCustomId(customId1.serialize())
@@ -59,16 +70,22 @@ export async function handleDivisionSelect(interaction: any, message: any) {
     .setPlaceholder('Select Red Side')
     .addOptions(teams.map(team => ({ label: team.name, value: String(team.id) })));
 
+  const stageDropdown = new StringSelectMenuBuilder()
+    .setCustomId(customId3.serialize())
+    .setPlaceholder('Select Stage')
+    .addOptions(stages.map(stage => ({ label: stage, value: stage })));
+
   const row1 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(team1Dropdown);
   const row2 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(team2Dropdown);
+  const row3 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(stageDropdown);
   await interaction.update({
-    content: `You selected the **${divisionName}** division. Now select your teams:`,
-    components: [row1, row2],
+    content: `You selected the **${divisionName}** division. Now select Blue Side, Red Side, and Stage:`,
+    components: [row1, row2, row3],
   });
   const collector = message.createMessageComponentCollector({
     componentType: ComponentType.StringSelect,
     filter: (i: { user: User; customId: string }) =>
-      i.user === interaction.user && ['team1_select', 'team2_select'].includes(parseButtonData(i.customId).tag),
+      i.user === interaction.user && ['team1_select', 'team2_select', 'stage_select'].includes(parseButtonData(i.customId).tag),
     time: 5 * 60 * 1000,
   });
 
@@ -79,47 +96,59 @@ export async function handleDivisionSelect(interaction: any, message: any) {
 }
 
 export async function handleTeamSelect(interaction: any) {
-  const { customId, lable, values, user } = interaction;
-  let selectedTeam = '';
+  const { values, user } = interaction;
   const data = parseButtonData(interaction.customId);
   const seriesData = data.seriesData;
   let team1 = seriesData.team1Id;
   let team2 = seriesData.team2Id;
+  let stage = seriesData.stage;
   let division = seriesData.divisionId;
   let tag = data.tag; 
   let enemyCaptainId = seriesData.enemyCaptainId;
-  logger.info(`Parsed data - tag: ${tag}, team1: ${team1}, team2: ${team2}, division: ${division}, enemyCaptainId: ${enemyCaptainId}`);
+  logger.info(`Parsed data - tag: ${tag}, team1: ${team1}, team2: ${team2}, division: ${division}, stage: ${stage}, enemyCaptainId: ${enemyCaptainId}`);
   if (tag === 'cancel') {
     logger.info("Removing sides");
     team1 = '' as unknown as number;
     team2 = '' as unknown as number;
+    stage = "";
   } else if (tag === 'switch') {
     logger.info("Switching sides");
     let temp = team1;
     team1 = team2;
     team2 = temp;
-  } else {
-    selectedTeam = values[0];
   }
 
 
   if (tag === 'team1_select') {
-    team1 = Number(selectedTeam);
+    team1 = Number(values[0]);
   } else if (tag === 'team2_select') {
-    team2 = Number(selectedTeam);
+    team2 = Number(values[0]);
+  } else if (tag === 'stage_select') {
+    stage = values[0] || "";
   }
   
   const teams:Team[] = await grabTeams(Number(division));
+  const divisionEvent = await getEvent(Number(division));
+  const stages = divisionEvent?.eventStages || [];
+  if (stages.length === 0) {
+    await interaction.update({
+      content: 'No stages found for the selected division.',
+      components: [],
+    });
+    return;
+  }
 
   const seriesDataUpdated: SeriesData = {
     team1Id: team1,
     team2Id: team2,
     divisionId: division,
-    enemyCaptainId: enemyCaptainId
+    enemyCaptainId: enemyCaptainId,
+    stage
   };
 
   const customId1 = createButtonData('team1_select', interaction.user.id, seriesDataUpdated);
   const customId2 = createButtonData('team2_select', interaction.user.id, seriesDataUpdated);
+  const customId3 = createButtonData('stage_select', interaction.user.id, seriesDataUpdated);
   const team1Dropdown = new StringSelectMenuBuilder()
     .setCustomId(customId1.serialize())
     .setPlaceholder('Select Blue side')
@@ -131,18 +160,29 @@ export async function handleTeamSelect(interaction: any) {
     .setPlaceholder('Select Red Side')
     .addOptions(
       teams.map(team => ({ label: team.name, value: String(team.id),  default: (team.id) === team2  })),);
+
+  const stageDropdown = new StringSelectMenuBuilder()
+    .setCustomId(customId3.serialize())
+    .setPlaceholder('Select Stage')
+    .addOptions(
+      stages.map((eventStage) => ({ label: eventStage, value: eventStage, default: eventStage === stage })),
+    );
   
   const row1 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(team1Dropdown);
   const row2 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(team2Dropdown);
+  const row3 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(stageDropdown);
   const team1Name = teams.find(team => team.id === Number(team1))?.name || null;
   const team2Name = teams.find(team => team.id === Number(team2))?.name || null;
 
-  logger.info(`Team 1: ${team1Name} ${team1}, Team 2: ${team2Name} ${team2}`);
-  if (!(team1Name && team2Name)) {
-    const content = `Blue Team: **${team1Name || 'Not Selected!'}**\nRed Team: **${team2Name || 'Not Selected!'}**`;
+  logger.info(`Team 1: ${team1Name} ${team1}, Team 2: ${team2Name} ${team2}, Stage: ${stage}`);
+  if (!(team1Name && team2Name && stage)) {
+    const content =
+      `Blue Team: **${team1Name || 'Not Selected!'}**\n` +
+      `Red Team: **${team2Name || 'Not Selected!'}**\n` +
+      `Stage: **${stage || 'Not Selected!'}**`;
     await interaction.update({
       content,
-      components: [row1, row2],
+      components: [row1, row2, row3],
     });
     return;
   }
@@ -171,7 +211,8 @@ export async function handleTeamSelect(interaction: any) {
   const content =
     `Please confirm all looks right\n` +
     `# Blue Side: ${team1Name}\n` +
-    `# Red Side: ${team2Name}`;
+    `# Red Side: ${team2Name}\n` +
+    `# Stage: ${stage}`;
   await interaction.update({
     content,
     components: [confirmRow],
@@ -182,9 +223,9 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
   const { user } = interaction;
   const data = parseButtonData(interaction.customId);
   const seriesData = data.seriesData;
-  logger.info(`Handle Both Team Submission - tag: ${data.tag}, team1: ${seriesData.team1Id}, team2: ${seriesData.team2Id}, division: ${seriesData.divisionId}, enemyCaptainId: ${seriesData.enemyCaptainId}`);
+  logger.info(`Handle Both Team Submission - tag: ${data.tag}, team1: ${seriesData.team1Id}, team2: ${seriesData.team2Id}, division: ${seriesData.divisionId}, stage: ${seriesData.stage}, enemyCaptainId: ${seriesData.enemyCaptainId}`);
   try {
-    const tournamentCode = await getTournamentCode(seriesData.team1Id, seriesData.team2Id, seriesData.divisionId, interaction, seriesData.enemyCaptainId, true);
+    const tournamentCode = await getTournamentCode(seriesData.team1Id, seriesData.team2Id, seriesData.divisionId, seriesData.stage, interaction, seriesData.enemyCaptainId, true);
     if (tournamentCode.error != null) {
       // Handle error: Update original interaction
       await interaction.update({
@@ -214,7 +255,7 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
 
       const buttonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(generateButton);
       let discordResponse =
-          `## ${tournamentCode.divisionName}\n` +
+          `## ${tournamentCode.divisionName} - ${tournamentCode.stageName || 'UNKNOWN_STAGE'}\n` +
           `**__${tournamentCode.team1Name}__ v.s. __${tournamentCode.team2Name}__**\n\n` +
           `Series Created By: <@${user.id}>`;
       const publicMessage = await interaction.followUp({
@@ -259,6 +300,7 @@ export async function getTournamentCode(
   team1: number,
   team2: number,
   divisionId: number,
+  stage: string,
   interaction: ButtonInteraction,
   enemyCaptainId: string,
   first: boolean
@@ -270,6 +312,7 @@ export async function getTournamentCode(
   error: string | null;
   divisionId: number | null;
   divisionName?: string;
+  stageName?: string;
   team1Name: string;
   team2Name: string;
   gameId: number;
@@ -277,7 +320,23 @@ export async function getTournamentCode(
 }> {
   //TODO: Call api with this informatio nand let it handle all this logic
   const division  = divisionId? Number(divisionId) : null
-  logger.info(`Generating tournament code for teams ${team1} and ${team2} in division ${division}`);
+  const divisionEvent = division ? await getEvent(division) : null;
+  const selectedStage = stage || divisionEvent?.eventStages?.[0] || null;
+  logger.info(`Generating tournament code for teams ${team1} and ${team2} in division ${division} stage ${selectedStage}`);
+  if (!selectedStage) {
+    return {
+      discordResponse: null,
+      draftLinks: null,
+      shortcode: null,
+      gameNumber: 0,
+      error: 'No event stage is configured for this division.',
+      divisionId: division,
+      team1Name: team1.toString(),
+      team2Name: team2.toString(),
+      gameId: 0,
+      totalGames: 0,
+    };
+  }
   if (team1 === team2) {
     return {
       discordResponse: null,
@@ -298,7 +357,23 @@ export async function getTournamentCode(
   const team1Name = team1Data?.name || 'Unknown Team 1';
   const team2Name = team2Data?.name || 'Unknown Team 2';
   logger.info(`Fetched teams - Team 1: ${team1Data?.id}  ${team1Data?.name}, Team 2: ${team2Data?.id}  ${team2Data?.name}`);
-  const game = await createGame(team1Data!, team2Data!);
+  const seriesId = await getSeriesId(division!, team1, team2, selectedStage);
+  if (!seriesId) {
+    return {
+      discordResponse: null,
+      draftLinks: null,
+      shortcode: null,
+      gameNumber: 0,
+      error: 'Failed to find a matching series for these teams.',
+      divisionId: division,
+      team1Name,
+      team2Name,
+      gameId: 0,
+      totalGames: 0
+    };
+  }
+
+  const game = await createGame(seriesId, team1Data!, team2Data!);
   const gameNumber = game.number || 1; // Assuming gameNumber is part of the Game object
   let shortcode = game.shortcode;
   if (!game) {
@@ -316,8 +391,8 @@ export async function getTournamentCode(
     };
   }
  
-  let division_name = division? (await getEvent(division))?.name || 'Unknown Division': 'Unknown Division';
-  let totalGames = await getTotalGames(division!, team1, team2);
+  let division_name = divisionEvent?.name || 'Unknown Division';
+  let totalGames = await getTotalGames(division!, team1, team2, selectedStage);
   const member = await interaction.guild!.members.fetch(interaction.user.id);
   const draftLinkMarkdown = first? (await getDraftLinksMarkdown(team1Data.name, team2Data.name, shortcode, totalGames)) + '\n': '';
   const gameId = game.id || 0;
@@ -335,6 +410,7 @@ export async function getTournamentCode(
     error: null,
     divisionId: division,
     divisionName: division_name,
+    stageName: selectedStage,
     team1Name,
     team2Name,
     gameId,
@@ -386,7 +462,8 @@ module.exports =  {
       team1Id: "" as unknown as number,
       team2Id: "" as unknown as number,
       divisionId: 0,
-      enemyCaptainId: enemyCaptain.id
+      enemyCaptainId: enemyCaptain.id,
+      stage: ""
     };
     // Show division select menu
     const customId = createButtonData('division_select', interaction.user.id, seriesData);
