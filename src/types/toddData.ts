@@ -3,6 +3,7 @@ export type SeriesData = {
     team2Id: number;
     divisionId: number;
     enemyCaptainId: string;
+    stage: string;
 }
 
 export function encodeSeriesData(data: SeriesData): string[] {
@@ -10,7 +11,8 @@ export function encodeSeriesData(data: SeriesData): string[] {
     data.enemyCaptainId,
     data.divisionId.toString(),
     data.team1Id.toString(),
-    data.team2Id.toString()
+    data.team2Id.toString(),
+    data.stage
   ];
 }
 
@@ -19,6 +21,7 @@ export function decodeSeriesData(arr: string[]): SeriesData {
     enemyCaptainId: arr[0] ?? "",
     divisionId: Number(arr[1]) ?? 0,
     team1Id: Number(arr[2]) ?? 0,
-    team2Id: Number(arr[3]) ?? 0
+    team2Id: Number(arr[3]) ?? 0,
+    stage: arr[4] ?? ""
   };
 }

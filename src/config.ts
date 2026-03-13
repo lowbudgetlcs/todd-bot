@@ -11,6 +11,7 @@ const {
   LOWBUDGETLCS_BACKEND_URL,
   LOWBUDGETLCS_DRAFT_URL,
   API_URL,
+  DENNYS_TOKEN,
 } = process.env;
 
 const riotConfig: RiotAPITypes.Config = {
@@ -26,6 +27,7 @@ const missingEnvs = [
   !LOWBUDGETLCS_BACKEND_URL && 'LOWBUDGETLCS_BACKEND_URL',
   !LOWBUDGETLCS_DRAFT_URL && 'LOWBUDGETLCS_DRAFT_URL',
   !API_URL && 'API_URL',
+  !DENNYS_TOKEN && 'DENNYS_TOKEN',
 ].filter(Boolean);
 
 if (missingEnvs.length > 0) {
@@ -40,4 +42,5 @@ export const config = {
   LOWBUDGETLCS_BACKEND_URL,
   LOWBUDGETLCS_DRAFT_URL,
   API_URL,
+  DENNYS_TOKEN,
 };

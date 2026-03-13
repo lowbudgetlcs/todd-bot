@@ -103,3 +103,22 @@ To get a local copy up and running follow these simple example steps.
    pm2-runtime ecosystem.config.js
    ```
 
+<!-- FullMetal Notes to himself -->
+## How to run for dummys
+
+1. Turn on WSL - Ubuntu
+
+2. Turn on Docker Desktop
+
+3. Run the following commands in order
+    ```
+    docker compose build
+
+    docker compose up
+    ```
+    When you're done / need to make changes, don't forget
+    ```
+    docker compose down
+    ```
+
+4. Cross your fingers that worked. If it doesn't, blame past you. 

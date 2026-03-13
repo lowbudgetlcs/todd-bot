@@ -19,6 +19,7 @@ export type Event = {
   endDate: string;
   status: string;
   eventGroupId: number;
+  eventStages: string[];
 };
 
 
@@ -38,7 +39,9 @@ export type EventWithTeams = {
   startDate: string;
   endDate: string;
   status: string;
+  eventGroupId: number;
   teams: Team[];
+  eventStages: string[];
 };
 
 export type Team = {
@@ -67,8 +70,14 @@ export type Series = {
 const API_URL = config.API_URL;
 // Data
 
+const getAuthHeaders = () => ({
+  'Authorization': `Bearer ${config.DENNYS_TOKEN}`,
+});
+
 export const getEventGroups = async (): Promise<eventGroup[]> => {
-  const response = await fetch(`${API_URL}/eventGroup`);
+  const response = await fetch(`${API_URL}/eventGroup`, {
+    headers: getAuthHeaders(),
+  });
   if (response.ok) {
     const data: eventGroup[] = await response.json();
     return data;
@@ -77,7 +86,9 @@ export const getEventGroups = async (): Promise<eventGroup[]> => {
 }
 
 export const getEvents = async (eventGroup: number): Promise<Event[]> => {
-  const response = await fetch(`${API_URL}/eventGroup/${eventGroup}/events`);
+  const response = await fetch(`${API_URL}/eventGroup/${eventGroup}/events`, {
+    headers: getAuthHeaders(),
+  });
   if (response.ok) {
     const data: eventGroupWithEvents = await response.json();
     return data.events;
@@ -86,7 +97,9 @@ export const getEvents = async (eventGroup: number): Promise<Event[]> => {
 };
 
 export const getEvent = async (eventId: number): Promise<Event> => {
-  const response = await fetch(`${API_URL}/event/${eventId}`);
+  const response = await fetch(`${API_URL}/event/${eventId}`, {
+    headers: getAuthHeaders(),
+  });
   logger.info(`Fetching event ${eventId} from ${API_URL}/event/${eventId}`);
   if (response.ok) {
     const data:Event = await response.json();
@@ -97,7 +110,9 @@ export const getEvent = async (eventId: number): Promise<Event> => {
 
 
 export const getEventWithTeams = async (eventId: number): Promise<EventWithTeams> => {
-  const response = await fetch(`${API_URL}/event/${eventId}/teams`);
+  const response = await fetch(`${API_URL}/event/${eventId}/teams`, {
+    headers: getAuthHeaders(),
+  });
   if (response.ok) {
     const data: EventWithTeams = await response.json();
     return data;
@@ -107,7 +122,9 @@ export const getEventWithTeams = async (eventId: number): Promise<EventWithTeams
 
 
 export const getTeam = async (teamId: number): Promise<Team> => {
-  const response = await fetch(`${API_URL}/team/${teamId}`);
+  const response = await fetch(`${API_URL}/team/${teamId}`, {
+    headers: getAuthHeaders(),
+  });
   if (response.ok) {
     const data: Team = await response.json();
     return data;
@@ -115,30 +132,61 @@ export const getTeam = async (teamId: number): Promise<Team> => {
   throw new Error(`Failed to fetch team: ${response.statusText}`);
 };
 
-export const getTotalGames = async (eventId: number, team1:number, team2: number): Promise<number> => {
-  const response = await fetch(`${API_URL}/event/${eventId}/series`);
+export const getTotalGames = async (
+  eventId: number,
+  team1:number,
+  team2: number,
+  stage: string,
+): Promise<number> => {
+  const matchingSeries = await getSeriesForTeams(eventId, team1, team2, stage);
+  return matchingSeries?.totalGames ?? 0;
+}
+
+const getSeriesForTeams = async (
+  eventId: number,
+  team1:number,
+  team2: number,
+  stage: string,
+): Promise<Series | null> => {
+  const query = new URLSearchParams();
+  query.append('teamIds', String(team1));
+  query.append('teamIds', String(team2));
+  query.append('stage', stage);
+  const response = await fetch(`${API_URL}/event/${eventId}/series?${query.toString()}`, {
+    headers: getAuthHeaders(),
+  });
   if (response.ok) {
     const body = await response.json();
-    const seriesList: Series[] = body.series;
+    const seriesList: Series[] = Array.isArray(body) ? body : (body.series ?? []);
     console.log(seriesList);
     for (const s of seriesList) {
       if (Array.isArray(s.teamIds) && s.teamIds.includes(team1) && s.teamIds.includes(team2)) {
         console.log(`Found matching series: ${JSON.stringify(s)} for teams ${team1} and ${team2} with totalGames: ${s.totalGames}`);
-        return s.totalGames;
+        return s;
       }
     }
-    return 0;
+    return null;
   }
   throw new Error(`Failed to fetch team: ${response.statusText}`);
 }
 
+export const getSeriesId = async (
+  eventId: number,
+  team1:number,
+  team2: number,
+  stage: string,
+): Promise<number> => {
+  const matchingSeries = await getSeriesForTeams(eventId, team1, team2, stage);
+  return matchingSeries?.id ?? 0;
+}
 
-export const createGame = async (blueside: Team, redside: Team): Promise<Game> => {
-  const response = await fetch(`${API_URL}/series/game`, {
+export const createGame = async (seriesId: number, blueside: Team, redside: Team): Promise<Game> => {
+  const response = await fetch(`${API_URL}/series/${seriesId}/game`, {
     method: 'POST',
     headers: {
       'Accept': 'application/json',
       'Content-Type': 'application/json',
+      ...getAuthHeaders(),
     },
     body: JSON.stringify({
       blueTeamId: blueside.id,

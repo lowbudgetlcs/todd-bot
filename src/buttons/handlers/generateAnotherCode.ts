@@ -30,7 +30,8 @@ export async function handleGenerateAnotherCode(interaction: ButtonInteraction) 
           team1Id: team2.id,
           team2Id: team1.id,
           divisionId: seriesData.divisionId,
-          enemyCaptainId: seriesData.enemyCaptainId
+          enemyCaptainId: seriesData.enemyCaptainId,
+          stage: seriesData.stage
         };
         
     const switchButtonData = createButtonData("switch_sides", data.originalUserId, seriesDataSwitched);  
