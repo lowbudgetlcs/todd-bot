@@ -1,5 +1,5 @@
-
 import { config } from './config.ts';
+import { normalizeApiStrings, parseJsonResponseUtf8 } from './encoding.ts';
 import log from 'loglevel';
 
 const logger =log.getLogger('dennys');
@@ -79,8 +79,8 @@ export const getEventGroups = async (): Promise<eventGroup[]> => {
     headers: getAuthHeaders(),
   });
   if (response.ok) {
-    const data: eventGroup[] = await response.json();
-    return data;
+    const data = await parseJsonResponseUtf8<eventGroup[]>(response);
+    return normalizeApiStrings(data);
   }
   throw new Error(`Failed to fetch event groups: ${response.statusText}`);
 }
@@ -90,8 +90,8 @@ export const getEvents = async (eventGroup: number): Promise<Event[]> => {
     headers: getAuthHeaders(),
   });
   if (response.ok) {
-    const data: eventGroupWithEvents = await response.json();
-    return data.events;
+    const data = await parseJsonResponseUtf8<eventGroupWithEvents>(response);
+    return normalizeApiStrings(data.events);
   }
   throw new Error(`Failed to fetch events: ${response.statusText}`);
 };
@@ -102,8 +102,8 @@ export const getEvent = async (eventId: number): Promise<Event> => {
   });
   logger.info(`Fetching event ${eventId} from ${API_URL}/event/${eventId}`);
   if (response.ok) {
-    const data:Event = await response.json();
-    return data;
+    const data = await parseJsonResponseUtf8<Event>(response);
+    return normalizeApiStrings(data);
   }
   throw new Error(`Failed to fetch event: ${response.statusText}`);
 }
@@ -114,8 +114,8 @@ export const getEventWithTeams = async (eventId: number): Promise<EventWithTeams
     headers: getAuthHeaders(),
   });
   if (response.ok) {
-    const data: EventWithTeams = await response.json();
-    return data;
+    const data = await parseJsonResponseUtf8<EventWithTeams>(response);
+    return normalizeApiStrings(data);
   }
   throw new Error(`Failed to fetch event with teams: ${response.statusText}`);
 };
@@ -126,8 +126,8 @@ export const getTeam = async (teamId: number): Promise<Team> => {
     headers: getAuthHeaders(),
   });
   if (response.ok) {
-    const data: Team = await response.json();
-    return data;
+    const data = await parseJsonResponseUtf8<Team>(response);
+    return normalizeApiStrings(data);
   }
   throw new Error(`Failed to fetch team: ${response.statusText}`);
 };
@@ -156,8 +156,9 @@ const getSeriesForTeams = async (
     headers: getAuthHeaders(),
   });
   if (response.ok) {
-    const body = await response.json();
-    const seriesList: Series[] = Array.isArray(body) ? body : (body.series ?? []);
+    const body = await parseJsonResponseUtf8<Series[] | { series?: Series[] }>(response);
+    const normalized = normalizeApiStrings(body);
+    const seriesList: Series[] = Array.isArray(normalized) ? normalized : (normalized.series ?? []);
     console.log(seriesList);
     for (const s of seriesList) {
       if (Array.isArray(s.teamIds) && s.teamIds.includes(team1) && s.teamIds.includes(team2)) {
@@ -194,8 +195,8 @@ export const createGame = async (seriesId: number, blueside: Team, redside: Team
     })
   });
   if(response.ok) {
-    const data: Game= await response.json();
-    return data;
+    const data = await parseJsonResponseUtf8<Game>(response);
+    return normalizeApiStrings(data);
   }
   throw new Error(`Failed to fetch team: ${response.statusText}`);
 };
