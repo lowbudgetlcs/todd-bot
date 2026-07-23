@@ -24,8 +24,16 @@ import { handleEventGroupSelect } from './commands/setEventGroup.ts';
 const logger =log.getLogger('index.ts');
 logger.setLevel('info');
 
-//Storing here since global file didn't work
-let currentEventGroupId: number | null = null;
+const EVENT_GROUP_FILE: string = '/data/EVENT_GROUP_ID.txt';
+
+function getCurrentEventGroupId(): number | null { 
+  if (!fs.existsSync(EVENT_GROUP_FILE)) return null;
+  return parseInt(fs.readFileSync(EVENT_GROUP_FILE, 'utf8'));
+}
+
+function setCurrentEventGroupId(id: number): void {
+  fs.writeFileSync(EVENT_GROUP_FILE, id.toString());
+}
 
 type ActionWrapper = {
   execute: (interaction: Interaction, currentEventGroupId: number | null) => Promise<void>;
@@ -88,7 +96,7 @@ client.once('ready', async () => {
 });
 
 client.on(Events.InteractionCreate, async interaction => {
-  console.log("curent eventid", currentEventGroupId);
+  console.log("curent eventid", getCurrentEventGroupId());
   if (interaction.isButton()) {
     logger.info(`Button interaction received with customId: ${interaction.customId}`);
     const data = parseButtonData(interaction.customId);
@@ -102,8 +110,8 @@ client.on(Events.InteractionCreate, async interaction => {
     return;
   }
   if (interaction.isStringSelectMenu() && interaction.customId === 'select_event_group') {
-  await handleEventGroupSelect(interaction, { setCurrentEventGroupId: (id) => { currentEventGroupId = id; } });
-  console.log(`Current Event Group ID set to: ${currentEventGroupId}`);
+  await handleEventGroupSelect(interaction, { setCurrentEventGroupId: (id) => { setCurrentEventGroupId(id); } });
+  console.log(`Current Event Group ID set to: ${getCurrentEventGroupId()}`);
   return;
 }
   if (!interaction.isChatInputCommand()) return;
@@ -116,8 +124,8 @@ client.on(Events.InteractionCreate, async interaction => {
   }
   // Base command / single command
   try {
-    console.log("current event id in index:", currentEventGroupId);
-    await command.execute(interaction, currentEventGroupId);
+    console.log("current event id in index:", getCurrentEventGroupId());
+    await command.execute(interaction, getCurrentEventGroupId());
   } catch (error) {
     logger.error(error);
     if (interaction.replied || interaction.deferred) {
