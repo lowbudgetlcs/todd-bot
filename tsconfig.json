@@ -15,7 +15,8 @@
     "noImplicitAny": true,
     "noEmit": true,
     "noImplicitReturns": true
-  }
+  },
+  "include": ["src"]
 }
 
 

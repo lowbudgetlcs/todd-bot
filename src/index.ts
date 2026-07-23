@@ -3,7 +3,6 @@ import {
   Events,
   GatewayIntentBits,
   Collection,
-  MessageFlags,
   ActivityType,
   Interaction,
   SlashCommandBuilder,
@@ -20,12 +19,28 @@ import { getButtonHandler } from "./buttons/handlers.ts";
 import log from 'loglevel';
 import { handleModal } from "./modals/playerPoint.ts";
 import { handleEventGroupSelect } from './commands/setEventGroup.ts';
+import { getCurrentEventGroupId, loadState, setCurrentEventGroupId } from './state.ts';
+import { runGuarded } from './interactionSafety.ts';
 
 const logger =log.getLogger('index.ts');
 logger.setLevel('info');
 
-//Storing here since global file didn't work
-let currentEventGroupId: number | null = null;
+// Persisted to disk so a restart doesn't wipe the selected event group.
+// /set-current-event still updates it live; this only changes where it survives.
+loadState();
+
+/**
+ * A slow dennys call used to expire the Discord interaction token, and the
+ * resulting Unknown interaction (10062) rejection killed the process. Keep the
+ * bot alive and log instead - pm2 restarting is what lost the event group.
+ */
+process.on('unhandledRejection', (reason) => {
+  logger.error('Unhandled promise rejection (bot staying up):', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught exception (bot staying up):', error);
+});
 
 type ActionWrapper = {
   execute: (interaction: Interaction, currentEventGroupId: number | null) => Promise<void>;
@@ -88,24 +103,32 @@ client.once('ready', async () => {
 });
 
 client.on(Events.InteractionCreate, async interaction => {
-  console.log("curent eventid", currentEventGroupId);
+  logger.info(`Current event group id: ${getCurrentEventGroupId()}`);
+
   if (interaction.isButton()) {
     logger.info(`Button interaction received with customId: ${interaction.customId}`);
     const data = parseButtonData(interaction.customId);
     const handler = getButtonHandler(data.tag);
-    if (handler != null && handler != undefined) await handler(interaction);
+    if (handler) {
+      await runGuarded(interaction, `button:${data.tag}`, () => handler(interaction));
+    }
     return;
   }
-  if(interaction.isModalSubmit()) {
+
+  if (interaction.isModalSubmit()) {
     logger.info(`Modal interaction received with customId: ${interaction.customId}`);
-    await handleModal(interaction);
+    await runGuarded(interaction, 'modal', () => handleModal(interaction));
     return;
   }
+
   if (interaction.isStringSelectMenu() && interaction.customId === 'select_event_group') {
-  await handleEventGroupSelect(interaction, { setCurrentEventGroupId: (id) => { currentEventGroupId = id; } });
-  console.log(`Current Event Group ID set to: ${currentEventGroupId}`);
-  return;
-}
+    await runGuarded(interaction, 'select_event_group', async () => {
+      await handleEventGroupSelect(interaction, { setCurrentEventGroupId });
+      logger.info(`Current Event Group ID set to: ${getCurrentEventGroupId()}`);
+    });
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
 
   const command = client.commands.get(interaction.commandName);
@@ -114,24 +137,13 @@ client.on(Events.InteractionCreate, async interaction => {
     logger.error(`No command matching ${interaction.commandName} was found.`);
     return;
   }
-  // Base command / single command
-  try {
-    console.log("current event id in index:", currentEventGroupId);
-    await command.execute(interaction, currentEventGroupId);
-  } catch (error) {
-    logger.error(error);
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({
-        content: 'There was an error while executing this command!',
-        flags: MessageFlags.Ephemeral,
-      });
-    } else {
-      await interaction.reply({
-        content: 'There was an error while executing this command!',
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-  }
+
+  await runGuarded(
+    interaction,
+    `command:${interaction.commandName}`,
+    () => command.execute(interaction, getCurrentEventGroupId()),
+    'There was an error while executing this command!',
+  );
 });
 
 client.login(config.DISCORD_TOKEN);

@@ -7,7 +7,8 @@ import {
   SlashCommandBuilder,
   StringSelectMenuBuilder,
 } from 'discord.js';
-import { getDraftLinksMarkdown } from '../util.ts';
+import { buildThreadName, getDraftLinksMarkdown } from '../util.ts';
+import { runGuarded, safeDefer, safeInteractionError } from '../interactionSafety.ts';
 import { User } from '../interfaces.ts';
 import { createButton, createButtonData, parseButtonData, ButtonData } from '../buttons/button.ts';
 import { createGame, getEvent, getEvents, getEventWithTeams, getSeriesId, getTeam, getTotalGames, Team } from '../dennys.ts';
@@ -31,11 +32,13 @@ export async function handleDivisionSelect(interaction: any, message: any) {
   logger.info('Enemy Captain ID: ' + enemyCaptainId);
   const {values} = interaction;
   const divisionKey = parseInt(values[0]);
+  // Ack before hitting dennys, otherwise a slow response expires the token.
+  if (!(await safeDefer(interaction, { update: true }))) return;
   const divisionEvent = await getEvent(divisionKey);
   const divisionName = divisionEvent?.name || 'Unknown Division';
   const stages = divisionEvent?.eventStages || [];
   if (stages.length === 0) {
-    await interaction.update({
+    await interaction.editReply({
       content: 'No stages found for the selected division.',
       components: [],
     });
@@ -43,7 +46,7 @@ export async function handleDivisionSelect(interaction: any, message: any) {
   }
   const teams = await grabTeams(divisionKey);
   if (!teams || teams.length === 0) {
-    await interaction.update({
+    await interaction.editReply({
       content: 'No teams found for the selected division.',
       components: [],
     });
@@ -78,7 +81,7 @@ export async function handleDivisionSelect(interaction: any, message: any) {
   const row1 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(team1Dropdown);
   const row2 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(team2Dropdown);
   const row3 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(stageDropdown);
-  await interaction.update({
+  await interaction.editReply({
     content: `You selected the **${divisionName}** division. Now select Blue Side, Red Side, and Stage:`,
     components: [row1, row2, row3],
   });
@@ -91,7 +94,8 @@ export async function handleDivisionSelect(interaction: any, message: any) {
 
   collector.on('collect', async (interaction: any) => {
     logger.info('Collecting team select interaction:', interaction.customId);
-    handleTeamSelect(interaction);
+    // Must be awaited inside a guard - an un-awaited reject here took the bot down.
+    await runGuarded(interaction, 'team_select', () => handleTeamSelect(interaction));
   });
 }
 
@@ -126,12 +130,15 @@ export async function handleTeamSelect(interaction: any) {
   } else if (tag === 'stage_select') {
     stage = values[0] || "";
   }
-  
+
+  // Ack before hitting dennys, otherwise a slow response expires the token.
+  if (!(await safeDefer(interaction, { update: true }))) return;
+
   const teams:Team[] = await grabTeams(Number(division));
   const divisionEvent = await getEvent(Number(division));
   const stages = divisionEvent?.eventStages || [];
   if (stages.length === 0) {
-    await interaction.update({
+    await interaction.editReply({
       content: 'No stages found for the selected division.',
       components: [],
     });
@@ -180,7 +187,7 @@ export async function handleTeamSelect(interaction: any) {
       `Blue Team: **${team1Name || 'Not Selected!'}**\n` +
       `Red Team: **${team2Name || 'Not Selected!'}**\n` +
       `Stage: **${stage || 'Not Selected!'}**`;
-    await interaction.update({
+    await interaction.editReply({
       content,
       components: [row1, row2, row3],
     });
@@ -213,7 +220,7 @@ export async function handleTeamSelect(interaction: any) {
     `# Blue Side: ${team1Name}\n` +
     `# Red Side: ${team2Name}\n` +
     `# Stage: ${stage}`;
-  await interaction.update({
+  await interaction.editReply({
     content,
     components: [confirmRow],
   });
@@ -224,16 +231,21 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
   const data = parseButtonData(interaction.customId);
   const seriesData = data.seriesData;
   logger.info(`Handle Both Team Submission - tag: ${data.tag}, team1: ${seriesData.team1Id}, team2: ${seriesData.team2Id}, division: ${seriesData.divisionId}, stage: ${seriesData.stage}, enemyCaptainId: ${seriesData.enemyCaptainId}`);
+
+  // This path makes several sequential dennys calls and is by far the most
+  // likely to exceed Discord's 3 second ack deadline. Defer up front.
+  if (!(await safeDefer(interaction, { update: true }))) return;
+
   try {
     const tournamentCode = await getTournamentCode(seriesData.team1Id, seriesData.team2Id, seriesData.divisionId, seriesData.stage, interaction, seriesData.enemyCaptainId, true);
     if (tournamentCode.error != null) {
       // Handle error: Update original interaction
-      await interaction.update({
+      await interaction.editReply({
         content: tournamentCode.error,
         components: [],
       });
     } else {
-      await interaction.update({
+      await interaction.editReply({
         content: 'Your teams have been selected. Generating tournament code...',
         components: [],
       });
@@ -263,37 +275,46 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
         ephemeral: false,
       });
 
-// Create a thread from the public message
-        const now = new Date();
-        const dateString = now.toISOString().split('T')[0];
-        const thread = await publicMessage.startThread({
-          name: `${tournamentCode.team1Name} vs ${tournamentCode.team2Name} - ${dateString}`,
-          autoArchiveDuration: 60, // in minutes
-          reason: `Draft links thread for tournament code ${tournamentCode.shortcode}`,
-        });
+      // Create a thread from the public message
+      const now = new Date();
+      const dateString = now.toISOString().split('T')[0];
+      // buildThreadName keeps us under Discord's 100 char cap; team names with
+      // special characters are already repaired upstream in dennys.ts.
+      const threadName = buildThreadName(
+        tournamentCode.team1Name,
+        tournamentCode.team2Name,
+        dateString,
+      );
+      logger.info(`Creating thread: ${threadName}`);
+      const thread = await publicMessage.startThread({
+        name: threadName,
+        autoArchiveDuration: 60, // in minutes
+        reason: `Draft links thread for tournament code ${tournamentCode.shortcode}`,
+      });
 
-        let links = tournamentCode.draftLinks?.toString().concat("<@"+seriesData.enemyCaptainId+">") || null;
-        logger.info(`Draft Links: ${links}`);
-        // Post the draft links in the thread
-        await thread.send({
-          content: links!,
-          flags: 1 << 2,
-          components: [buttonRow],
-        });
-        
-        await thread.send({
-          content: tournamentCode.discordResponse?.toString() || "",
-        });
-      }
-    
+      let links = tournamentCode.draftLinks?.toString().concat("<@"+seriesData.enemyCaptainId+">") || null;
+      logger.info(`Draft Links: ${links}`);
+      // Post the draft links in the thread
+      await thread.send({
+        content: links!,
+        flags: 1 << 2,
+        components: [buttonRow],
+      });
+
+      await thread.send({
+        content: tournamentCode.discordResponse?.toString() || "",
+      });
+    }
   } catch (error) {
-    console.error(error);
-    await interaction.update({
-      content: 'An error occurred while generating the tournament code. Please try again later.',
-      components: [],
-    });
-  } 
-      }
+    logger.error('Failed to generate tournament code:', error);
+    // safeInteractionError picks a channel that is still valid instead of
+    // blindly calling update() on a token that may already be gone.
+    await safeInteractionError(
+      interaction,
+      'An error occurred while generating the tournament code. Please try again later.',
+    );
+  }
+}
 
 // TODO: Fix this as to not need to send interaction
 export async function getTournamentCode(
@@ -425,33 +446,25 @@ module.exports =  {
       option.setName('opposing_captain')
         .setDescription('The Enemy Team Captain')
         .setRequired(true)),
-  execute: async (interaction: {
-    reply: (arg0: {
-      content: string;
-      components: never[] | ActionRowBuilder<StringSelectMenuBuilder>[];
-      flags: string;
-      withResponse?: boolean;
-    }) => any;
-    user: User;
-    options: { getUser: (arg0: string) => User };
-  }, currentEventGroupId: number | null
-    ) => {
+  execute: async (interaction: any, currentEventGroupId: number | null) => {
     logger.info('Executing /start-series command');
-    console.log("current event id in tournament:", currentEventGroupId);
+    logger.info(`current event id in tournament: ${currentEventGroupId}`);
+
+    // Ack before touching dennys so a slow /events call can't expire the token.
+    if (!(await safeDefer(interaction, { ephemeral: true }))) return;
+
     if (currentEventGroupId === null) {
-      await interaction.reply({
+      await interaction.editReply({
         content: 'Event group ID is not set. Please create a dev ticket.',
         components: [],
-        flags: 'Ephemeral',
       });
       return;
     }
     const divisionsMap = await getEvents(currentEventGroupId);
     if (divisionsMap.length === 0) {
-      await interaction.reply({
+      await interaction.editReply({
         content: 'No divisions found.',
         components: [],
-        flags: 'Ephemeral',
       });
       return;
     }
@@ -481,14 +494,12 @@ module.exports =  {
       divisionDropdown,
     );
 
-    const response = await interaction.reply({
+    // editReply returns the message directly, so we no longer need withResponse.
+    const message = await interaction.editReply({
       content: 'Please select a division:',
       components: [divisionRow],
-      flags: 'Ephemeral',
-      withResponse: true,
     });
-    const message = response.resource!.message;
-    const collector = response.resource!.message!.createMessageComponentCollector({
+    const collector = message.createMessageComponentCollector({
       componentType: ComponentType.StringSelect,
       filter: (i: { user: User; customId: string }) =>
         i.user === interaction.user && i.customId.startsWith('division_select'),
@@ -496,8 +507,11 @@ module.exports =  {
     });
 
     collector.on('collect', async (interaction: any) => {
-      console.log('Collecting division select interaction:', interaction.customId);
-      handleDivisionSelect(interaction, message);
+      logger.info(`Collecting division select interaction: ${interaction.customId}`);
+      // Awaited inside a guard - an un-awaited reject here took the bot down.
+      await runGuarded(interaction, 'division_select', () =>
+        handleDivisionSelect(interaction, message),
+      );
     });
     return;
   }

@@ -1,5 +1,6 @@
 import { CacheType, GuildMember, Interaction } from 'discord.js';
 import { config } from './config.ts';
+import { fetchWithRetry } from './http.ts';
 import log from 'loglevel';
 
 const logger =log.getLogger('utils');
@@ -19,6 +20,43 @@ function getUserRoles(interaction: Interaction<CacheType>) {
   //   console.log(`Role name=${x.name}, role id=${x.id}`);
   // });
   return member.roles.cache.map(role => role.id);
+}
+
+// Discord rejects thread names longer than this with Invalid Form Body.
+const THREAD_NAME_MAX = 100;
+
+/**
+ * Truncates by code point so we never slice a surrogate pair in half and leave
+ * a lone surrogate in the name.
+ */
+function truncateChars(s: string, max: number): string {
+  const chars = Array.from(s);
+  if (chars.length <= max) return s;
+  return chars.slice(0, Math.max(0, max - 1)).join('').trimEnd() + '…';
+}
+
+/**
+ * Builds the series thread name, trimming the team names (never the date) so the
+ * result always fits Discord's 100 character limit.
+ *
+ * Without this a pair of long team names throws Invalid Form Body from
+ * startThread(), after the public message has already been posted.
+ */
+export function buildThreadName(
+  blueTeamName: string,
+  redTeamName: string,
+  dateString: string,
+): string {
+  const suffix = ` - ${dateString}`;
+  const full = `${blueTeamName} vs ${redTeamName}${suffix}`;
+  if (Array.from(full).length <= THREAD_NAME_MAX) return full;
+
+  // Split whatever is left after " vs " and the date evenly between the teams.
+  const budget = THREAD_NAME_MAX - Array.from(suffix).length - ' vs '.length;
+  const perTeam = Math.floor(budget / 2);
+  const blue = truncateChars(blueTeamName, perTeam);
+  const red = truncateChars(redTeamName, budget - Array.from(blue).length);
+  return `${blue} vs ${red}${suffix}`;
 }
 
 /**
@@ -44,16 +82,20 @@ export async function getDraftLinksMarkdown(
   };
   try {
     logger.info(`Hitting URL: ${url} with payload: ${JSON.stringify(payload)}`);
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    const response = await fetchWithRetry(
+      url,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
       },
-      body: JSON.stringify(payload),
-    });
+      { label: 'createFearlessDraft', retries: 0 },
+    );
     if (!response.ok) {
-      // TODO: log
-      logger.info(`Error Reponse: ${response}`);
+      const body = await response.text().catch(() => '(unreadable)');
+      logger.error(`createFearlessDraft [${response.status}]: ${body}`);
       return errorString;
     }
 

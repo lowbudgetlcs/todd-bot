@@ -3,16 +3,57 @@
  * for Discord and the rest of the bot.
  */
 
-// Latin-1 misread of UTF-8 2-byte sequences (e.g. "JosÃ©" / "cafÃ©" -> proper accents)
-const MOJIBAKE_2BYTE_UTF8 = /[\u00c2-\u00df][\u0080-\u00bf]/;
+/**
+ * True when every code unit fits in a byte, i.e. the string *could* be UTF-8 bytes
+ * that were decoded as Latin-1. Any code point above 0xff means real Unicode
+ * survived intact and there is nothing to repair.
+ */
+function isLatin1Only(s: string): boolean {
+  let hasHighByte = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c > 0xff) return false;
+    if (c >= 0x80) hasHighByte = true;
+  }
+  // Pure ASCII can't be mojibake, so treat it as "nothing to do".
+  return hasHighByte;
+}
 
-export function repairMisdecodedUtf8(s: string): string {
-  if (!s || !MOJIBAKE_2BYTE_UTF8.test(s)) return s;
+/**
+ * Undo one round of "UTF-8 bytes decoded as Latin-1" (mojibake).
+ *
+ * Decodes with fatal: true so that anything which isn't a clean UTF-8 byte
+ * sequence is left alone. That matters for names that legitimately contain
+ * Latin-1 accents: "Café" is [43 61 66 E9], an invalid UTF-8 sequence, so it
+ * throws and we return the original rather than corrupting it.
+ */
+function repairOnce(s: string): string {
+  if (!isLatin1Only(s)) return s;
   const bytes = new Uint8Array(s.length);
-  for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i) & 0xff;
-  const repaired = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
-  if (repaired.includes('\uFFFD') && !s.includes('\uFFFD')) return s;
-  return repaired;
+  for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return s;
+  }
+}
+
+/**
+ * Repairs mojibake across the full UTF-8 range, not just 2-byte sequences.
+ *
+ * The characters that actually show up in team names are mostly 3- and 4-byte:
+ * ’ (E2 80 99 -> "â€™"), – and — (E2 80 9x), ★ (E2 98 85), and emoji (F0 9F ..).
+ * Runs a few passes because names occasionally come back double-encoded.
+ */
+export function repairMisdecodedUtf8(s: string): string {
+  if (!s) return s;
+  let out = s;
+  for (let pass = 0; pass < 3; pass++) {
+    const next = repairOnce(out);
+    if (next === out) break;
+    out = next;
+  }
+  return out;
 }
 
 export function normalizeApiStrings<T>(data: T): T {
