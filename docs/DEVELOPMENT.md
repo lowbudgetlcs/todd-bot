@@ -73,7 +73,8 @@ gets updated when a new variable is added.
 | `npm start` | `pm2-runtime ./dist/index.js` — runs the already-built output the way the container does |
 | `npm run go` | Build then start |
 | `npm run format` | Prettier over the whole repo |
-| `npm test` | Not implemented — there is no test suite |
+| `npm test` | `vitest run` — the unit suite in `test/`, one pass |
+| `npm run test:watch` | `vitest` — re-runs affected tests on save |
 
 There is a Windows-specific quirk with the build globs; see
 [TROUBLESHOOTING.md](TROUBLESHOOTING.md#npm-run-build-leaves-distcommands-empty-on-windows).
@@ -161,7 +162,31 @@ The loader only scans `dist/commands/*.js` (or `src/commands/` under `tsx`) —
 
 ## Testing changes
 
-There is no automated test suite. Verify by hand in a test guild:
+### Unit tests
+
+`npm test` runs the [Vitest](https://vitest.dev) suite under `test/`. It covers
+the pure, logic-heavy modules that don't need Discord or a live backend:
+
+| File | What it pins down |
+| --- | --- |
+| `encoding.test.ts` | Mojibake repair, the conservative "leave real Latin-1 / real Unicode alone" rule, nested `normalizeApiStrings`, BOM stripping |
+| `http.test.ts` | GET retries on 408/429/5xx, 4xx is not retried, and **non-GET never retries** (the anti-double-book invariant) |
+| `toddData.test.ts` / `button.test.ts` | `custom_id` encode/decode round-trip, field order, and the colon-in-stage caveat |
+| `util.test.ts` | `buildThreadName` staying under 100 chars without splitting a surrogate pair; draft-link best-effort fallback |
+| `state.test.ts` | Atomic write, reload survival, and corrupt-file fallback to defaults |
+| `interactionSafety.test.ts` | Expired-token codes (10062/40060), defer/error channel selection, `runGuarded` |
+
+Tests are written against the contracts in
+[ARCHITECTURE.md](ARCHITECTURE.md) and [TROUBLESHOOTING.md](TROUBLESHOOTING.md),
+not just the current implementation. `test/setup.ts` seeds dummy env vars so
+`config.ts` doesn't throw at import; no real `.env` or network is used.
+
+> Note on Node: the suite pins `vitest@^3` because local development still runs
+> on Node 20. Vitest 4 requires Node 20.19+/22.12+.
+
+### Manual verification
+
+The full interaction flow still has to be exercised by hand in a test guild:
 
 - `/coinflip` — proves the bot is up and commands registered.
 - `/player_point_calculator` — proves modals work; no backend needed.
