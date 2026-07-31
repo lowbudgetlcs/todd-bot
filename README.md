@@ -26,25 +26,28 @@ If you are brand new to this repo, read
 
 ## Quick start
 
-You need [Node.js 22+](https://nodejs.org) and a `.env` file. Docker Desktop is
-optional but is the closest thing to how the bot runs in production.
+You need [Node.js 20+](https://nodejs.org), Docker Desktop, and a `.env` file.
+Node is only for the host-side checks — the bot itself runs on `node:22-alpine`
+in the container.
 
 ```sh
 git clone https://github.com/lowbudgetlcs/todd-bot.git
 cd todd-bot
 npm install
 cp .env.example .env   # then fill it in - see docs/DEVELOPMENT.md
-npm run dev            # hot-reloading dev server
 ```
 
-To run it the way production does:
+Running the bot is done through Docker, which is exactly how production runs it:
 
 ```sh
-docker compose build
-docker compose up
+docker compose up --build
 # ctrl-c, then:
 docker compose down
 ```
+
+`npm install` is only for the checks that run outside the container —
+`npm test`, `npm run lint`, `npm run typecheck`. There is no separate
+hot-reloading dev server; rebuild the image to see a change.
 
 The bot registers its slash commands against the guild in `GUILD_ID` every time
 it starts, so point a dev instance at a test server, not the live LBLCS one.

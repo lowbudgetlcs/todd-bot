@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { MessageFlags } from 'discord.js';
 import {
   isExpiredInteraction,
+  isAlreadyAcknowledged,
   safeDefer,
   safeInteractionError,
   runGuarded,
@@ -29,14 +30,26 @@ describe('isExpiredInteraction', () => {
   it('treats 10062 (unknown interaction) as expired', () => {
     expect(isExpiredInteraction({ code: 10062 })).toBe(true);
   });
-  it('treats 40060 (already acknowledged) as expired', () => {
-    expect(isExpiredInteraction({ code: 40060 })).toBe(true);
+  it('does NOT treat 40060 (already acknowledged) as expired', () => {
+    // 40060 means the token is alive and we acked twice - our bug, not a dead
+    // interaction. Conflating the two let real double-replies pass as "the user
+    // is gone" and never surface.
+    expect(isExpiredInteraction({ code: 40060 })).toBe(false);
   });
   it('does not treat other errors as expired', () => {
     expect(isExpiredInteraction({ code: 50035 })).toBe(false);
     expect(isExpiredInteraction(new Error('boom'))).toBe(false);
     expect(isExpiredInteraction(null)).toBe(false);
     expect(isExpiredInteraction('nope')).toBe(false);
+  });
+});
+
+describe('isAlreadyAcknowledged', () => {
+  it('matches 40060 only', () => {
+    expect(isAlreadyAcknowledged({ code: 40060 })).toBe(true);
+    expect(isAlreadyAcknowledged({ code: 10062 })).toBe(false);
+    expect(isAlreadyAcknowledged(new Error('boom'))).toBe(false);
+    expect(isAlreadyAcknowledged(null)).toBe(false);
   });
 });
 
@@ -81,6 +94,16 @@ describe('safeDefer', () => {
       deferReply: vi.fn().mockRejectedValue({ code: 10062 }),
     });
     expect(await safeDefer(i)).toBe(false);
+  });
+
+  it('returns true on 40060, because the interaction is acknowledged either way', async () => {
+    // safeDefer promises "this is acked now". 40060 says it already is, so
+    // returning false would make the caller abandon a live interaction and
+    // leave the user with nothing.
+    const i = makeInteraction({
+      deferReply: vi.fn().mockRejectedValue({ code: 40060 }),
+    });
+    expect(await safeDefer(i)).toBe(true);
   });
 
   it('returns false on any other defer failure rather than throwing', async () => {
@@ -145,5 +168,18 @@ describe('runGuarded', () => {
     expect(i.reply).not.toHaveBeenCalled();
     expect(i.editReply).not.toHaveBeenCalled();
     expect(i.followUp).not.toHaveBeenCalled();
+  });
+
+  it('does NOT stay quiet on 40060 - a double ack is a real bug', async () => {
+    // The user is still there and still waiting, so they get told something
+    // went wrong, and the error reaches the logs instead of being absorbed.
+    const i = makeInteraction({ replied: true });
+    await runGuarded(i, 'label', async () => {
+      throw { code: 40060 };
+    });
+    expect(i.followUp).toHaveBeenCalledWith({
+      content: 'Something went wrong handling that. Please try again.',
+      flags: MessageFlags.Ephemeral,
+    });
   });
 });

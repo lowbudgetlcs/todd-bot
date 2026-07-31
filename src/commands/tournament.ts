@@ -10,7 +10,7 @@ import {
 import { buildThreadName, getDraftLinksMarkdown } from '../util.ts';
 import { runGuarded, safeDefer, safeInteractionError } from '../interactionSafety.ts';
 import { User } from '../interfaces.ts';
-import { createButton, createButtonData, parseButtonData, ButtonData } from '../buttons/button.ts';
+import { createButton, createButtonData, parseButtonData, seriesDataFits, ButtonData } from '../buttons/button.ts';
 import { createGame, getEvent, getEvents, getEventWithTeams, getSeriesId, getTeam, getTotalGames, Team } from '../dennys.ts';
 import log from 'loglevel';
 import { SeriesData } from '../types/toddData.ts';
@@ -106,9 +106,9 @@ export async function handleTeamSelect(interaction: any) {
   let team1 = seriesData.team1Id;
   let team2 = seriesData.team2Id;
   let stage = seriesData.stage;
-  let division = seriesData.divisionId;
-  let tag = data.tag; 
-  let enemyCaptainId = seriesData.enemyCaptainId;
+  const division = seriesData.divisionId;
+  const tag = data.tag; 
+  const enemyCaptainId = seriesData.enemyCaptainId;
   logger.info(`Parsed data - tag: ${tag}, team1: ${team1}, team2: ${team2}, division: ${division}, stage: ${stage}, enemyCaptainId: ${enemyCaptainId}`);
   if (tag === 'cancel') {
     logger.info("Removing sides");
@@ -117,7 +117,7 @@ export async function handleTeamSelect(interaction: any) {
     stage = "";
   } else if (tag === 'switch') {
     logger.info("Switching sides");
-    let temp = team1;
+    const temp = team1;
     team1 = team2;
     team2 = temp;
   }
@@ -152,6 +152,22 @@ export async function handleTeamSelect(interaction: any) {
     enemyCaptainId: enemyCaptainId,
     stage
   };
+
+  // Every button later in this flow carries this same series context, so this
+  // is the last point where refusing costs nothing. Past it, the failure would
+  // land on the Confirm button built after the game already exists in dennys.
+  if (!seriesDataFits(interaction.user.id, seriesDataUpdated)) {
+    logger.error(
+      `Series context too long for a custom_id - division ${division}, teams ${team1}/${team2}, stage "${stage}"`,
+    );
+    await interaction.editReply({
+      content:
+        `The stage **${stage}** has too long a name for Todd to track this series. ` +
+        `Please create a dev ticket.`,
+      components: [],
+    });
+    return;
+  }
 
   const customId1 = createButtonData('team1_select', interaction.user.id, seriesDataUpdated);
   const customId2 = createButtonData('team2_select', interaction.user.id, seriesDataUpdated);
@@ -236,6 +252,22 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
   // likely to exceed Discord's 3 second ack deadline. Defer up front.
   if (!(await safeDefer(interaction, { update: true }))) return;
 
+  // Re-checked here because this button may have been minted before the check
+  // above existed. Creating the game first and only then discovering the
+  // "Generate Next Game" button won't serialize leaves a series stranded.
+  if (!seriesDataFits(user.id, seriesData)) {
+    logger.error(
+      `Series context too long for a custom_id - refusing before createGame. Stage "${seriesData.stage}"`,
+    );
+    await interaction.editReply({
+      content:
+        `The stage **${seriesData.stage}** has too long a name for Todd to track this series. ` +
+        `Please create a dev ticket.`,
+      components: [],
+    });
+    return;
+  }
+
   try {
     const tournamentCode = await getTournamentCode(seriesData.team1Id, seriesData.team2Id, seriesData.divisionId, seriesData.stage, interaction, seriesData.enemyCaptainId, true);
     if (tournamentCode.error != null) {
@@ -266,7 +298,7 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
       // const regenerateButton = createButton(regenerateButtonData, "Code Not Work?", ButtonStyle.Secondary, '❓');
 
       const buttonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(generateButton);
-      let discordResponse =
+      const discordResponse =
           `## ${tournamentCode.divisionName} - ${tournamentCode.stageName || 'UNKNOWN_STAGE'}\n` +
           `**__${tournamentCode.team1Name}__ v.s. __${tournamentCode.team2Name}__**\n\n` +
           `Series Created By: <@${user.id}>`;
@@ -292,7 +324,7 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
         reason: `Draft links thread for tournament code ${tournamentCode.shortcode}`,
       });
 
-      let links = tournamentCode.draftLinks?.toString().concat("<@"+seriesData.enemyCaptainId+">") || null;
+      const links = tournamentCode.draftLinks?.toString().concat("<@"+seriesData.enemyCaptainId+">") || null;
       logger.info(`Draft Links: ${links}`);
       // Post the draft links in the thread
       await thread.send({
@@ -396,7 +428,7 @@ export async function getTournamentCode(
 
   const game = await createGame(seriesId, team1Data!, team2Data!);
   const gameNumber = game.number || 1; // Assuming gameNumber is part of the Game object
-  let shortcode = game.shortcode;
+  const shortcode = game.shortcode;
   if (!game) {
     return {
       discordResponse: null,
@@ -412,16 +444,16 @@ export async function getTournamentCode(
     };
   }
  
-  let division_name = divisionEvent?.name || 'Unknown Division';
-  let totalGames = await getTotalGames(division!, team1, team2, selectedStage);
+  const division_name = divisionEvent?.name || 'Unknown Division';
+  const totalGames = await getTotalGames(division!, team1, team2, selectedStage);
   const member = await interaction.guild!.members.fetch(interaction.user.id);
   const draftLinkMarkdown = first? (await getDraftLinksMarkdown(team1Data.name, team2Data.name, shortcode, totalGames)) + '\n': '';
   const gameId = game.id || 0;
-  let sideShow = `# Game ${gameNumber} \n 🟦 __**${team1Name}**__ v.s.  __**${team2Name}**__ 🟥\n`;
-  let gameCode: string = `\nCode: \`\`\`${shortcode}\`\`\`\n`;
-  let generatedBy : string = `Game Generated By: <@${member.id}>\n`;
-  let opposingCapt: string = `Enemy Captain: <@${enemyCaptainId}>\n`;
-  let discordResponse = sideShow.concat(gameCode).concat(generatedBy).concat(opposingCapt);
+  const sideShow = `# Game ${gameNumber} \n 🟦 __**${team1Name}**__ v.s.  __**${team2Name}**__ 🟥\n`;
+  const gameCode: string = `\nCode: \`\`\`${shortcode}\`\`\`\n`;
+  const generatedBy : string = `Game Generated By: <@${member.id}>\n`;
+  const opposingCapt: string = `Enemy Captain: <@${enemyCaptainId}>\n`;
+  const discordResponse = sideShow.concat(gameCode).concat(generatedBy).concat(opposingCapt);
 
   return {
     discordResponse,

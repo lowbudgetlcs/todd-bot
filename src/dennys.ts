@@ -5,7 +5,7 @@ import log from 'loglevel';
 
 const logger =log.getLogger('dennys');
 logger.setLevel('info');
-[]
+
 export type eventGroup = {
   id: number;
   name: string;
@@ -48,7 +48,9 @@ export type EventWithTeams = {
 export type Team = {
   id: number;
   name: string;
-  logoName: string | null;
+  // Dennys sends this as `logo` (confirmed against the live API); an earlier
+  // `logoName` here silently read as undefined. Nothing consumes it today.
+  logo: string | null;
   eventId: number | null;
 };
 
@@ -65,6 +67,7 @@ export type Series = {
   id: number;
   eventId: number;
   teamIds: number[];
+  eventStage: string;
   totalGames: number;
 };
 
@@ -143,9 +146,19 @@ const getSeriesForTeams = async (
   );
   const seriesList: Series[] = Array.isArray(body) ? body : (body.series ?? []);
   for (const s of seriesList) {
-    if (Array.isArray(s.teamIds) && s.teamIds.includes(team1) && s.teamIds.includes(team2)) {
+    // Dennys does filter on both query params server-side, so this loop is
+    // normally re-checking an already-correct single result. It stays as
+    // defence in depth: the match must be exact on both teams and the stage
+    // before we hand the series id to createGame, and a silently widened
+    // filter upstream would otherwise book a game against the wrong series.
+    if (
+      Array.isArray(s.teamIds) &&
+      s.teamIds.includes(team1) &&
+      s.teamIds.includes(team2) &&
+      s.eventStage === stage
+    ) {
       logger.info(
-        `Found matching series ${s.id} for teams ${team1}/${team2} with totalGames: ${s.totalGames}`,
+        `Found matching series ${s.id} for teams ${team1}/${team2}, stage ${stage}, with totalGames: ${s.totalGames}`,
       );
       return s;
     }

@@ -30,10 +30,17 @@ telling them to try it just produces confusion.
 
 **Check first:** `docker logs --tail 200 todd-bot`.
 
-`index.ts` installs `unhandledRejection` and `uncaughtException` handlers that
-log and keep running, so an unhandled promise should no longer kill the process.
-If it died anyway, the log will contain either `Missing environment variables:`
-(bad `.env` — see below) or a real crash worth reporting.
+`index.ts` handles the two failure modes differently, and the log tells you
+which one you hit:
+
+- `Unhandled promise rejection (bot staying up):` — logged, process survives. An
+  unhandled promise should no longer kill the bot.
+- `Uncaught exception - exiting so pm2 can restart cleanly:` — the process
+  exited **on purpose**, because its state could no longer be trusted, and pm2
+  restarted it. The stack trace on that line is the bug; treat it as a real
+  crash worth reporting rather than as noise.
+- `Missing environment variables:` — bad `.env`, see below. This one crash-loops
+  until it is fixed, because every restart fails the same way.
 
 Historically this was caused by a slow Dennys call letting the interaction token
 expire; the resulting `10062` rejection was unhandled and killed the process.
@@ -50,10 +57,29 @@ throws with the list of missing ones.
 present, even `RIOT_API_TOKEN`, which nothing on the current code path actually
 calls.
 
+## Every Dennys call 404s
+
+The bot boots fine — `config.ts` only checks that the variables are *present* —
+and then every command fails. `/set-current-event` shows no event groups,
+`/start-series` can't find a division.
+
+**Cause:** `API_URL` is missing the `/api/v1` prefix. Todd concatenates bare
+paths onto it (`` `${API_URL}${path}` `` in `src/dennys.ts`, with `path` being
+`/eventGroup`, `/event/{id}`, ...), so the prefix has to be part of the variable.
+`https://dennys.lowbudgetlcs.com` requests `/eventGroup`;
+`https://dennys.lowbudgetlcs.com/api/v1` requests `/api/v1/eventGroup`.
+
+**Check it:** the logs print the full URL on the event fetch — `Fetching event 1
+from ...`. A trailing slash on `API_URL` is the other way to break this, giving
+you a double slash.
+
 ## Slash commands are missing or duplicated in Discord
 
-**Cause:** `deployCommands` runs on every boot and is destructive — it deletes all
-global commands, clears the guild's commands, then re-registers the current set.
+**Cause:** `deployCommands` runs on every boot — it deletes all global commands,
+then bulk-overwrites the guild's commands with the current set (a single `PUT`
+that adds, updates, and removes to match). It no longer clears the guild to `[]`
+first, so command IDs — and the server-side permission overrides keyed to them —
+are preserved across redeploys.
 
 Two common versions of this:
 
@@ -86,8 +112,15 @@ edits the existing message instead of posting a new reply.
 
 In the logs, expired interactions show up as
 `interaction expired before we could respond` at warn level — that is
-`runGuarded` correctly recognising a dead token rather than treating it as an
-error.
+`runGuarded` correctly recognising a dead token (`10062`) rather than treating
+it as an error.
+
+Do not confuse that with `40060 already acknowledged`, which is logged at
+**error** level. That one means the token was still good and we replied twice —
+two code paths handling the same interaction, or a handler that acknowledges and
+then falls through to a second reply. It is a bug in the handler, not a slow
+backend, and the fix is to find the second acknowledgement rather than to widen
+any timeout.
 
 ## "Failed to find a matching series for these teams."
 
@@ -146,14 +179,42 @@ error, something built a thread name without going through that helper.
 ## A `custom_id` parses wrong / a button does nothing
 
 The `custom_id` format is
-`tag:originalUserId:enemyCaptainId:divisionId:team1Id:team2Id:stage`, split on
-`:`. Two ways to break it:
+`tag:v1:originalUserId:enemyCaptainId:divisionId:team1Id:team2Id:stage`, split on
+`:`, with every id in base36. A real one looks like
+`gc:v1:9do1sj396nf9:9do1sj396nf9:7pr:7pr:7pr:PROMOTION_RELEGATION`.
 
-- **A colon in a stage name.** Stage names go into the id verbatim, so a stage
-  called `Week 1: Opener` shifts every field after it.
-- **Exceeding 100 characters.** Discord's cap on `custom_id`. Two snowflakes
-  alone are ~38 characters, so a long stage name is the realistic way to blow the
-  budget.
+The leading `gc` is a wire code, not a corrupted tag — the full table is
+`TAG_CODES` in [src/buttons/button.ts](../src/buttons/button.ts):
+
+| Code | Tag | Code | Tag |
+| --- | --- | --- | --- |
+| `d` | `division_select` | `x` | `cancel` |
+| `1` | `team1_select` | `xf` | `cancel_flow` |
+| `2` | `team2_select` | `xw` | `cancel_switch` |
+| `s` | `stage_select` | `g` | `generate_another` |
+| `c` | `confirm` | `gc` | `generate_another_confirm` |
+| `w` | `switch` | `e` | `end_series` |
+| `ws` | `switch_sides` | | |
+
+Everything past `parseButtonData` — handler dispatch, the `button:` label in the
+guard logs — uses the readable name, so a code only ever appears in a raw id.
+
+Things to check:
+
+- **Is the `v1` marker there?** Without it the id predates base36 and is read
+  with the old decimal decoder, and its tag is a full name rather than a code.
+  That path still works; a *mixed* id (marker present, decimal ids) would not,
+  and means something hand-built an id instead of going through
+  `createButtonData`.
+- **A colon in a stage name is fine now.** The stage is the last field and
+  absorbs the rest of the split, so `Week 1: Opener` round-trips. Nothing ahead
+  of it can contain a `:`.
+- **Exceeding 100 characters.** Discord's cap on `custom_id`. Base36 ids and tag
+  codes put the realistic worst case at 64, leaving 56 characters for the stage
+  name — the one field dennys hands us as a free-form string. Past that you get
+  `CustomIdTooLongError` in the logs and *"The stage **X** has too long a name for
+  Todd to track this series"* in Discord, raised at stage selection before
+  anything is created in dennys.
 
 The logs print the raw `custom_id` on every button and select interaction — start
 there.
@@ -170,6 +231,9 @@ GET only, backing off 500ms then 1s.
 - If Dennys is genuinely slow rather than down, raising `API_TIMEOUT_MS` is safe:
   every slow path defers first, so the interaction budget is ~15 minutes, not 3
   seconds.
+- If retries are making things worse — Dennys is overloaded and each attempt is
+  adding to the pile — `API_RETRIES=0` turns them off. Setting it to `0` used to
+  silently leave you with the default 2; it is honored now.
 
 ## `npm run build` leaves `dist/commands` empty on Windows
 
@@ -180,9 +244,13 @@ sh, so subdirectories like `src/commands/` don't get emitted.
 **This is a local-only artifact — the Docker build is correct**, because it runs
 under Alpine's shell. Don't "fix" the build script to work around it.
 
-**For local work, use `npm run dev`** (`tsx watch`), which doesn't build at all
-and reads `src/` directly. If you specifically need a local build, run it from
-Git Bash or WSL, or use `npm run build-ws`.
+**For local work, use `docker compose up --build`**, which builds inside Alpine
+and is unaffected. If you specifically need a build on the host, run it from Git
+Bash or WSL, or use `npm run build-ws`.
+
+If you do end up with an empty `dist/commands`, the bot logs
+`No commands loaded from ... - skipping deploy` and leaves the guild's existing
+registrations alone instead of wiping them.
 
 ## Getting more detail out of the logs
 

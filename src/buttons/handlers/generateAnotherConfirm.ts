@@ -2,6 +2,7 @@ import { ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle } from 
 import { createButton, createButtonData, parseButtonData } from "../button.ts";
 import { getTournamentCode } from "../../commands/tournament.ts";
 import log from 'loglevel';
+import { safeDefer, safeInteractionError } from "../../interactionSafety.ts";
 
 const logger =log.getLogger('generateAnotherConfirm');
 logger.setLevel('info');
@@ -21,7 +22,18 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
       });
       return;
     }
-    let opposing_captain = enemyCaptainId != interaction.user.id? enemyCaptainId: data.originalUserId;
+    const opposing_captain = enemyCaptainId != interaction.user.id? enemyCaptainId: data.originalUserId;
+
+    // getTournamentCode is the slowest call in the bot - an event lookup, two
+    // team lookups, then code generation - so acknowledge before any of it.
+    if (!(await safeDefer(interaction, { update: true }))) return;
+
+    // Clearing the components here rather than after the call also stops a
+    // second Confirm click from generating a duplicate code while we wait.
+    await interaction.editReply({
+      content: "Generating new tournament code...",
+      components: [],
+    });
 
     const tournamentCode = await getTournamentCode(
       team1,
@@ -34,9 +46,11 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
     );
 
     if (tournamentCode.error) {
-      await interaction.followUp({
+      // Report in place of the "Generating..." message. followUp() here used to
+      // run before the interaction had been acknowledged at all.
+      await interaction.editReply({
         content: tournamentCode.error,
-        ephemeral: true
+        components: [],
       });
       return;
     }
@@ -50,17 +64,14 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
     // const regenerateButton = createButton(regenerateButtonData, "Code Not Work?", ButtonStyle.Secondary, '❓');
 
 
-    // Send new message with tournament code and button
-    await interaction.update({
-      content: "Generating new tournament code...",
-      components: [],
-    });
-
+    // Drop the ephemeral "Generating..." message, then post the code publicly.
     await interaction.deleteReply();
 
-    let response = tournamentCode.discordResponse?.toString() || "";
-    response.concat(`\n# Game ${tournamentCode.gameNumber} Code: \`\`\`${tournamentCode.shortcode}\`\`\`\n\n`);
-
+    // discordResponse already carries the game number and shortcode (built in
+    // tournament.ts). There was a `response.concat(...)` here that appended them
+    // a second time - it discarded its result, so it never took effect; keeping
+    // it and "fixing" it would have duplicated the code line.
+    const response = tournamentCode.discordResponse?.toString() || "";
 
     await interaction.followUp({
       content: response,
@@ -70,10 +81,9 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
 
 
   } catch (error) {
-    console.error(error);
-    await interaction.followUp({
-      content: 'There was an error generating a new tournament code.',
-      ephemeral: true
-    });
+    logger.error(error);
+    // followUp() throws again on a dead token; safeInteractionError picks the
+    // channel that is still valid and swallows the failure.
+    await safeInteractionError(interaction, 'There was an error generating a new tournament code.');
   }
 }

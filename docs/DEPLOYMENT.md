@@ -25,7 +25,9 @@ GitHub Actions: .github/workflows/deploy.yaml
 
 **Merging to `main` deploys to production.** There is no staging environment and
 no manual approval step. The workflow skips only doc-ish changes
-(`.gitignore`, `*.md`, `*.txt`, `shell.nix`, `Makefile`, `compose.yml`).
+(`.gitignore`, `**/*.md`, `**/*.txt`, `shell.nix`, `Makefile`, `compose.yaml`) —
+the `**/` glob is deliberate so markdown under `docs/` is skipped too, not just
+root-level files.
 
 The image is published to Docker Hub as `lblcs/todd-bot:latest`. Only `latest` is
 pushed — there are no version tags, so rolling back means re-running an older
@@ -50,16 +52,21 @@ merging, or the next deploy will crash-loop at `config.ts`.
 `Dockerfile` is a two-stage build:
 
 ```dockerfile
-FROM node:22-alpine AS builder     # npm ci --omit-dev, npm run build
-FROM node:22-alpine AS runner      # pm2 + dist/ + node_modules
+FROM node:22-alpine AS builder     # npm ci (full), npm run build, npm prune --omit=dev
+FROM node:22-alpine AS runner      # pm2 + dist/ + prod-only node_modules
 CMD [ "npm", "run", "start" ]      # pm2-runtime ./dist/index.js
 ```
 
+The builder installs **all** dependencies on purpose — `tsup`, the bundler behind
+`npm run build`, is a devDependency, so `npm ci --omit=dev` in the builder would
+break the build. Dev deps are dropped *after* the build with `npm prune
+--omit=dev`, so the runner copies a production-only `node_modules`.
+
 `pm2-runtime` runs pm2 in the foreground so Docker owns the process lifecycle.
 pm2 restarts the app if it exits; the container restarts only if Docker is told
-to. Note that the app installs its own `unhandledRejection` and
-`uncaughtException` handlers precisely so that pm2 restarts stay rare — see
-[ARCHITECTURE.md](ARCHITECTURE.md#why-the-bot-refuses-to-die).
+to. That restart is load-bearing: on an `uncaughtException` the app logs and
+exits 1 deliberately, and pm2 is what brings it back — see
+[ARCHITECTURE.md](ARCHITECTURE.md#why-rejections-are-survivable-and-exceptions-are-not).
 
 `compose.yaml` is deliberately minimal: it builds the image, names the container
 `todd-bot`, and loads `.env`. No ports are published — the bot makes an outbound

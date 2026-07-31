@@ -38,8 +38,24 @@ process.on('unhandledRejection', (reason) => {
   logger.error('Unhandled promise rejection (bot staying up):', reason);
 });
 
-process.on('uncaughtException', (error) => {
-  logger.error('Uncaught exception (bot staying up):', error);
+/**
+ * An uncaught exception is different: it means a synchronous call stack was
+ * abandoned partway through, so module state may be inconsistent and there is
+ * no way to know what didn't finish. Continuing from that is guesswork, so log
+ * and exit - pm2-runtime restarts us with a clean process.
+ *
+ * Exiting used to be what lost the selected event group, which is why this
+ * handler originally swallowed everything. state.ts persists it now, so a
+ * restart is cheap and that reason no longer applies.
+ */
+let exiting = false;
+process.on('uncaughtException', error => {
+  if (exiting) return;
+  exiting = true;
+  logger.error('Uncaught exception - exiting so pm2 can restart cleanly:', error);
+  // Under Docker stderr is a pipe, so Node writes it asynchronously. Exiting on
+  // this tick can truncate the very stack trace we need, so give it one beat.
+  setTimeout(() => process.exit(1), 100);
 });
 
 type ActionWrapper = {
@@ -75,14 +91,16 @@ const guild_id = process.env.GUILD_ID;
 const commands: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [];
 
 // Populate commands property of the Client, currently only works for commands/ and not subfolders cuz not needed
+// This reads the *built* output (dist/commands/*.js), never src/. There is no
+// TypeScript runtime path - the only way to run the bot is to build it first.
 const commandsPath = path.join(__dirname, 'commands');
-const commandFiles = fs
-  .readdirSync(commandsPath)
-  .filter(file => file.endsWith('.js'));
+const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
 
 
 for (const file of commandFiles) {
   const filePath = path.join(commandsPath, file);
+  // Deliberate: commands are discovered at runtime, so this path is not statically known.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const imported = require(filePath);
   const command = imported?.default ?? imported;
   if ('data' in command && 'execute' in command) {
@@ -97,6 +115,16 @@ for (const file of commandFiles) {
 client.once('ready', async () => {
   logger.info('Discord bot is ready! 🤖');
   client.user?.setPresence({ status: 'online' });
+
+  // deployCommands deletes every existing command before re-registering, so
+  // handing it an empty array unregisters the bot entirely. If the loader found
+  // nothing that is a bug in this build, not an instruction to wipe the guild.
+  if (commands.length === 0) {
+    logger.error(
+      `No commands loaded from ${commandsPath} - skipping deploy so the existing registrations survive.`,
+    );
+    return;
+  }
 
   // TODO: We should make command for this, ticket already made
   deployCommands({ guildId: guild_id! }, commands);

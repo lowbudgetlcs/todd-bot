@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - 'main'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Matches the node:22-alpine base the container runs on.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npx eslint .
+
+      - name: Test
+        run: npm test
+
+      # The command loader reads dist/commands/*.js at runtime, so an entry glob
+      # that silently emits nothing would ship a bot with zero slash commands.
+      - name: Build
+        run: npm run build
+
+      - name: Assert the build emitted commands
+        run: |
+          test -f dist/index.js
+          count=$(ls dist/commands/*.js 2>/dev/null | wc -l)
+          echo "dist/commands: $count file(s)"
+          test "$count" -gt 0

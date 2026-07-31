@@ -3,6 +3,7 @@ import { createButton, createButtonData, parseButtonData } from "../button.ts";
 import log from 'loglevel';
 import { getTeam, Team } from "../../dennys.ts";
 import { SeriesData } from "../../types/toddData.ts";
+import { safeDefer, safeInteractionError } from "../../interactionSafety.ts";
 const logger =log.getLogger('switchSides');
 logger.setLevel('info');
 
@@ -18,6 +19,10 @@ export async function handleSwitchSides(interaction: ButtonInteraction) {
       });
       return;
     }
+
+    // getTeam hits dennys twice, which can outrun Discord's 3 second deadline.
+    // Acknowledge first; editReply below replaces what update() used to do.
+    if (!(await safeDefer(interaction, { update: true }))) return;
 
     const team1:Team = await getTeam(seriesData.team1Id);
     const team2:Team = await getTeam(seriesData.team2Id);
@@ -46,17 +51,19 @@ export async function handleSwitchSides(interaction: ButtonInteraction) {
       `# Red Side: ${team2.name}\n\n` +
       `Click Generate to generate code with these sides`;
 
-    // Use update to modify existing message for switch/cancel flow
+    // Edits the message the button is on, same as update() did before the defer.
 
-    await interaction.update({
+    await interaction.editReply({
       content: content,
       components: [buttonRow],
     });
   } catch (error) {
     logger.error(error);
-    await interaction.followUp({
-      content: 'There was an error preparing the side switch confirmation.',
-      ephemeral: true
-    });
+    // followUp() throws again on a dead token; safeInteractionError picks the
+    // channel that is still valid and swallows the failure.
+    await safeInteractionError(
+      interaction,
+      'There was an error preparing the side switch confirmation.',
+    );
   }
 }

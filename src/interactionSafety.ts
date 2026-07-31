@@ -6,7 +6,7 @@ logger.setLevel('info');
 
 /** Discord: the interaction token is gone (usually because we took >3s to ack). */
 const UNKNOWN_INTERACTION = 10062;
-/** Discord: we already acknowledged this one. */
+/** Discord: this interaction was already acknowledged, i.e. we acked it twice. */
 const ALREADY_ACKNOWLEDGED = 40060;
 
 function errorCode(error: unknown): number | undefined {
@@ -15,9 +15,25 @@ function errorCode(error: unknown): number | undefined {
     : undefined;
 }
 
+/**
+ * The token is dead and nothing can be delivered to the user. Callers may give
+ * up quietly, because there is no longer anyone to give up in front of.
+ */
 export function isExpiredInteraction(error: unknown): boolean {
-  const code = errorCode(error);
-  return code === UNKNOWN_INTERACTION || code === ALREADY_ACKNOWLEDGED;
+  return errorCode(error) === UNKNOWN_INTERACTION;
+}
+
+/**
+ * We acknowledged the same interaction twice.
+ *
+ * This used to be lumped in with `isExpiredInteraction`, which was wrong in a
+ * way that hid bugs: 40060 means the token is *alive* and two code paths are
+ * both answering it. Treating it as "expired" made `runGuarded` log at warn and
+ * return, so a genuine double-reply looked identical to a user who wandered off.
+ * It is our bug, not Discord's, so it is reported like any other failure.
+ */
+export function isAlreadyAcknowledged(error: unknown): boolean {
+  return errorCode(error) === ALREADY_ACKNOWLEDGED;
 }
 
 /**
@@ -43,6 +59,15 @@ export async function safeDefer(
     }
     return true;
   } catch (error) {
+    if (isAlreadyAcknowledged(error)) {
+      // This function's postcondition is "the interaction is acknowledged", and
+      // 40060 says it already is - so the caller can safely carry on, and
+      // returning false here would abandon a live interaction. Still worth an
+      // error: the replied/deferred check above should have caught this, so two
+      // paths are racing on the same interaction.
+      logger.error('Interaction was already acknowledged when deferring:', error);
+      return true;
+    }
     if (isExpiredInteraction(error)) {
       logger.warn('Interaction expired before it could be deferred, dropping it');
       return false;
@@ -90,6 +115,9 @@ export async function runGuarded(
       logger.warn(`${label}: interaction expired before we could respond`);
       return;
     }
+    // 40060 deliberately falls through to here rather than being treated as
+    // expired: the user is still waiting, and a double ack is a bug we want in
+    // the logs at error level instead of silently absorbed.
     logger.error(`${label} failed:`, error);
     await safeInteractionError(interaction, userMessage);
   }

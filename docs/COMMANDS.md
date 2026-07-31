@@ -16,8 +16,20 @@ every boot.
 | `/coinflip` | — | Heads or tails. Also the quickest way to check the bot is alive and commands registered. |
 | `/team-opgg` | — | **Not implemented.** Throws `'Not Implemented'`. |
 
-There is no permission gating on any of these — anyone in the guild can run them.
-Restrictions are applied per-interaction inside the button handlers instead.
+None of these are gated **in code** — there is no `setDefaultMemberPermissions`
+on any command. Access is restricted two other ways instead: per-interaction
+checks inside the button handlers, and Discord's **server-side command
+permissions** (Server Settings → Integrations), configured per guild. That is how
+`/set-current-event` is limited to staff today.
+
+Those server-side restrictions are keyed to each command's ID. The bot
+re-registers commands on every boot, but does so with a single bulk `PUT` that
+updates commands in place and **preserves their IDs**
+([deploy-commands.ts](../src/deploy-commands.ts)), so an Integrations-level
+restriction survives redeploys. (It did not always: an earlier version cleared
+the guild's commands to `[]` first, which minted new IDs on every boot and wiped
+these restrictions — set one before that fix and you'd have to re-apply it after
+each deploy.)
 
 ---
 
@@ -58,7 +70,7 @@ them get to drive the series buttons afterward.
 
 | Message | Cause |
 | --- | --- |
-| *"Event group ID is not set. Please create a dev ticket."* | `currentEventGroupId` is null. Only staff can run `/set-current-event`, so regular users are told to escalate rather than to fix it themselves. Common after a redeploy — see [TROUBLESHOOTING.md](TROUBLESHOOTING.md). |
+| *"Event group ID is not set. Please create a dev ticket."* | `currentEventGroupId` is null. `/set-current-event` is restricted to staff via Discord's server-side command permissions (not in code), so regular users can't fix it themselves and are told to escalate. Common after a redeploy — see [TROUBLESHOOTING.md](TROUBLESHOOTING.md). |
 | *"No divisions found."* | The event group has no events in Dennys. |
 | *"No stages found for the selected division."* | The division has an empty `eventStages`. |
 | *"No teams found for the selected division."* | The division has no teams in Dennys. |
@@ -81,6 +93,11 @@ group's name and ID.
 
 This must be run before `/start-series` will work at all, and again after any
 redeploy that recreates the container.
+
+**Access:** limited to staff through Discord's server-side command permissions
+(Server Settings → Integrations), *not* through code. That restriction now
+survives redeploys because command registration preserves command IDs — see the
+note under [Slash commands](#slash-commands).
 
 ---
 

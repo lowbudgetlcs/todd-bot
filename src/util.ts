@@ -15,7 +15,7 @@ function getUserRoles(interaction: Interaction<CacheType>) {
   // THAT BECAUSE THIS TYPE IS A UNION OF OTHER TYPES
   // THAT GUILDMEMBER PROPERTIES AREN'T AVAILABLE TO USE ????
   // TODO: understand how to code
-  let member: GuildMember = interaction.member as GuildMember;
+  const member: GuildMember = interaction.member as GuildMember;
   // member.roles.cache.each(x => {
   //   console.log(`Role name=${x.name}, role id=${x.id}`);
   // });

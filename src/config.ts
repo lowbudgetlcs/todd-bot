@@ -1,7 +1,43 @@
 import dotenv from 'dotenv';
 import { RiotAPI, RiotAPITypes } from '@fightmegg/riot-api';
+import log from 'loglevel';
 
 dotenv.config();
+
+const logger = log.getLogger('config');
+logger.setLevel('info');
+
+/**
+ * Reads an optional numeric tunable.
+ *
+ * `Number(raw) || fallback` is wrong for these. Number('0') is 0, which is
+ * falsy, so `API_RETRIES=0` - the setting you reach for mid-incident to stop
+ * retry amplification - silently gave you the default 2 instead.
+ *
+ * Unset and blank both mean "use the default", because Number('') is also 0 and
+ * a bare `API_RETRIES=` in .env would otherwise read as a deliberate zero.
+ * Anything unparseable warns and falls back rather than throwing: a typo in an
+ * optional tunable should not stop the bot from booting, unlike the required
+ * variables gated below.
+ */
+function optionalInt(name: string, fallback: number, isValid: (n: number) => boolean): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === '') return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || !isValid(n)) {
+    logger.warn(`${name}="${raw}" is not a usable value, falling back to ${fallback}`);
+    return fallback;
+  }
+  return Math.trunc(n);
+}
+
+// The two knobs differ in whether zero is meaningful. Zero retries is a real
+// setting. A zero timeout is not: AbortSignal.timeout(0) aborts every request
+// immediately and there is no "off" value, so a non-positive number is a
+// mistake rather than a way to disable the timeout. Negative retries would be
+// worse than useless - fetchWithRetry's loop would never run an attempt at all.
+const API_TIMEOUT_MS = optionalInt('API_TIMEOUT_MS', 20_000, n => n > 0);
+const API_RETRIES = optionalInt('API_RETRIES', 2, n => n >= 0);
 
 const {
   DISCORD_TOKEN,
@@ -43,4 +79,6 @@ export const config = {
   LOWBUDGETLCS_DRAFT_URL,
   API_URL,
   DENNYS_TOKEN,
+  API_TIMEOUT_MS,
+  API_RETRIES,
 };

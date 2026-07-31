@@ -43,26 +43,34 @@ directly; that was replaced by the Dennys API and the ORM is gone.
    variable is missing. A misconfigured bot dies here, loudly.
 2. **`loadState()`** reads `data/state.json` into memory, restoring the selected
    event group.
-3. **Process-level error handlers** are installed for `unhandledRejection` and
-   `uncaughtException`. They log and keep the process alive — see
-   [why the bot refuses to die](#why-the-bot-refuses-to-die).
+3. **Process-level error handlers** are installed for `unhandledRejection` (logs
+   and keeps going) and `uncaughtException` (logs and exits 1) — see
+   [why rejections are survivable and exceptions are not](#why-rejections-are-survivable-and-exceptions-are-not).
 4. **The command loader** reads every `.js` in `dist/commands/`, requires it, and
    registers anything exporting both `data` and `execute` into
    `client.commands`. Subfolders are not scanned.
 5. **Login**, and on `ready`, `deployCommands()` pushes the collected command
    definitions to Discord for `GUILD_ID`.
 
-### Command registration is destructive on every boot
+### Command registration on every boot
 
 `src/deploy-commands.ts` does this, in order:
 
-1. Deletes **every global command** on the application.
-2. `PUT`s an empty array to the guild's commands, clearing them.
-3. `PUT`s the current command set to the guild.
+1. Deletes **every global command** on the application. This bot is guild-scoped
+   only, so a stray global command would just double up.
+2. Bulk `PUT`s the current command set to the guild in **one** call. Discord
+   treats this as an overwrite matched by name: existing commands are updated in
+   place and keep their command ID, missing ones are removed, new ones created.
 
-That is why a dev instance must never point at the live guild: booting it wipes
-production's commands and replaces them with whatever your branch has. The
-clear-then-set dance exists so renamed or deleted commands don't linger.
+Preserving the command IDs matters. Discord's per-command permission overrides
+(Server Settings → Integrations — e.g. the staff-only restriction on
+`/set-current-event`) are keyed to the command ID, so a single bulk `PUT` keeps
+them alive across redeploys. An earlier version cleared the guild's commands to
+`[]` first, which minted new IDs on every boot and silently wiped those
+restrictions — don't reintroduce that step.
+
+A dev instance must still never point at the live guild: booting it overwrites
+production's command set with whatever your branch has.
 
 ## The interaction router
 
@@ -109,20 +117,65 @@ Dennys is sometimes slower than that. So the rule in this codebase is:
 - **`runGuarded(interaction, label, fn)`** — wraps a handler so a rejection is
   logged and reported, never unhandled.
 
-Codes `10062` (unknown interaction) and `40060` (already acknowledged) are
-treated as "the user's interaction is gone" and logged at warn level, not error.
+The two Discord error codes involved look similar and mean opposite things, so
+they are handled separately:
 
-## Why the bot refuses to die
+| Code | Meaning | Handling |
+| --- | --- | --- |
+| `10062` unknown interaction | The token is dead, usually because we missed the 3s deadline. Nothing can reach the user. | `isExpiredInteraction`. Logged at **warn** and dropped — there is nobody left to apologise to. |
+| `40060` already acknowledged | The token is **alive**; we acknowledged it twice. | `isAlreadyAcknowledged`. Logged at **error** and reported to the user like any other bug. |
 
-`index.ts` installs `unhandledRejection` and `uncaughtException` handlers that
-log and keep going. This is not general defensiveness — it is a fix for a
-specific outage:
+`40060` was originally folded into `isExpiredInteraction`, which hid bugs: a
+handler replying twice produced exactly the same silent warn as a user whose
+interaction had expired. The one place it is *not* an error is inside
+`safeDefer`, whose postcondition is "this interaction is acknowledged" — 40060
+says it already is, so `safeDefer` returns `true` and lets the caller continue
+rather than abandoning a live interaction.
 
-A slow Dennys call let the interaction token expire. The resulting `10062`
-rejection was unhandled, which killed the process. pm2 restarted it, and because
-the selected event group only lived in a module-level variable at the time, the
-restart wiped it — so `/start-series` started telling every captain to file a dev
-ticket. Two fixes came out of that: these handlers, and `state.ts`.
+Once you have deferred, **`update()` and `reply()` are no longer available** —
+answer with `editReply()` instead. That is the usual reason a handler drifts back
+off the rule: reaching for `update()` is what forces the dennys call to happen
+before the acknowledgement.
+
+The rule is enforced by `test/ackBeforeSlowWork.test.ts`, which stubs the dennys
+calls and asserts the *ordering* — every backend call must land after the ack.
+It was written after three button handlers had already drifted past the rule
+while it was documentation only.
+
+## Why rejections are survivable and exceptions are not
+
+`index.ts` installs both handlers, but they deliberately do opposite things.
+
+**`unhandledRejection` logs and keeps going.** This is not general
+defensiveness — it is a fix for a specific outage. A slow Dennys call let the
+interaction token expire. The resulting `10062` rejection was unhandled, which
+killed the process. pm2 restarted it, and because the selected event group only
+lived in a module-level variable at the time, the restart wiped it — so
+`/start-series` started telling every captain to file a dev ticket. Two fixes
+came out of that: this handler, and `state.ts`.
+
+A stray rejection is a bounded failure: one `await` chain gave up, and the
+interaction it belonged to is already lost. Nothing else in the process is
+affected, so staying up costs nothing and keeps the other captains served.
+
+**`uncaughtException` logs and exits 1.** An exception that reaches the process
+means a *synchronous* call stack was abandoned partway through — a handler that
+mutated half its state, a lock never released. Unlike a rejection, the damage
+isn't scoped to one interaction, and nothing can tell you what didn't finish.
+Continuing from there is guesswork, and a bot that keeps serving from corrupt
+state is worse than one that is briefly absent.
+
+Exiting is cheap now, which it wasn't originally: `pm2-runtime` restarts the app
+within seconds, and `state.ts` carries the event group across the restart. The
+reason this handler once swallowed everything — that restarting is what lost the
+event group — no longer holds.
+
+The handler waits ~100ms before calling `process.exit(1)`. Under Docker, stderr
+is a pipe and Node writes to it asynchronously, so exiting on the same tick can
+truncate the stack trace that explains the crash.
+
+**If you see repeated `Uncaught exception` lines in the logs, that is a bug to
+fix, not a handler to soften.**
 
 ## State
 
@@ -154,22 +207,57 @@ valid regardless of restarts.
 The format (`src/buttons/button.ts` + `src/types/toddData.ts`):
 
 ```
-tag : originalUserId : enemyCaptainId : divisionId : team1Id : team2Id : stage
+tag : v1 : originalUserId : enemyCaptainId : divisionId : team1Id : team2Id : stage
 ```
 
-- `tag` selects the handler in `src/buttons/handlers.ts`.
+- `tag` selects the handler in `src/buttons/handlers.ts`. On the wire it is a
+  one- or two-character code (`gc`, not `generate_another_confirm`) from
+  `TAG_CODES` in `src/buttons/button.ts` — the tag was the largest field in the
+  id, 24 characters spent on a value with thirteen possibilities.
+  `parseButtonData` maps it back, so handlers, collector filters and logs only
+  ever see the readable name. **Never repurpose a code**: buttons already
+  sitting in Discord channels are routed by it.
+- `v1` marks the encoding. Ids minted before it put a decimal snowflake in this
+  position, which is digits only, so `parseButtonData` tells the two apart and
+  still reads the old layout — buttons live in Discord messages, not in Todd, and
+  keep arriving after a redeploy.
 - `originalUserId` is who started the flow. Handlers allow only that user or the
   enemy captain to act.
 - The remaining five fields are `SeriesData`, encoded by `encodeSeriesData` and
   read back by `decodeSeriesData`.
 
-`parseButtonData` splits on `:` and hands back a `ButtonData`. Two consequences
-worth knowing:
+**The 100-character budget.** Discord caps `custom_id` at 100, and in the
+original encoding that budget was already spent: the longest tag
+(`generate_another_confirm`), two 19-digit snowflakes, three decimal ids and a
+stage name the length of `PROMOTION_RELEGATION` came to exactly 100. The next
+team id to cross four digits would have pushed a live series over.
 
-- **Nothing here may contain a colon.** Stage names are put into the id verbatim,
-  so a stage named `Week 1: Opener` would corrupt parsing.
-- **Discord caps `custom_id` at 100 characters.** Two snowflake IDs alone are
-  ~38, so long stage names are the realistic thing that pushes it over.
+Two changes bought it back. Base36 on every id takes a snowflake from 19
+characters to 13; wire codes take the tag from 24 to 2.
+
+| | Worst case | Room for the stage name |
+| --- | --- | --- |
+| Original | 100 | 20 |
+| Base36 ids | 86 | 34 |
+| ...plus tag codes | **64** | **56** |
+
+That leaves 36 characters spare — room for another id (a base36 `seriesId` and
+its separator is ~5) without revisiting this.
+
+`parseButtonData` splits on `:`. Two consequences worth knowing:
+
+- **The stage may contain colons; nothing before it may.** The stage is last so
+  that it absorbs the remainder of the split, so `Week 1: Opener` round-trips.
+  The fields ahead of it are base36 or a tag, none of which can contain a `:`.
+- **The stage is still the field that can overflow.** Dennys returns
+  `eventStages` as free-form strings, so its length is not ours to control. 56
+  characters fit. Past that, `seriesDataFits` refuses the series at stage
+  selection — sized against the *longest* tag code, not the current one, because
+  tags grow as a series advances (`s` is 1 character, `gc` is 2) and the late
+  failure would land on the button built after the game already exists in
+  dennys. `createButtonData(...).serialize()` backstops it by throwing
+  `CustomIdTooLongError` rather than letting discord.js answer with a bare
+  "Invalid Form Body".
 
 ## The `/start-series` flow, end to end
 
@@ -298,6 +386,10 @@ been posted, leaving a series announced with no thread.
 Everything Todd needs from the backend. All requests carry
 `Authorization: Bearer ${DENNYS_TOKEN}`. Defined in `src/dennys.ts`.
 
+**Paths below are relative to `API_URL`**, which includes the `/api/v1` prefix —
+`apiGet` concatenates them on unchanged, so `/eventGroup` here is
+`/api/v1/eventGroup` on the wire.
+
 | Method | Path | Used for | Returns |
 | --- | --- | --- | --- |
 | GET | `/eventGroup` | `/set-current-event` list | `eventGroup[]` |
@@ -305,14 +397,48 @@ Everything Todd needs from the backend. All requests carry
 | GET | `/event/{id}` | Division name + `eventStages` | `Event` |
 | GET | `/event/{id}/teams` | Teams in a division | `EventWithTeams` |
 | GET | `/team/{id}` | Team display name | `Team` |
-| GET | `/event/{id}/series?teamIds={a}&teamIds={b}&stage={s}` | Find the scheduled series, and its `totalGames` | `Series[]` or `{ series: Series[] }` |
+| GET | `/event/{id}/series?teamIds={a}&teamIds={b}&stage={s}` | Find the scheduled series, and its `totalGames` | Event object with nested `series[]` (`EventWithSeriesDto`); a bare `Series[]` is also tolerated |
 | POST | `/series/{id}/game` | Create a game; **this returns the tournament code** | `Game` (`{ id, shortcode, number, ... }`) |
 
 Body for the POST is `{ blueTeamId, redTeamId }`.
 
-The series lookup accepts both a bare array and a `{ series: [...] }` wrapper,
-then filters client-side for an entry whose `teamIds` contains both teams — the
-query parameters are treated as a hint, not a guarantee.
+The series lookup returns the **event object with its `series[]` nested** (the
+swagger calls this `EventWithSeriesDto`); `getSeriesForTeams` reads `body.series`,
+and also tolerates a bare `Series[]`.
+
+**Both query params are real server-side filters**, not decoration:
+`?teamIds=a&teamIds=b` narrows to series involving both teams, `?stage=` narrows
+to that stage, and an unrecognised stage is rejected with `400 Malformed request
+body`. `getSeriesForTeams` still re-checks both conditions on the returned rows.
+That is belt and braces, not a workaround — the series id it produces goes
+straight to `createGame`, so an exact match is worth confirming locally before
+booking a game against the wrong series.
+
+### Where the swagger and the code disagree
+
+**Verified against the live API on 2026-07-30** by calling
+`/event/{id}/series`, `/team/{id}` and `/event/{id}/teams` directly. The swagger
+itself is not served at any of the usual paths (`/swagger.json`, `/openapi.json`,
+`/api-docs`, … all 404), so the "swagger says" column below is quoted from
+review, not re-read. Neither side turned out to be reliably right:
+
+| Field | Swagger says | Code says | Live API returns | Verdict |
+| --- | --- | --- | --- | --- |
+| `SeriesDto` teams | `teams: TeamDto[]` | `teamIds: number[]` | `teamIds: [2, 8]` | **Swagger stale, code right** |
+| `SeriesDto` stage | *(not listed)* | `eventStage: string` | `eventStage: "REGULAR_SEASON"` | **Swagger incomplete, code right** |
+| Series envelope | `EventWithSeriesDto` | tolerates either shape | event object with nested `series[]` | **Swagger right** |
+| `Team` logo | `logo` | *was* `logoName` | `logo: null` | **Swagger right, code was wrong** — now fixed |
+
+Observed series row: `{"id":756,"eventId":1,"teamIds":[2,8],"totalGames":3,"eventStage":"REGULAR_SEASON"}`.
+Observed team row: `{"id":2,"name":"...","logo":null,"eventId":1}`.
+
+The `logoName` bug was invisible because nothing reads the field — it resolved to
+`undefined` rather than failing. If you add a consumer, re-confirm the name first.
+
+> An earlier revision of this section claimed the `stage` param was *not*
+> honoured server-side, citing the live API. That was wrong: `?stage=PLAYOFFS`
+> on an event with no playoff series returns zero rows, not the regular-season
+> ones. Corrected here and in the `getSeriesForTeams` comment.
 
 And one endpoint on the draft backend:
 
