@@ -4,11 +4,11 @@ on:
   push:
     paths-ignore:
       - '.gitignore'
-      - '*.md'
-      - '*.txt'
+      - '**/*.md'
+      - '**/*.txt'
       - 'shell.nix'
       - 'Makefile'
-      - 'compose.yml'
+      - 'compose.yaml'
 
     branches:
       - 'main'

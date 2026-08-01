@@ -1,6 +1,9 @@
+.env
 .eslintrc
 .gitignore
 README.md
+docs/
 compose.yaml
-drizzle.config.ts
-drizzle/
+data/
+dist/
+node_modules/

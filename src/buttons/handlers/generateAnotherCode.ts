@@ -3,6 +3,7 @@ import { createButton, createButtonData, parseButtonData } from "../button.ts";
 import { getTeam, Team } from '../../dennys.ts';
 import log from 'loglevel';
 import { SeriesData } from "../../types/toddData.ts";
+import { safeDefer, safeInteractionError } from "../../interactionSafety.ts";
 
 const logger =log.getLogger('generateAnotherCode');
 logger.setLevel('info');
@@ -19,6 +20,11 @@ export async function handleGenerateAnotherCode(interaction: ButtonInteraction) 
       });
       return;
     }
+
+    // getTeam hits dennys twice, which can outrun Discord's 3 second deadline.
+    // This flow answers with a new ephemeral message, so defer a reply rather
+    // than an update; editReply below inherits the ephemeral flag from here.
+    if (!(await safeDefer(interaction, { ephemeral: true }))) return;
 
     const generateButtonData = createButtonData("generate_another_confirm", data.originalUserId, seriesData);
     const generateButton = createButton(generateButtonData, "Confirm", ButtonStyle.Success, '⚔️');
@@ -47,17 +53,15 @@ export async function handleGenerateAnotherCode(interaction: ButtonInteraction) 
       `# Red Side: ${team2.name}\n\n` +
       `Choose to generate with same sides or switch them`;
 
-    // Use reply for new message when generating another code
-    await interaction.reply({
+    // Fills in the deferred ephemeral reply opened above.
+    await interaction.editReply({
       content: content,
       components: [buttonRow],
-      ephemeral: true
     });
   } catch (error) {
     logger.error(error);
-    await interaction.followUp({
-      content: 'There was an error preparing the team selection.',
-      ephemeral: true
-    });
+    // followUp() throws again on a dead token; safeInteractionError picks the
+    // channel that is still valid and swallows the failure.
+    await safeInteractionError(interaction, 'There was an error preparing the team selection.');
   }
 }

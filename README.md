@@ -1,124 +1,68 @@
-<!-- Improved compatibility of back to top link: See: https://github.com/othneildrew/Best-README-Template/pull/73 -->
 <a id="readme-top"></a>
-<!--
-*** Thanks for checking out the Best-README-Template. If you have a suggestion
-*** that would make this better, please fork the repo and create a pull request
-*** or simply open an issue with the tag "enhancement".
-*** Don't forget to give the project a star!
-*** Thanks again! Now go create something AMAZING! :D
--->
 
+# Todd Bot 🤖
 
+Bot companion for the [Low Budget LCS](https://lowbudgetlcs.com) Discord.
 
-<!-- PROJECT SHIELDS -->
-<!--
-*** I'm using markdown "reference style" links for readability.
-*** Reference links are enclosed in brackets [ ] instead of parentheses ( ).
-*** See the bottom of this document for the declaration of the reference variables
-*** for contributors-url, forks-url, etc. This is an optional, concise syntax you may use.
-*** https://www.markdownguide.org/basic-syntax/#reference-style-links
--->
+Todd is a Discord bot that runs LBLCS match logistics. Its main job is
+`/start-series`: a captain picks a division, the two teams, and a stage, and Todd
+creates the game in the league backend, posts the Riot tournament code, opens a
+thread for the series, and drops in fearless-draft links for both teams. It also
+handles a few smaller utilities (player point estimates, coin flips).
 
+## Documentation
 
-<!-- PROJECT LOGO
-<br />
-<div align="center">
-  <a href="https://github.com/github_username/repo_name">
-    <img src="images/logo.png" alt="Logo" width="80" height="80">
-  </a>
+| Doc | What's in it |
+| --- | --- |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local setup, env vars, npm scripts, code conventions |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the bot is wired together, and what happens end to end when someone runs `/start-series` |
+| [docs/COMMANDS.md](docs/COMMANDS.md) | Every slash command, button, select menu, and modal |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Docker, CI/CD, production, and how to operate it |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Things that break and what to do about them |
 
-<h3 align="center">project_title</h3>
+If you are brand new to this repo, read
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) then
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), in that order.
 
-  <p align="center">
-    project_description
-  </p>
-</div> -->
+## Quick start
 
+You need [Node.js 20+](https://nodejs.org), Docker Desktop, and a `.env` file.
+Node is only for the host-side checks — the bot itself runs on `node:22-alpine`
+in the container.
 
+```sh
+git clone https://github.com/lowbudgetlcs/todd-bot.git
+cd todd-bot
+npm install
+cp .env.example .env   # then fill it in - see docs/DEVELOPMENT.md
+```
 
-<!-- TABLE OF CONTENTS -->
-<details>
-  <summary>Table of Contents</summary>
-  <ol>
-    <li>
-      <a href="#about-the-project">About The Project</a>
-    </li>
-    <li>
-      <a href="#getting-started">Getting Started</a>
-      <ul>
-        <li><a href="#prerequisites">Prerequisites</a></li>
-        <li><a href="#installation">Installation</a></li>
-      </ul>
-    </li>
-  </ol>
-</details>
+Running the bot is done through Docker, which is exactly how production runs it:
 
+```sh
+docker compose up --build
+# ctrl-c, then:
+docker compose down
+```
 
+`npm install` is only for the checks that run outside the container —
+`npm test`, `npm run lint`, `npm run typecheck`. There is no separate
+hot-reloading dev server; rebuild the image to see a change.
 
-<!-- ABOUT THE PROJECT -->
-## About The Project
+The bot registers its slash commands against the guild in `GUILD_ID` every time
+it starts, so point a dev instance at a test server, not the live LBLCS one.
 
-Bot companion 🤖 for the Low Budget LCS Discord!
+## What Todd talks to
 
-<!-- GETTING STARTED -->
-## Getting Started
+| Service | Env var | Purpose |
+| --- | --- | --- |
+| Discord | `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `GUILD_ID` | The bot itself |
+| [Dennys](https://github.com/lowbudgetlcs/dennys) (LBLCS backend) | `API_URL`, `DENNYS_TOKEN` | Event groups, divisions, teams, series, and game/tournament-code creation |
+| LBLCS draft backend | `LOWBUDGETLCS_BACKEND_URL`, `LOWBUDGETLCS_DRAFT_URL` | Fearless draft lobbies and their share links |
+| Riot | `RIOT_API_TOKEN` | Client is constructed at boot; see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) |
 
-This is an example of how you may give instructions on setting up your project locally.
-To get a local copy up and running follow these simple example steps.
+## License
 
-### Prerequisites
+MIT.
 
-
-* npm
-  ```sh
-  npm install npm@latest -g
-  ```
-
-### Installation
-
-1. Clone the repo
-   ```sh
-   git clone https://github.com/lowbudgetlcs/todd-bot.git
-   ```
-2. Install NPM packages
-   ```sh
-   npm install
-   ```
-   ```sh
-   npm i -g pm2
-   ```
-3. Fill a .env file with useful entries!
-   ```
-   DISCORD_TOKEN=
-   DISCORD_CLIENT_ID=
-   GUILD_ID=
-   DATABASE_URL=
-   RIOT_API_TOKEN=
-   CHANNEL_ID=
-   ADMIN_ROLES=
-   ```
-4. `npx drizzle-kit pull` and `npx drizzle-kit generate` to update the schema!
-5. To run the bot:
-   ```sh
-   pm2-runtime ecosystem.config.js
-   ```
-
-<!-- FullMetal Notes to himself -->
-## How to run for dummys
-
-1. Turn on WSL - Ubuntu
-
-2. Turn on Docker Desktop
-
-3. Run the following commands in order
-    ```
-    docker compose build
-
-    docker compose up
-    ```
-    When you're done / need to make changes, don't forget
-    ```
-    docker compose down
-    ```
-
-4. Cross your fingers that worked. If it doesn't, blame past you. 
+<p align="right">(<a href="#readme-top">back to top</a>)</p>

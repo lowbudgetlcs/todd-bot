@@ -1,0 +1,219 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createButtonData } from '../src/buttons/button.ts';
+import { SeriesData } from '../src/types/toddData.ts';
+
+/**
+ * tournament.ts owns the main flow, and the two things worth pinning are both
+ * about ordering rather than output:
+ *
+ * 1. The 3-second rule. `handleBothTeamSubmission` makes several sequential
+ *    dennys calls and is the most likely path to outrun Discord's ack deadline.
+ * 2. The custom_id budget check. A series whose stage name is too long to fit in
+ *    a button has to be refused *before* the game is created in dennys -
+ *    afterwards there is a real game with no way to drive it.
+ */
+
+const calls: string[] = [];
+
+vi.mock('../src/dennys.ts', () => ({
+  getEvent: vi.fn(async (id: number) => {
+    calls.push('getEvent');
+    return { id, name: 'Division A', eventStages: ['REGULAR_SEASON'] };
+  }),
+  getEventWithTeams: vi.fn(async (id: number) => {
+    calls.push('getEventWithTeams');
+    return {
+      id,
+      name: 'Division A',
+      eventStages: ['REGULAR_SEASON'],
+      teams: [
+        { id: 11, name: 'Team 11', logo: null, eventId: id },
+        { id: 22, name: 'Team 22', logo: null, eventId: id },
+      ],
+    };
+  }),
+  getTeam: vi.fn(async (id: number) => {
+    calls.push('getTeam');
+    return { id, name: `Team ${id}`, logo: null, eventId: 1 };
+  }),
+  getSeriesId: vi.fn(async () => {
+    calls.push('getSeriesId');
+    return 756;
+  }),
+  getTotalGames: vi.fn(async () => {
+    calls.push('getTotalGames');
+    return 3;
+  }),
+  createGame: vi.fn(async () => {
+    calls.push('createGame');
+    return { id: 9, blueTeamId: 11, redTeamId: 22, shortcode: 'ABC123', seriesId: 756, number: 1 };
+  }),
+}));
+
+vi.mock('../src/util.ts', async importOriginal => {
+  // buildThreadName is pure and already covered by util.test.ts - keep the real
+  // one so this test exercises the same name Discord would receive.
+  const actual = await importOriginal<typeof import('../src/util.ts')>();
+  return {
+    ...actual,
+    getDraftLinksMarkdown: vi.fn(async () => {
+      calls.push('getDraftLinksMarkdown');
+      return 'draft links';
+    }),
+  };
+});
+
+const { handleBothTeamSubmission, handleTeamSelect } = await import('../src/commands/tournament.ts');
+
+const ORIGINAL_USER = '123456789012345678';
+
+const seriesData: SeriesData = {
+  enemyCaptainId: '223456789012345678',
+  divisionId: 7,
+  team1Id: 11,
+  team2Id: 22,
+  stage: 'REGULAR_SEASON',
+};
+
+function makeInteraction(tag: string, data: SeriesData = seriesData, customId?: string) {
+  const interaction = {
+    customId: customId ?? createButtonData(tag, ORIGINAL_USER, data).serialize(),
+    user: { id: ORIGINAL_USER },
+    values: [] as string[],
+    replied: false,
+    deferred: false,
+    isRepliable: () => true,
+    isMessageComponent: () => true,
+    guild: { members: { fetch: vi.fn(async () => ({ id: ORIGINAL_USER })) } },
+    deferUpdate: vi.fn(async () => {
+      calls.push('deferUpdate');
+      interaction.deferred = true;
+    }),
+    deferReply: vi.fn(async () => {
+      calls.push('deferReply');
+      interaction.deferred = true;
+    }),
+    editReply: vi.fn(async (payload: unknown) => {
+      calls.push('editReply');
+      editReplyPayloads.push(payload);
+    }),
+    reply: vi.fn(async () => {
+      calls.push('reply');
+      interaction.replied = true;
+    }),
+    followUp: vi.fn(async () => {
+      calls.push('followUp');
+      return { startThread: vi.fn(async () => ({ send: vi.fn(async () => {}) })) };
+    }),
+    deleteReply: vi.fn(async () => {
+      calls.push('deleteReply');
+    }),
+  };
+  return interaction;
+}
+
+let editReplyPayloads: unknown[] = [];
+
+/** First point the interaction is acknowledged, i.e. the 3s deadline stops mattering. */
+const ackIndex = () =>
+  calls.findIndex(c => c === 'deferUpdate' || c === 'deferReply' || c === 'reply');
+
+/** A stage name too long to survive into a `generate_another_confirm` button. */
+const OVERSIZED_STAGE = 'X'.repeat(70);
+
+/**
+ * A custom_id carrying an oversized stage, built by hand because `serialize()`
+ * refuses to produce one. That is the case the check inside
+ * `handleBothTeamSubmission` exists for: a button minted before the guard
+ * existed is still sitting in a Discord message and can still be clicked.
+ */
+function legacyOversizedCustomId(tag: string): string {
+  const base = createButtonData(tag, ORIGINAL_USER, { ...seriesData, stage: 'S' }).serialize();
+  return `${base.slice(0, -1)}${OVERSIZED_STAGE}`;
+}
+
+beforeEach(() => {
+  calls.length = 0;
+  editReplyPayloads = [];
+});
+
+describe('handleBothTeamSubmission acknowledges before touching dennys', () => {
+  it('defers before the first backend call', async () => {
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    expect(interaction.deferUpdate).toHaveBeenCalled();
+    expect(ackIndex()).toBeGreaterThanOrEqual(0);
+    expect(ackIndex()).toBeLessThan(calls.indexOf('getEvent'));
+  });
+
+  it('creates the game and posts the series', async () => {
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    expect(calls).toContain('createGame');
+    expect(interaction.followUp).toHaveBeenCalled();
+  });
+});
+
+describe('an oversized stage is refused before the game exists', () => {
+  it('handleBothTeamSubmission stops before createGame', async () => {
+    // The failure this prevents: the game is created, then the button carrying
+    // the series context is too long for Discord and the series is stranded.
+    const interaction = makeInteraction('confirm', seriesData, legacyOversizedCustomId('confirm'));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    expect(calls).not.toContain('createGame');
+    expect(calls).not.toContain('getSeriesId');
+    expect(editReplyPayloads.at(-1)).toMatchObject({
+      content: expect.stringContaining('too long'),
+    });
+  });
+
+  it('still acknowledges the interaction rather than leaving it hanging', async () => {
+    const interaction = makeInteraction('confirm', seriesData, legacyOversizedCustomId('confirm'));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    expect(ackIndex()).toBeGreaterThanOrEqual(0);
+    expect(interaction.editReply).toHaveBeenCalled();
+  });
+
+  it('handleTeamSelect refuses at stage selection, the earliest point it can', async () => {
+    const interaction = makeInteraction('stage_select', { ...seriesData, stage: '' });
+    interaction.values = [OVERSIZED_STAGE];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleTeamSelect(interaction as any);
+
+    expect(editReplyPayloads.at(-1)).toMatchObject({
+      content: expect.stringContaining('too long'),
+      components: [],
+    });
+  });
+});
+
+describe('handleTeamSelect on the normal path', () => {
+  it('defers before hitting dennys', async () => {
+    const interaction = makeInteraction('stage_select', { ...seriesData, stage: '' });
+    interaction.values = ['REGULAR_SEASON'];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleTeamSelect(interaction as any);
+
+    expect(ackIndex()).toBeGreaterThanOrEqual(0);
+    expect(ackIndex()).toBeLessThan(calls.indexOf('getEventWithTeams'));
+  });
+
+  it('renders the confirm step once both teams and a stage are chosen', async () => {
+    const interaction = makeInteraction('stage_select', { ...seriesData, stage: '' });
+    interaction.values = ['REGULAR_SEASON'];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleTeamSelect(interaction as any);
+
+    expect(editReplyPayloads.at(-1)).toMatchObject({
+      content: expect.stringContaining('Please confirm'),
+    });
+  });
+});
