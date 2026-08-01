@@ -84,6 +84,8 @@ function makeInteraction(tag: string, data: SeriesData = seriesData, customId?: 
     deferred: false,
     isRepliable: () => true,
     isMessageComponent: () => true,
+    // Defaults to the dropdown path; the Switch Sides / Cancel buttons flip this.
+    isStringSelectMenu: () => true,
     guild: { members: { fetch: vi.fn(async () => ({ id: ORIGINAL_USER })) } },
     deferUpdate: vi.fn(async () => {
       calls.push('deferUpdate');
@@ -109,6 +111,19 @@ function makeInteraction(tag: string, data: SeriesData = seriesData, customId?: 
       calls.push('deleteReply');
     }),
   };
+  return interaction;
+}
+
+/**
+ * The Switch Sides and Cancel buttons reach `handleTeamSelect` too, routed
+ * there by `getButtonHandler`. A real ButtonInteraction has no `values` at all -
+ * modelled here by deleting it - so the handler must decide what it is holding
+ * rather than destructuring a property only the dropdowns carry.
+ */
+function makeButtonInteraction(tag: string, data: SeriesData = seriesData) {
+  const interaction = makeInteraction(tag, data);
+  interaction.isStringSelectMenu = () => false;
+  delete (interaction as { values?: string[] }).values;
   return interaction;
 }
 
@@ -214,6 +229,33 @@ describe('handleTeamSelect on the normal path', () => {
 
     expect(editReplyPayloads.at(-1)).toMatchObject({
       content: expect.stringContaining('Please confirm'),
+    });
+  });
+});
+
+describe('handleTeamSelect on the button path (no values to read)', () => {
+  it('swaps the sides for Switch Sides', async () => {
+    const interaction = makeButtonInteraction('switch');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleTeamSelect(interaction as any);
+
+    // Blue was 11 and red was 22 going in, so the confirm step must show them
+    // the other way round - and must get there without touching `values`.
+    expect(editReplyPayloads.at(-1)).toMatchObject({
+      content: expect.stringContaining('Blue Side: Team 22'),
+    });
+    expect(editReplyPayloads.at(-1)).toMatchObject({
+      content: expect.stringContaining('Red Side: Team 11'),
+    });
+  });
+
+  it('clears both teams and the stage for Cancel', async () => {
+    const interaction = makeButtonInteraction('cancel');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleTeamSelect(interaction as any);
+
+    expect(editReplyPayloads.at(-1)).toMatchObject({
+      content: expect.stringContaining('Not Selected!'),
     });
   });
 });
