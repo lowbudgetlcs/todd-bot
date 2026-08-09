@@ -422,7 +422,7 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
             { id: seriesData.team1Id, name: tournamentCode.team1Name },
             { id: seriesData.team2Id, name: tournamentCode.team2Name },
           ]),
-          [buildControlRow(user.id, pinnedSeries)],
+          [buildControlRow(user.id, pinnedSeries, tournamentCode.series)],
         );
       }
     }

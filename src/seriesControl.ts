@@ -92,17 +92,41 @@ export function buildSeriesStatus(
   return lines.join('\n');
 }
 
+/**
+ * Report only appears once the newest code has gone unanswered long enough.
+ *
+ * Filing one earlier is not merely redundant, it is harmful: Dennys finds no
+ * game on the code yet, records the claim against no code at all, and inserts a
+ * second row for the same match once Riot catches up. A lost callback repairs
+ * itself when the next code is issued, so waiting is the better default.
+ */
 export function buildControlRow(
   originalUserId: string,
   seriesData: SeriesData,
+  series?: SeriesWithGames,
+  now: number = Date.now(),
 ): ActionRowBuilder<ButtonBuilder> {
-  const generate = createButton(
-    createButtonData('generate_another', originalUserId, seriesData),
-    'Generate Next Game',
-    ButtonStyle.Success,
-    '⚔️',
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    createButton(
+      createButtonData('generate_another', originalUserId, seriesData),
+      'Generate Next Game',
+      ButtonStyle.Success,
+      '⚔️',
+    ),
   );
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(generate);
+
+  if (series && !series.completed && isCodeStale(series, now)) {
+    row.addComponents(
+      createButton(
+        createButtonData('report_result', originalUserId, seriesData),
+        'Report result',
+        ButtonStyle.Secondary,
+        '📝',
+      ),
+    );
+  }
+
+  return row;
 }
 
 /**

@@ -45,6 +45,7 @@ describe('tag wire codes', () => {
     'division_select', 'team1_select', 'team2_select', 'stage_select',
     'confirm', 'switch', 'switch_sides', 'cancel', 'cancel_flow',
     'cancel_switch', 'generate_another', 'generate_another_confirm', 'end_series',
+    'series_select', 'report_result', 'report_team1_won', 'report_team2_won',
   ];
 
   it('round-trips every tag back to the readable name handlers.ts switches on', () => {

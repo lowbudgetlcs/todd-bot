@@ -46,6 +46,9 @@ const TAG_CODES: Record<string, string> = {
   cancel_switch: 'xw',
   generate_another: 'g',
   generate_another_confirm: 'gc',
+  report_result: 'r',
+  report_team1_won: 'r1',
+  report_team2_won: 'r2',
   // Retired rather than removed, so a new tag cannot inherit the code. Dennys
   // closes a series on result write; nothing in Todd ends one.
   end_series: 'e',

@@ -83,7 +83,7 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
           { id: seriesData.team1Id, name: tournamentCode.team1Name },
           { id: seriesData.team2Id, name: tournamentCode.team2Name },
         ]),
-        [buildControlRow(data.originalUserId, pinnedSeries)],
+        [buildControlRow(data.originalUserId, pinnedSeries, tournamentCode.series)],
       );
     }
 

@@ -18,6 +18,9 @@ const ROUTED = [
   'switch',
   'cancel',
   'cancel_flow',
+  'report_result',
+  'report_team1_won',
+  'report_team2_won',
 ];
 
 describe('getButtonHandler', () => {

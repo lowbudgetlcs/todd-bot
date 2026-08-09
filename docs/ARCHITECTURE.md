@@ -90,6 +90,11 @@ them (with a 5-minute window), not by the global router. A new dropdown in that
 flow has to be added to the collector's filter list as well as to `TAG_CODES`,
 or it will never fire.
 
+Every dispatch goes through `runGuarded(interaction, label, fn)`, which catches
+whatever the handler throws, distinguishes "the interaction is already dead" from
+a real error, and reports real errors back to the user without ever throwing
+again.
+
 ### Choosing between repeat series
 
 Two teams can meet more than once inside a stage — a double round-robin, or a
@@ -110,11 +115,6 @@ anything exists in Dennys:
 
 Changing a team or the stage clears a series already chosen against the old
 selection, so the prompt reappears rather than carrying a stale id forward.
-
-Every dispatch goes through `runGuarded(interaction, label, fn)`, which catches
-whatever the handler throws, distinguishes "the interaction is already dead" from
-a real error, and reports real errors back to the user without ever throwing
-again.
 
 ## The 3-second rule
 
@@ -352,6 +352,28 @@ Todd posts may start with that marker.
 Code blocks and draft links are permanent. The control message is safe to delete
 precisely because everything on it is regenerated from `getSeries` on the next
 post.
+
+### Reporting a result
+
+Dennys pulls a played game from Riot whenever a code is issued, so a lost
+callback repairs itself on the next press and no one has to report anything. The
+Report button exists for the case Riot has no record — always true of a custom
+game, since Match-V5 cannot fetch customs on a product API key.
+
+Two rules make it safe, and both are easy to get wrong:
+
+- **It is offered only once the newest code has gone unanswered** (`isCodeStale`,
+  10 minutes). Filing sooner is not merely redundant: Dennys finds no game on the
+  code yet, records the claim against no code at all, and inserts a *second* row
+  for the same match once Riot catches up.
+- **The request carries a winner and nothing else.** Todd knows the shortcode it
+  issued and must not send it — with two codes outstanding it cannot know which
+  the lobby used, and naming the wrong one records a duplicate game. Dennys asks
+  Riot instead and falls back to the captain's claim only when Riot has nothing.
+
+A winner is mandatory; Dennys answers 422 to a report without one. The click is
+logged with the user id, because a captain can report a winner Riot does not
+corroborate and staff need the audit trail.
 
 ### `getTournamentCode`
 

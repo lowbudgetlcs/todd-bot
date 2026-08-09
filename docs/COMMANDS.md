@@ -61,10 +61,13 @@ them get to drive the series buttons afterward.
 
 5. A thread is opened on that message named `<Blue> vs <Red> - YYYY-MM-DD`
    (auto-archive 60 minutes), containing:
-   - the four fearless draft links (blue, red, spectator, stream), a ping for the
-     enemy captain, and a **⚔️ Generate Next Game** button;
+   - the four fearless draft links (blue, red, spectator, stream) and a ping for
+     the enemy captain;
    - the game code message with the tournament code, who generated it, and the
-     enemy captain.
+     enemy captain;
+   - a **control message**, always last, carrying the series status and the
+     buttons. It is deleted and re-posted after every code so it stays at the
+     bottom, which means exactly one set of buttons is ever live.
 
 **Failure messages and what they mean:**
 
@@ -165,6 +168,9 @@ lookup table is [src/buttons/handlers.ts](../src/buttons/handlers.ts).
 | `generate_another_confirm` | ✅ Confirm | `handleGenerateAnotherConfirm` | Creates the next game in the series and posts its code. |
 | `switch_sides` | 🔄 Switch Sides | `handleSwitchSides` | Swaps sides for the *next* game and re-confirms. |
 | `cancel_flow` | ❌ Cancel | `handleCancel` | Deletes the ephemeral confirmation. |
+| `report_result` | 📝 Report result | `handleReportResult` | Opens the winner picker. Only on the control message, and only once the newest code has gone unanswered. |
+| `report_team1_won` | 🟦 *<blue team>* won | `handleReportTeam1Won` | Records the winner and refreshes the thread. |
+| `report_team2_won` | 🟥 *<red team>* won | `handleReportTeam2Won` | As above, for the other team. |
 | `end_series` | — | — | Retired. No button ever used it, and Dennys now closes a series automatically when enough results are written. The wire code stays reserved so a new tag cannot inherit it. |
 
 **Who is allowed to click:** every handler checks `interaction.user.id` against
