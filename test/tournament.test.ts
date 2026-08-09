@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createButtonData, parseButtonData } from '../src/buttons/button.ts';
 import { SeriesData } from '../src/types/toddData.ts';
 import { CONTROL_MARKER } from '../src/seriesControl.ts';
+import { HttpError } from '../src/http.ts';
 
 /**
  * tournament.ts owns the main flow, and the two things worth pinning are both
@@ -39,6 +40,9 @@ const aSeries = (id: number, totalGames: number) => ({
 });
 let seriesCandidates: ReturnType<typeof aSeries>[] = [];
 
+/** Set to make the code request fail the way Riot being down makes it fail. */
+let issueFailsWith: { status: number } | null = null;
+
 vi.mock('../src/dennys.ts', async importOriginal => {
   // nextGameNumber is pure, so keep the real one - the game number a captain
   // sees is derived here and a stub would only be testing itself.
@@ -75,6 +79,7 @@ vi.mock('../src/dennys.ts', async importOriginal => {
     }),
     issueTournamentCode: vi.fn(async () => {
       calls.push('issueTournamentCode');
+      if (issueFailsWith) throw new HttpError('riot', issueFailsWith.status, '');
       if (issueRecoversLostGame) seriesGames = [{ id: 4, seriesId: 756, number: 1 }];
       return {
         id: 9,
@@ -227,6 +232,7 @@ beforeEach(() => {
   seriesGames = [];
   issueRecoversLostGame = false;
   seriesCandidates = [aSeries(756, 3)];
+  issueFailsWith = null;
 });
 
 describe('handleBothTeamSubmission acknowledges before touching dennys', () => {
@@ -350,6 +356,66 @@ describe('picking between repeat series for the same pair', () => {
 
     // Back to asking, rather than carrying a series chosen against the old pair.
     expect(rowTags()).toContain('series_select');
+  });
+});
+
+describe('Riot refusing a code at game 1', () => {
+  beforeEach(() => {
+    issueFailsWith = { status: 503 };
+  });
+
+  it('still opens the thread, so a codeless series has somewhere to live', async () => {
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    expect(interaction.followUp).toHaveBeenCalled();
+    expect(threadSends).toHaveLength(1);
+  });
+
+  it('offers a retry and the custom path when Riot is merely unreachable', async () => {
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const labels = (threadComponents[0][0] as any)
+      .toJSON()
+      .components.map((b: { label: string }) => b.label);
+    expect(labels).toEqual(['Try again', 'Go play a custom game']);
+  });
+
+  it('drops the retry when Riot refused outright', async () => {
+    // 502 will not succeed on another press; offering one wastes their time.
+    issueFailsWith = { status: 502 };
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const labels = (threadComponents[0][0] as any)
+      .toJSON()
+      .components.map((b: { label: string }) => b.label);
+    expect(labels).toEqual(['Go play a custom game']);
+  });
+
+  it('pins the resolved series onto the recovery buttons', async () => {
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [button] = (threadComponents[0][0] as any).toJSON().components;
+    expect(parseButtonData(button.custom_id).seriesData.seriesId).toBe(756);
+  });
+
+  it('says Riot is the reason, not the series lookup', async () => {
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    expect(threadSends[0]).toContain('Riot');
+    expect(threadSends[0]).not.toContain('matching series');
   });
 });
 

@@ -6,6 +6,7 @@ import log from 'loglevel';
 // import { handleRegenerateCode } from "./handlers/regenerateCode.ts";
 import { handleCancel } from "./handlers/cancelFlow.ts";
 import { handleReportResult, handleReportTeam1Won, handleReportTeam2Won } from "./handlers/reportResult.ts";
+import { handleCodeNotWorking, handlePlayCustom, handlePlayCustomConfirm } from "./handlers/recovery.ts";
 
 const logger =log.getLogger('handlers');
 logger.setLevel('info');
@@ -28,6 +29,12 @@ export function getButtonHandler(tag: string) {
       return handleReportTeam1Won;
     case 'report_team2_won':
       return handleReportTeam2Won;
+    case 'code_not_working':
+      return handleCodeNotWorking;
+    case 'play_custom':
+      return handlePlayCustom;
+    case 'play_custom_confirm':
+      return handlePlayCustomConfirm;
     case 'confirm':
       return handleBothTeamSubmission; // Assuming confirm is used for ending series
     case "switch":

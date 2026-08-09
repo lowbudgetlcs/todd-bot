@@ -130,7 +130,7 @@ describe('the Report button only appears once a code has gone unanswered', () =>
     const labels = buttonsOf(buildControlRow(ORIGINAL_USER, seriesData, series, now)).map(
       b => b.label,
     );
-    expect(labels).toEqual(['Generate Next Game']);
+    expect(labels).toEqual(['Generate Next Game', 'Code not working?']);
   });
 
   it('appears once the code is stale', () => {
@@ -138,7 +138,7 @@ describe('the Report button only appears once a code has gone unanswered', () =>
     const labels = buttonsOf(buildControlRow(ORIGINAL_USER, seriesData, series, now)).map(
       b => b.label,
     );
-    expect(labels).toEqual(['Generate Next Game', 'Report result']);
+    expect(labels).toEqual(['Generate Next Game', 'Report result', 'Code not working?']);
   });
 
   it('still appears on a completed series', () => {
@@ -149,6 +149,14 @@ describe('the Report button only appears once a code has gone unanswered', () =>
       b => b.label,
     );
     expect(labels).toContain('Report result');
+  });
+
+  it('always offers the recovery entry point, code or no code', () => {
+    // A dead code and a code that never generated need the same exits.
+    const labels = buttonsOf(buildControlRow(ORIGINAL_USER, seriesData, undefined, now)).map(
+      b => b.label,
+    );
+    expect(labels).toContain('Code not working?');
   });
 });
 

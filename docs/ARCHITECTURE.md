@@ -375,6 +375,32 @@ A winner is mandatory; Dennys answers 422 to a report without one. The click is
 logged with the user id, because a captain can report a winner Riot does not
 corroborate and staff need the audit trail.
 
+### When Riot will not give out a code
+
+A code that generates but is dead, and a code that never generates, are different
+failures with the same consequence: the captains cannot play. Both reach the same
+two exits, because gating the custom path behind "Riot is down" strands anyone
+whose code technically works but is unusable.
+
+`isRiotGatewayError` separates this from a lookup failure, and
+`isRetryableRiotGatewayError` decides whether pressing again is worth offering:
+**503** is Riot unreachable, **502** is a refusal that a retry will not fix.
+
+**A failed code still opens the thread.** Without one, a series played entirely
+on customs has nowhere to live and nowhere to report from, so the public header
+and thread are posted anyway with the recovery buttons in place of a code.
+
+Replacing a dead code goes through the ordinary issue path rather than a separate
+one — a code nobody played produces no game, so reissuing does not advance the
+number, which makes a replacement the same operation as the next game.
+
+The custom path confirms before committing, since a custom costs the captains
+their stats, and the confirmation is where the scoreboard-screenshot reminder
+lives. Confirming posts a *We finished the custom game* button into the thread,
+tagged `report_result` so it rejoins the normal flow. That message is deliberately
+**not** a control message: the custom is played over the next half hour and the
+button has to survive however many codes are issued meanwhile.
+
 ### `getTournamentCode`
 
 The one function that talks to everything. Sequentially:

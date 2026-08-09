@@ -78,7 +78,9 @@ them get to drive the series buttons afterward.
 | *"No stages found for the selected division."* | The division has an empty `eventStages`. |
 | *"No teams found for the selected division."* | The division has no teams in Dennys. |
 | *"This is not One For All. No picking the same champs/teams"* | Blue and red are the same team. |
-| *"Failed to find a matching series for these teams."* | Dennys has no scheduled series for that pairing in that stage. The schedule must exist in the backend first. |
+| *"Failed to find a matching series for these teams."* | Dennys has no scheduled series for that pairing in that stage, or the only one is already complete — the lookup sends `completed=false`. |
+| *"Riot is not answering right now..."* | Riot returned 503. The thread is opened anyway with **Try again** and **Go play a custom game**. |
+| *"Riot refused to create a code for this game."* | Riot returned 502, which will not succeed on a retry, so only the custom path is offered. |
 | *"Error generating draft links! Please do so manually :)"* | The draft backend failed. **The tournament code was still created** — only the draft links are missing. |
 
 **Timeouts:** the dropdown collectors live for 5 minutes. After that the menus go
@@ -171,6 +173,9 @@ lookup table is [src/buttons/handlers.ts](../src/buttons/handlers.ts).
 | `report_result` | 📝 Report result | `handleReportResult` | Opens the winner picker. Only on the control message, and only once the newest code has gone unanswered. |
 | `report_team1_won` | 🟦 *<blue team>* won | `handleReportTeam1Won` | Records the winner and refreshes the thread. |
 | `report_team2_won` | 🟥 *<red team>* won | `handleReportTeam2Won` | As above, for the other team. |
+| `code_not_working` | ❓ Code not working? | `handleCodeNotWorking` | Offers a replacement code or the custom-game path. |
+| `play_custom` | ⚠️ Go play a custom game | `handlePlayCustom` | Confirms first: no stats, and take a scoreboard screenshot. |
+| `play_custom_confirm` | ✅ Yes, we're playing a custom | `handlePlayCustomConfirm` | Posts the *We finished the custom game* button into the thread. |
 | `end_series` | — | — | Retired. No button ever used it, and Dennys now closes a series automatically when enough results are written. The wire code stays reserved so a new tag cannot inherit it. |
 
 **Who is allowed to click:** every handler checks `interaction.user.id` against

@@ -129,6 +129,47 @@ export function buildControlRow(
     );
   }
 
+  row.addComponents(
+    createButton(
+      createButtonData('code_not_working', originalUserId, seriesData),
+      'Code not working?',
+      ButtonStyle.Secondary,
+      '❓',
+    ),
+  );
+
+  return row;
+}
+
+/**
+ * Shown when Riot would not issue a code at all, so there is no code message to
+ * hang the usual controls on. The series still gets a thread: a series played
+ * entirely on customs has to live somewhere.
+ */
+export function buildRecoveryRow(
+  originalUserId: string,
+  seriesData: SeriesData,
+  retryable: boolean,
+): ActionRowBuilder<ButtonBuilder> {
+  const row = new ActionRowBuilder<ButtonBuilder>();
+  if (retryable) {
+    row.addComponents(
+      createButton(
+        createButtonData('generate_another_confirm', originalUserId, seriesData),
+        'Try again',
+        ButtonStyle.Primary,
+        '🔄',
+      ),
+    );
+  }
+  row.addComponents(
+    createButton(
+      createButtonData('play_custom', originalUserId, seriesData),
+      'Go play a custom game',
+      ButtonStyle.Secondary,
+      '⚠️',
+    ),
+  );
   return row;
 }
 

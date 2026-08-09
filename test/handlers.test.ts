@@ -21,6 +21,9 @@ const ROUTED = [
   'report_result',
   'report_team1_won',
   'report_team2_won',
+  'code_not_working',
+  'play_custom',
+  'play_custom_confirm',
 ];
 
 describe('getButtonHandler', () => {

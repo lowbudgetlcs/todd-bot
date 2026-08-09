@@ -14,8 +14,8 @@ import { runGuarded, safeDefer, safeInteractionError } from '../interactionSafet
 import { User } from '../interfaces.ts';
 import { createButton, createButtonData, parseButtonData, seriesDataFits } from '../buttons/button.ts';
 import { SeriesWithGames } from '../dennysSchemas.ts';
-import { buildControlRow, buildSeriesStatus, postSeriesControl } from '../seriesControl.ts';
-import { findSeriesForTeams, getEvent, getEvents, getEventWithTeams, getSeries, getSeriesId, getTeam, issueTournamentCode, nextGameNumber, Team } from '../dennys.ts';
+import { buildControlRow, buildRecoveryRow, buildSeriesStatus, postSeriesControl } from '../seriesControl.ts';
+import { findSeriesForTeams, getEvent, getEvents, getEventWithTeams, getSeries, getSeriesId, getTeam, isRetryableRiotGatewayError, isRiotGatewayError, issueTournamentCode, nextGameNumber, Team } from '../dennys.ts';
 import log from 'loglevel';
 import { SeriesData } from '../types/toddData.ts';
 
@@ -321,6 +321,45 @@ export async function handleTeamSelect(
   });
 }
 
+type SeriesHeader = Pick<
+  Awaited<ReturnType<typeof getTournamentCode>>,
+  'divisionName' | 'stageName' | 'team1Name' | 'team2Name' | 'shortcode'
+>;
+
+/**
+ * Posts the public series header and opens its thread, then puts `first` inside
+ * it. Reached from both the success path and the Riot-outage path: a series with
+ * no code still needs somewhere to live, or there is nowhere to report from.
+ */
+async function openSeriesThread(
+  interaction: ButtonInteraction,
+  userId: string,
+  header: SeriesHeader,
+  first: { content: string; components?: ActionRowBuilder<ButtonBuilder>[]; flags?: number },
+) {
+  const publicMessage = await interaction.followUp({
+    content:
+      `## ${header.divisionName} - ${header.stageName || 'UNKNOWN_STAGE'}\n` +
+      `**__${header.team1Name}__ v.s. __${header.team2Name}__**\n\n` +
+      `Series Created By: <@${userId}>`,
+    ephemeral: false,
+  });
+
+  const dateString = new Date().toISOString().split('T')[0];
+  // buildThreadName keeps us under Discord's 100 char cap; team names with
+  // special characters are already repaired upstream in dennys.ts.
+  const threadName = buildThreadName(header.team1Name, header.team2Name, dateString);
+  logger.info(`Creating thread: ${threadName}`);
+  const thread = await publicMessage.startThread({
+    name: threadName,
+    autoArchiveDuration: 60, // in minutes
+    reason: `Series thread for ${header.team1Name} vs ${header.team2Name}`,
+  });
+
+  await thread.send(first);
+  return thread;
+}
+
 export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
   const { user } = interaction;
   const data = parseButtonData(interaction.customId);
@@ -358,7 +397,25 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
       enemyCaptainId: seriesData.enemyCaptainId,
       first: true,
     });
-    if (tournamentCode.error != null) {
+    if (tournamentCode.riotUnavailable) {
+      // The series still gets a thread. A series played entirely on customs has
+      // to live somewhere, and without one there is nowhere to report from.
+      await interaction.editReply({
+        content: 'Riot would not issue a code. Continuing in a thread.',
+        components: [],
+      });
+      await interaction.deleteReply();
+      await openSeriesThread(interaction, user.id, tournamentCode, {
+        content: `${tournamentCode.error}`,
+        components: [
+          buildRecoveryRow(
+            user.id,
+            { ...seriesData, seriesId: tournamentCode.seriesId },
+            tournamentCode.retryable,
+          ),
+        ],
+      });
+    } else if (tournamentCode.error != null) {
       // Handle error: Update original interaction
       await interaction.editReply({
         content: tournamentCode.error,
@@ -375,36 +432,9 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
       // Pinned here, at the one point the series is known: every later press
       // reads it back out rather than resolving from the team pair again.
       const pinnedSeries: SeriesData = { ...seriesData, seriesId: tournamentCode.seriesId };
-      const discordResponse =
-          `## ${tournamentCode.divisionName} - ${tournamentCode.stageName || 'UNKNOWN_STAGE'}\n` +
-          `**__${tournamentCode.team1Name}__ v.s. __${tournamentCode.team2Name}__**\n\n` +
-          `Series Created By: <@${user.id}>`;
-      const publicMessage = await interaction.followUp({
-        content: discordResponse,
-        ephemeral: false,
-      });
-
-      // Create a thread from the public message
-      const now = new Date();
-      const dateString = now.toISOString().split('T')[0];
-      // buildThreadName keeps us under Discord's 100 char cap; team names with
-      // special characters are already repaired upstream in dennys.ts.
-      const threadName = buildThreadName(
-        tournamentCode.team1Name,
-        tournamentCode.team2Name,
-        dateString,
-      );
-      logger.info(`Creating thread: ${threadName}`);
-      const thread = await publicMessage.startThread({
-        name: threadName,
-        autoArchiveDuration: 60, // in minutes
-        reason: `Draft links thread for tournament code ${tournamentCode.shortcode}`,
-      });
-
       const links = tournamentCode.draftLinks?.toString().concat("<@"+seriesData.enemyCaptainId+">") || null;
       logger.info(`Draft Links: ${links}`);
-      // Post the draft links in the thread
-      await thread.send({
+      const thread = await openSeriesThread(interaction, user.id, tournamentCode, {
         content: links!,
         flags: 1 << 2,
       });
@@ -479,6 +509,10 @@ export async function getTournamentCode({
   seriesId: number;
   /** The series as read after the code was issued, or null on an error path. */
   series: SeriesWithGames | null;
+  /** Riot, not us, refused the code. The custom-game path is the way forward. */
+  riotUnavailable: boolean;
+  /** Only meaningful with riotUnavailable: whether pressing again is worth it. */
+  retryable: boolean;
 }> {
   //TODO: Call api with this informatio nand let it handle all this logic
   const division  = divisionId? Number(divisionId) : null
@@ -498,6 +532,8 @@ export async function getTournamentCode({
       tournamentCodeId: 0,
       seriesId: 0,
       series: null,
+      riotUnavailable: false,
+      retryable: false,
       totalGames: 0,
     };
   }
@@ -514,6 +550,8 @@ export async function getTournamentCode({
       tournamentCodeId: 0,
       seriesId: 0,
       series: null,
+      riotUnavailable: false,
+      retryable: false,
       totalGames:0
     };
   }
@@ -539,11 +577,42 @@ export async function getTournamentCode({
       tournamentCodeId: 0,
       seriesId: 0,
       series: null,
+      riotUnavailable: false,
+      retryable: false,
       totalGames: 0
     };
   }
 
-  const code = await issueTournamentCode(seriesId, team1Data!, team2Data!);
+  let code;
+  try {
+    code = await issueTournamentCode(seriesId, team1Data!, team2Data!);
+  } catch (error) {
+    // Riot refusing is not a lookup failure, and telling a captain "no such
+    // series" when Riot is down leaves them with nothing to try.
+    if (!isRiotGatewayError(error)) throw error;
+    const retryable = isRetryableRiotGatewayError(error);
+    logger.error(`Riot could not issue a code for series ${seriesId}:`, error);
+    return {
+      discordResponse: null,
+      draftLinks: null,
+      shortcode: null,
+      gameNumber: 0,
+      error: retryable
+        ? 'Riot is not answering right now. Try again in a moment, or play a custom game.'
+        : 'Riot refused to create a code for this game. Playing a custom is the way forward.',
+      divisionId: division,
+      divisionName: divisionEvent?.name,
+      stageName: selectedStage,
+      team1Name,
+      team2Name,
+      tournamentCodeId: 0,
+      totalGames: 0,
+      seriesId,
+      series: null,
+      riotUnavailable: true,
+      retryable,
+    };
+  }
   const shortcode = code.shortcode;
 
   // Read the series *after* issuing, not before. Issuing a code makes dennys pull
@@ -581,6 +650,8 @@ export async function getTournamentCode({
     tournamentCodeId: code.id,
     seriesId,
     series,
+    riotUnavailable: false,
+    retryable: false,
     totalGames
   };
 }
