@@ -15,40 +15,69 @@ import { SeriesData } from '../src/types/toddData.ts';
 
 const calls: string[] = [];
 
-vi.mock('../src/dennys.ts', () => ({
-  getEvent: vi.fn(async (id: number) => {
-    calls.push('getEvent');
-    return { id, name: 'Division A', eventStages: ['REGULAR_SEASON'] };
-  }),
-  getEventWithTeams: vi.fn(async (id: number) => {
-    calls.push('getEventWithTeams');
-    return {
-      id,
-      name: 'Division A',
-      eventStages: ['REGULAR_SEASON'],
-      teams: [
-        { id: 11, name: 'Team 11', logo: null, eventId: id },
-        { id: 22, name: 'Team 22', logo: null, eventId: id },
-      ],
-    };
-  }),
-  getTeam: vi.fn(async (id: number) => {
-    calls.push('getTeam');
-    return { id, name: `Team ${id}`, logo: null, eventId: 1 };
-  }),
-  getSeriesId: vi.fn(async () => {
-    calls.push('getSeriesId');
-    return 756;
-  }),
-  getTotalGames: vi.fn(async () => {
-    calls.push('getTotalGames');
-    return 3;
-  }),
-  createGame: vi.fn(async () => {
-    calls.push('createGame');
-    return { id: 9, blueTeamId: 11, redTeamId: 22, shortcode: 'ABC123', seriesId: 756, number: 1 };
-  }),
-}));
+/** Games played against the series, swapped per test to drive the game number. */
+let seriesGames: { id: number; seriesId: number; number: number }[] = [];
+
+vi.mock('../src/dennys.ts', async importOriginal => {
+  // nextGameNumber is pure, so keep the real one - the game number a captain
+  // sees is derived here and a stub would only be testing itself.
+  const actual = await importOriginal<typeof import('../src/dennys.ts')>();
+  return {
+    ...actual,
+    getEvent: vi.fn(async (id: number) => {
+      calls.push('getEvent');
+      return { id, name: 'Division A', eventStages: ['REGULAR_SEASON'] };
+    }),
+    getEventWithTeams: vi.fn(async (id: number) => {
+      calls.push('getEventWithTeams');
+      return {
+        id,
+        name: 'Division A',
+        eventStages: ['REGULAR_SEASON'],
+        teams: [
+          { id: 11, name: 'Team 11', logo: null, eventId: id },
+          { id: 22, name: 'Team 22', logo: null, eventId: id },
+        ],
+      };
+    }),
+    getTeam: vi.fn(async (id: number) => {
+      calls.push('getTeam');
+      return { id, name: `Team ${id}`, logo: null, eventId: 1 };
+    }),
+    getSeriesId: vi.fn(async () => {
+      calls.push('getSeriesId');
+      return 756;
+    }),
+    issueTournamentCode: vi.fn(async () => {
+      calls.push('issueTournamentCode');
+      return {
+        id: 9,
+        shortcode: 'ABC123',
+        seriesId: 756,
+        blueTeamId: 11,
+        redTeamId: 22,
+        createdAt: '2026-08-09T00:00:00Z',
+      };
+    }),
+    getSeries: vi.fn(async (id: number) => {
+      calls.push('getSeries');
+      return {
+        id,
+        eventId: 7,
+        teamIds: [11, 22],
+        totalGames: 3,
+        eventStage: 'REGULAR_SEASON',
+        completed: false,
+        completedAt: null,
+        reopenedAt: null,
+        tournamentCodes: [],
+        games: seriesGames,
+        lastCodeIssuedAt: null,
+        lastGameAt: null,
+      };
+    }),
+  };
+});
 
 vi.mock('../src/util.ts', async importOriginal => {
   // buildThreadName is pure and already covered by util.test.ts - keep the real
@@ -105,7 +134,13 @@ function makeInteraction(tag: string, data: SeriesData = seriesData, customId?: 
     }),
     followUp: vi.fn(async () => {
       calls.push('followUp');
-      return { startThread: vi.fn(async () => ({ send: vi.fn(async () => {}) })) };
+      return {
+        startThread: vi.fn(async () => ({
+          send: vi.fn(async (payload: { content?: string }) => {
+            threadSends.push(payload?.content ?? '');
+          }),
+        })),
+      };
     }),
     deleteReply: vi.fn(async () => {
       calls.push('deleteReply');
@@ -128,6 +163,7 @@ function makeButtonInteraction(tag: string, data: SeriesData = seriesData) {
 }
 
 let editReplyPayloads: unknown[] = [];
+let threadSends: string[] = [];
 
 /** First point the interaction is acknowledged, i.e. the 3s deadline stops mattering. */
 const ackIndex = () =>
@@ -150,6 +186,8 @@ function legacyOversizedCustomId(tag: string): string {
 beforeEach(() => {
   calls.length = 0;
   editReplyPayloads = [];
+  threadSends = [];
+  seriesGames = [];
 });
 
 describe('handleBothTeamSubmission acknowledges before touching dennys', () => {
@@ -163,25 +201,70 @@ describe('handleBothTeamSubmission acknowledges before touching dennys', () => {
     expect(ackIndex()).toBeLessThan(calls.indexOf('getEvent'));
   });
 
-  it('creates the game and posts the series', async () => {
+  it('issues the code and posts the series', async () => {
     const interaction = makeInteraction('confirm');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleBothTeamSubmission(interaction as any);
 
-    expect(calls).toContain('createGame');
+    expect(calls).toContain('issueTournamentCode');
     expect(interaction.followUp).toHaveBeenCalled();
+  });
+
+  it('resolves the series before minting a code', async () => {
+    // A tournament code is a real Riot artifact, so everything that can fail
+    // cheaply fails first - the same reason the custom_id check runs earlier.
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    expect(calls.indexOf('getSeries')).toBeLessThan(calls.indexOf('issueTournamentCode'));
+  });
+});
+
+describe('the game number tracks games played, not codes issued', () => {
+  /** The "# Game N" header lands in the thread, not in the followUp. */
+  const header = () => threadSends.find(c => c.includes('# Game')) ?? '';
+
+  it('reads game 1 for a series nothing has been played in yet', async () => {
+    // Reissuing a code must not advance the number: a code that is never played
+    // produces no game, which is what the 1.4.0 split bought.
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    expect(header()).toContain('# Game 1');
+  });
+
+  it('advances once a result has been written', async () => {
+    seriesGames = [{ id: 4, seriesId: 756, number: 1 }];
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    expect(header()).toContain('# Game 2');
+  });
+
+  it('resolves the series once, by id, for both the number and the Bo', async () => {
+    // Previously the code and the Bo count came from two independent lookups by
+    // team pair and could disagree (todd-bot#97).
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    expect(calls.filter(c => c === 'getSeries')).toHaveLength(1);
+    expect(calls).not.toContain('getTotalGames');
   });
 });
 
 describe('an oversized stage is refused before the game exists', () => {
-  it('handleBothTeamSubmission stops before createGame', async () => {
+  it('handleBothTeamSubmission stops before the code is issued', async () => {
     // The failure this prevents: the game is created, then the button carrying
     // the series context is too long for Discord and the series is stranded.
     const interaction = makeInteraction('confirm', seriesData, legacyOversizedCustomId('confirm'));
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleBothTeamSubmission(interaction as any);
 
-    expect(calls).not.toContain('createGame');
+    expect(calls).not.toContain('issueTournamentCode');
     expect(calls).not.toContain('getSeriesId');
     expect(editReplyPayloads.at(-1)).toMatchObject({
       content: expect.stringContaining('too long'),

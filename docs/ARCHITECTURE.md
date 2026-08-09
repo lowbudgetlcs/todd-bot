@@ -305,11 +305,15 @@ The one function that talks to everything. Sequentially:
    stage. **If no such series exists in Dennys, the flow stops here** with
    *"Failed to find a matching series for these teams."* Todd never invents a
    series; the schedule has to already be in the backend.
-5. `createGame(seriesId, blue, red)` — `POST /series/{id}/game`. This is what
-   mints the Riot tournament code (`shortcode`). **Not idempotent, and
-   deliberately never retried** — a replayed request would double-book a game.
-6. `getTotalGames(...)` — series length, used to decide how many drafts to
-   create.
+5. `getSeries(seriesId)` — one lookup by id supplying both the Bo count
+   (`totalGames`, which decides how many drafts to create) and the game number
+   via `nextGameNumber`. These used to be two independent lookups by team pair,
+   which could disagree.
+6. `issueTournamentCode(seriesId, blue, red)` — `POST /series/{id}/game`. This is
+   what mints the Riot tournament code (`shortcode`). **Not idempotent, and
+   deliberately never retried** — a replayed request would issue a second code.
+   It comes *after* the lookup deliberately: a code is a real Riot artifact, so
+   anything that can fail cheaply fails first.
 7. On the first game only, `getDraftLinksMarkdown(...)` — `POST
    LOWBUDGETLCS_BACKEND_URL/createFearlessDraft`, producing blue, red, spectator,
    and stream links. This one is best-effort: on failure it returns *"Error
@@ -383,8 +387,9 @@ been posted, leaving a series announced with no thread.
 
 ## The Dennys contract
 
-Everything Todd needs from the backend. All requests carry
-`Authorization: Bearer ${DENNYS_TOKEN}`. Defined in `src/dennys.ts`.
+Everything Todd needs from the backend, against **Dennys 1.4.0**. All requests
+carry `Authorization: Bearer ${DENNYS_TOKEN}`. Calls live in `src/dennys.ts`,
+response shapes in `src/dennysSchemas.ts`.
 
 **Paths below are relative to `API_URL`**, which includes the `/api/v1` prefix —
 `apiGet` concatenates them on unchanged, so `/eventGroup` here is
@@ -392,53 +397,101 @@ Everything Todd needs from the backend. All requests carry
 
 | Method | Path | Used for | Returns |
 | --- | --- | --- | --- |
-| GET | `/eventGroup` | `/set-current-event` list | `eventGroup[]` |
-| GET | `/eventGroup/{id}/events` | Divisions in the active event group | `{ events: Event[] }` |
+| GET | `/eventGroup` | `/set-current-event` list | `EventGroup[]` |
+| GET | `/eventGroup/{id}/events` | Divisions in the active event group | `EventGroupWithEvents` |
 | GET | `/event/{id}` | Division name + `eventStages` | `Event` |
 | GET | `/event/{id}/teams` | Teams in a division | `EventWithTeams` |
 | GET | `/team/{id}` | Team display name | `Team` |
-| GET | `/event/{id}/series?teamIds={a}&teamIds={b}&stage={s}` | Find the scheduled series, and its `totalGames` | Event object with nested `series[]` (`EventWithSeriesDto`); a bare `Series[]` is also tolerated |
-| POST | `/series/{id}/game` | Create a game; **this returns the tournament code** | `Game` (`{ id, shortcode, number, ... }`) |
+| GET | `/event/{id}/series?teamIds={a}&teamIds={b}&stage={s}&completed=false` | Find the scheduled series | `EventWithSeries` |
+| GET | `/series/{id}` | Game number, Bo count, codes and games so far | `SeriesWithGames` |
+| POST | `/series/{id}/game` | Issue a Riot tournament code | `TournamentCode` |
+| POST | `/series/{id}/results` | Record who won a game | `Game` |
+| POST | `/series/{id}/complete` | Close a series by hand | `Series` |
+| DELETE | `/series/{id}/complete` | Reopen a closed series | `Series` |
 
-Body for the POST is `{ blueTeamId, redTeamId }`.
+Bodies: `{ blueTeamId, redTeamId }` for the code, `{ winnerTeamId?, loserTeamId?,
+tournamentCodeId?, shortcode? }` for a result, `{ winnerTeamId?, loserTeamId? }`
+for a completion. **None of the writes are retried** — none are idempotent, and a
+replay would issue a second code or record a second result.
 
-The series lookup returns the **event object with its `series[]` nested** (the
-swagger calls this `EventWithSeriesDto`); `getSeriesForTeams` reads `body.series`,
-and also tolerates a bare `Series[]`.
+Of these, the `/start-series` flow uses only the reads and the code issue. Todd
+never completes, reopens or forfeits a series — Dennys closes one automatically
+once enough results have been written. `reportSeriesResult`, `completeSeries` and
+`reopenSeries` are there for the recovery paths in todd-bot#97.
 
-**Both query params are real server-side filters**, not decoration:
-`?teamIds=a&teamIds=b` narrows to series involving both teams, `?stage=` narrows
-to that stage, and an unrecognised stage is rejected with `400 Malformed request
-body`. `getSeriesForTeams` still re-checks both conditions on the returned rows.
-That is belt and braces, not a workaround — the series id it produces goes
-straight to `createGame`, so an exact match is worth confirming locally before
-booking a game against the wrong series.
+### Codes and games are different things
 
-### Where the swagger and the code disagree
+This is the change that broke the old client, and the thing to understand before
+touching the series flow. Dennys 1.4.0 split what used to be one `games` table:
 
-**Verified against the live API on 2026-07-30** by calling
-`/event/{id}/series`, `/team/{id}` and `/event/{id}/teams` directly. The swagger
-itself is not served at any of the usual paths (`/swagger.json`, `/openapi.json`,
-`/api-docs`, … all 404), so the "swagger says" column below is quoted from
-review, not re-read. Neither side turned out to be reliably right:
+- A **tournament code** is created the moment it is requested. It has no number.
+- A **game** is created when a *result* is written, and carries the number.
 
-| Field | Swagger says | Code says | Live API returns | Verdict |
-| --- | --- | --- | --- | --- |
-| `SeriesDto` teams | `teams: TeamDto[]` | `teamIds: number[]` | `teamIds: [2, 8]` | **Swagger stale, code right** |
-| `SeriesDto` stage | *(not listed)* | `eventStage: string` | `eventStage: "REGULAR_SEASON"` | **Swagger incomplete, code right** |
-| Series envelope | `EventWithSeriesDto` | tolerates either shape | event object with nested `series[]` | **Swagger right** |
-| `Team` logo | `logo` | *was* `logoName` | `logo: null` | **Swagger right, code was wrong** — now fixed |
+So a code that is issued and never played produces no game and consumes no
+number. Reissuing a code for game 1 still reads as "Game 1" — under the old
+model it announced "Game 2". `nextGameNumber` derives the display number as the
+highest game number so far plus one, matching how Dennys assigns it, so a deleted
+game leaves a gap rather than colliding.
 
-Observed series row: `{"id":756,"eventId":1,"teamIds":[2,8],"totalGames":3,"eventStage":"REGULAR_SEASON"}`.
-Observed team row: `{"id":2,"name":"...","logo":null,"eventId":1}`.
+The practical consequence: **`POST /series/{id}/game` cannot tell you which game
+you are on.** That requires `GET /series/{id}`.
 
-The `logoName` bug was invisible because nothing reads the field — it resolved to
-`undefined` rather than failing. If you add a consumer, re-confirm the name first.
+`completed=false` on the series lookup matters for the same reason. Once a series
+closes automatically, leaving it out of the filter would let the next code for the
+same pair land in the series the teams already played.
 
-> An earlier revision of this section claimed the `stage` param was *not*
-> honoured server-side, citing the live API. That was wrong: `?stage=PLAYOFFS`
-> on an event with no playoff series returns zero rows, not the regular-season
-> ones. Corrected here and in the `getSeriesForTeams` comment.
+**All three query params are real server-side filters**, not decoration:
+`?teamIds=a&teamIds=b` narrows to series involving exactly that pair (three or
+more ids always returns nothing), `?stage=` narrows to that stage, and an
+unrecognised stage is rejected with `400 Malformed request body`.
+`getSeriesForTeams` still re-checks teams and stage on the returned rows. That is
+belt and braces, not a workaround — the series id it produces goes straight to
+`issueTournamentCode`, so an exact match is worth confirming locally before
+booking a code against the wrong series.
+
+### Validation at the boundary
+
+Every response is parsed through a zod schema in `apiGet`/`apiSend`, after
+mojibake repair so the validated strings are the repaired ones. Two rules:
+
+- **Fields Todd reads are strictly required.** A rename or a type change raises
+  `DennysSchemaError` at the seam instead of surfacing as `undefined` in a
+  Discord message. That is how `logoName`, and later `Game.number`, went
+  unnoticed under an unchecked cast.
+- **Everything else is wrapped in `unread()`** and degrades to null, so a change
+  in a corner Todd ignores cannot take a flow down. Objects are non-strict, so
+  unknown keys are stripped and an additive Dennys release is a no-op.
+
+`DennysSchemaError` is deliberately separate from `HttpError`: the latter is
+Dennys working and saying no, the former needs a code change here.
+
+Enums are the exception to rule one. `eventStages` flows from the API into a
+dropdown and back out as a query param, so an unknown stage is accepted rather
+than rejected — see `looseEnum`.
+
+### Where the spec and the server disagree
+
+Ground truth is the Kotlin `@Serializable data class`, not
+`src/main/resources/openapi/documentation.yaml`. The spec is hand-written, and
+these were verified against the DTOs on `release/1.4.0`:
+
+| Thing | Spec says | Server actually does |
+| --- | --- | --- |
+| `GET /event/{id}/teams` | array of `EventWithTeamsDto` | one `EventWithTeamsDto` |
+| `GET /eventGroup/{id}/events` | array of `EventGroupWithEventsDto` | one `EventGroupWithEventsDto` |
+| `TeamDto.logo` | non-nullable `string` | `String?` — usually null |
+| `EventStage` | includes `PROMOTION_RELEGATION` | only `REGULAR_SEASON`, `PLAYOFFS` |
+| `eventGroupId` on the wrapper DTOs | the event's group | always `null`; the mappers never set it. Only `/event/{id}` carries a real value |
+| `ReportResultDto` | `tournamentCodeId` and `shortcode` mutually exclusive | both accepted, `tournamentCodeId` wins |
+| Nullable fields | may be absent | always present, explicitly `null` |
+
+The hosted spec (`/swagger/documentation.yaml`) is behind auth and returns 403 to
+an unauthenticated fetch, so read the DTOs from a checkout rather than trusting a
+copy.
+
+An earlier revision of this section recorded `SeriesDto` as drifting between
+`teams: TeamDto[]` and `teamIds: number[]`. That is settled: it is `teamIds`, and
+`eventStage` is present. Both are correct in the code.
 
 And one endpoint on the draft backend:
 

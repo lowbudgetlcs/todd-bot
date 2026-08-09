@@ -131,6 +131,29 @@ Todd never creates a series; it only creates *games inside an existing series*.
 teams, the stage name, and the division all match what's in Dennys — a stage
 mismatch is the usual culprit, since the lookup filters on it.
 
+**Also check whether the series is already complete.** The lookup sends
+`completed=false`, so a series Dennys has closed is invisible to it. Dennys closes
+a series automatically once enough results have been written, so this is the
+expected message after a Bo3 finishes. If it closed early — a result recorded
+against the wrong series, say — reopening it in Dennys makes it findable again.
+
+## "unexpected response shape from dennys"
+
+**Cause:** `DennysSchemaError`. Dennys returned a payload that does not match the
+contract Todd was built against — a renamed field, a changed type, a removed one.
+Todd targets Dennys **1.4.0**; running against an older deployment does this.
+
+**Fix:** this is a code change here, not a config problem. The log line names the
+call, the offending path, and the payload that arrived:
+
+```
+getSeries(756): totalGames: Invalid input: expected number, received string - got {...}
+```
+
+Compare against the Kotlin DTO — not the OpenAPI file, which has known drift —
+and update `src/dennysSchemas.ts`. Fields Todd does not read never cause this;
+only the ones it depends on do.
+
 ## "Error generating draft links! Please do so manually :)"
 
 **Cause:** the `POST` to `LOWBUDGETLCS_BACKEND_URL/createFearlessDraft` failed.
@@ -226,8 +249,9 @@ GET only, backing off 500ms then 1s.
 
 - Errors look like `<label>: attempt N failed (TimeoutError)` followed by
   `<label> failed after N attempt(s)`.
-- **Non-GET calls are not retried on purpose.** `createGame` is not idempotent —
-  a replay would double-book a game. Do not "fix" this by adding retries to it.
+- **Non-GET calls are not retried on purpose.** None of the writes are idempotent
+  — a replay would issue a second tournament code or record a second result. Do
+  not "fix" this by adding retries to them.
 - If Dennys is genuinely slow rather than down, raising `API_TIMEOUT_MS` is safe:
   every slow path defers first, so the interaction budget is ~15 minutes, not 3
   seconds.

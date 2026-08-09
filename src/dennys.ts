@@ -1,90 +1,104 @@
+import { z } from 'zod';
 import { config } from './config.ts';
 import { normalizeApiStrings, parseJsonResponseUtf8 } from './encoding.ts';
 import { fetchWithRetry, HttpError } from './http.ts';
+import {
+  eventGroupListSchema,
+  eventGroupWithEventsSchema,
+  eventSchema,
+  eventWithSeriesSchema,
+  eventWithTeamsSchema,
+  gameSchema,
+  seriesSchema,
+  seriesWithGamesSchema,
+  teamSchema,
+  tournamentCodeSchema,
+  type CompleteSeriesRequest,
+  type CreateGameRequest,
+  type Event,
+  type EventGroup,
+  type EventWithTeams,
+  type Game,
+  type ReportResultRequest,
+  type Series,
+  type SeriesWithGames,
+  type Team,
+  type TournamentCode,
+} from './dennysSchemas.ts';
 import log from 'loglevel';
 
-const logger =log.getLogger('dennys');
+const logger = log.getLogger('dennys');
 logger.setLevel('info');
 
-export type eventGroup = {
-  id: number;
-  name: string;
-}
-
-export type Event = {
-  id: number;
-  name: string;
-  description: string;
-  createdAt: string;
-  startDate: string;
-  endDate: string;
-  status: string;
-  eventGroupId: number;
-  eventStages: string[];
-};
-
-
-
-export type eventGroupWithEvents = {
-  id: number;
-  name: string;
-  events: Event[];
-}
-
-
-export type EventWithTeams = {
-  id: number;
-  name: string;
-  description: string;
-  createdAt: string;
-  startDate: string;
-  endDate: string;
-  status: string;
-  eventGroupId: number;
-  teams: Team[];
-  eventStages: string[];
-};
-
-export type Team = {
-  id: number;
-  name: string;
-  // Dennys sends this as `logo` (confirmed against the live API); an earlier
-  // `logoName` here silently read as undefined. Nothing consumes it today.
-  logo: string | null;
-  eventId: number | null;
-};
-
-export type Game = {
-  id: number;
-  blueTeamId: number;
-  redTeamId: number;
-  shortcode: string;
-  seriesId: number
-  number: number;
-};
-
-export type Series = {
-  id: number;
-  eventId: number;
-  teamIds: number[];
-  eventStage: string;
-  totalGames: number;
-};
+/** Shapes live in dennysSchemas.ts; re-exported so callers import from one module. */
+export type {
+  CompleteSeriesRequest,
+  CreateGameRequest,
+  Event,
+  EventGroup,
+  EventGroupWithEvents,
+  EventStage,
+  EventStatus,
+  EventWithSeries,
+  EventWithTeams,
+  Game,
+  GameResult,
+  ReportResultRequest,
+  Series,
+  SeriesWithGames,
+  Team,
+  TournamentCode,
+} from './dennysSchemas.ts';
 
 const API_URL = config.API_URL;
-// Data
 
 const getAuthHeaders = () => ({
   'Authorization': `Bearer ${config.DENNYS_TOKEN}`,
 });
 
 /**
- * Shared GET against dennys: retries transient failures, decodes as UTF-8 and
- * repairs mojibake in one place so every caller gets clean strings.
+ * Dennys returned a payload that does not match the contract Todd was built
+ * against - a renamed field, a changed type, a removed one.
+ *
+ * Distinct from HttpError: that is Dennys working and saying no, this is a shape
+ * disagreement that needs a code change here. Carries the payload for the log.
  */
-const apiGet = async <T>(path: string, label: string): Promise<T> => {
+const summarizeIssues = (issues: z.ZodError['issues']) =>
+  issues.map(issue => `${issue.path.join('.') || '(root)'}: ${issue.message}`).join('; ');
+
+export class DennysSchemaError extends Error {
+  constructor(
+    readonly label: string,
+    readonly issues: z.ZodError['issues'],
+    readonly payload: unknown,
+  ) {
+    super(`${label}: unexpected response shape from dennys (${summarizeIssues(issues)})`);
+    this.name = 'DennysSchemaError';
+  }
+}
+
+/** Enough of the payload to diagnose from, without dumping a full team list. */
+const preview = (payload: unknown) => {
+  const text = JSON.stringify(payload) ?? String(payload);
+  return text.length > 500 ? `${text.slice(0, 500)}…` : text;
+};
+
+/**
+ * The one path every Dennys call takes: retry transient failures, turn a non-2xx
+ * into an HttpError, decode as UTF-8, repair mojibake, then validate.
+ *
+ * Normalizing before validating means zod checks the repaired strings.
+ */
+const request = async <S extends z.ZodType>(
+  path: string,
+  label: string,
+  schema: S,
+  init: RequestInit,
+  retries?: number,
+): Promise<z.infer<S>> => {
   const url = `${API_URL}${path}`;
-  const response = await fetchWithRetry(url, { headers: getAuthHeaders() }, { label });
+  const opts = { label, ...(retries === undefined ? {} : { retries }) };
+  const response = await fetchWithRetry(url, init, opts);
   if (!response.ok) {
     const body = await response.text().catch(() => '(unreadable)');
     logger.error(`${label} [${response.status}]: ${body}`);
@@ -94,45 +108,87 @@ const apiGet = async <T>(path: string, label: string): Promise<T> => {
       body,
     );
   }
-  const data = await parseJsonResponseUtf8<T>(response);
-  return normalizeApiStrings(data);
+  const payload = normalizeApiStrings(await parseJsonResponseUtf8<unknown>(response));
+  const parsed = schema.safeParse(payload);
+  if (!parsed.success) {
+    logger.error(`${label}: ${summarizeIssues(parsed.error.issues)} - got ${preview(payload)}`);
+    throw new DennysSchemaError(label, parsed.error.issues, payload);
+  }
+  return parsed.data;
 };
 
-export const getEventGroups = async (): Promise<eventGroup[]> =>
-  apiGet<eventGroup[]>('/eventGroup', 'getEventGroups');
+const apiGet = <S extends z.ZodType>(path: string, label: string, schema: S): Promise<z.infer<S>> =>
+  request(path, label, schema, { headers: getAuthHeaders() });
+
+/**
+ * Writes. `retries: 0` because none of these are idempotent - a replay books a
+ * second code or a second result. http.ts already defaults non-GET to 0; passing
+ * it explicitly keeps that visible at the seam where it matters.
+ */
+const apiSend = <S extends z.ZodType>(
+  method: 'POST' | 'DELETE',
+  path: string,
+  label: string,
+  schema: S,
+  body?: unknown,
+): Promise<z.infer<S>> =>
+  request(
+    path,
+    label,
+    schema,
+    {
+      method,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    },
+    0,
+  );
+
+// Event groups and events
+
+export const getEventGroups = async (): Promise<EventGroup[]> =>
+  apiGet('/eventGroup', 'getEventGroups', eventGroupListSchema);
 
 export const getEvents = async (eventGroup: number): Promise<Event[]> => {
-  const data = await apiGet<eventGroupWithEvents>(
+  // Single wrapper object. The OpenAPI file declares an array, which is a spec bug.
+  const data = await apiGet(
     `/eventGroup/${eventGroup}/events`,
     'getEvents',
+    eventGroupWithEventsSchema,
   );
-  return data.events ?? [];
+  return data.events;
 };
 
 export const getEvent = async (eventId: number): Promise<Event> => {
   logger.info(`Fetching event ${eventId} from ${API_URL}/event/${eventId}`);
-  return apiGet<Event>(`/event/${eventId}`, `getEvent(${eventId})`);
+  return apiGet(`/event/${eventId}`, `getEvent(${eventId})`, eventSchema);
 };
 
 export const getEventWithTeams = async (eventId: number): Promise<EventWithTeams> =>
-  apiGet<EventWithTeams>(`/event/${eventId}/teams`, `getEventWithTeams(${eventId})`);
+  apiGet(`/event/${eventId}/teams`, `getEventWithTeams(${eventId})`, eventWithTeamsSchema);
 
 export const getTeam = async (teamId: number): Promise<Team> =>
-  apiGet<Team>(`/team/${teamId}`, `getTeam(${teamId})`);
+  apiGet(`/team/${teamId}`, `getTeam(${teamId})`, teamSchema);
+
+// Series lookup
 
 export const getTotalGames = async (
   eventId: number,
-  team1:number,
+  team1: number,
   team2: number,
   stage: string,
 ): Promise<number> => {
   const matchingSeries = await getSeriesForTeams(eventId, team1, team2, stage);
   return matchingSeries?.totalGames ?? 0;
-}
+};
 
 const getSeriesForTeams = async (
   eventId: number,
-  team1:number,
+  team1: number,
   team2: number,
   stage: string,
 ): Promise<Series | null> => {
@@ -140,19 +196,19 @@ const getSeriesForTeams = async (
   query.append('teamIds', String(team1));
   query.append('teamIds', String(team2));
   query.append('stage', stage);
-  const body = await apiGet<Series[] | { series?: Series[] }>(
+  // Dennys closes a series on result write. Without this filter a finished series
+  // stays a candidate and the next code lands in the one already played.
+  query.append('completed', 'false');
+  const event = await apiGet(
     `/event/${eventId}/series?${query.toString()}`,
     'getSeriesForTeams',
+    eventWithSeriesSchema,
   );
-  const seriesList: Series[] = Array.isArray(body) ? body : (body.series ?? []);
-  for (const s of seriesList) {
-    // Dennys does filter on both query params server-side, so this loop is
-    // normally re-checking an already-correct single result. It stays as
-    // defence in depth: the match must be exact on both teams and the stage
-    // before we hand the series id to createGame, and a silently widened
-    // filter upstream would otherwise book a game against the wrong series.
+  for (const s of event.series) {
+    // Dennys filters on both query params server-side, so this is normally
+    // re-checking an already-correct single result. Defence in depth: a widened
+    // filter upstream would otherwise book a code against the wrong series.
     if (
-      Array.isArray(s.teamIds) &&
       s.teamIds.includes(team1) &&
       s.teamIds.includes(team2) &&
       s.eventStage === stage
@@ -165,51 +221,96 @@ const getSeriesForTeams = async (
   }
   logger.warn(`No matching series for teams ${team1}/${team2} in event ${eventId}, stage ${stage}`);
   return null;
-}
+};
 
 export const getSeriesId = async (
   eventId: number,
-  team1:number,
+  team1: number,
   team2: number,
   stage: string,
 ): Promise<number> => {
   const matchingSeries = await getSeriesForTeams(eventId, team1, team2, stage);
   return matchingSeries?.id ?? 0;
-}
+};
 
-export const createGame = async (seriesId: number, blueside: Team, redside: Team): Promise<Game> => {
-  logger.info(`Creating game for series ${seriesId} with blue team ${blueside.id} and red team ${redside.id}`);
-  // retries: 0 - creating a game is not idempotent, a replay could double-book.
-  const response = await fetchWithRetry(
-    `${API_URL}/series/${seriesId}/game`,
-    {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        ...getAuthHeaders(),
-      },
-      body: JSON.stringify({
-        blueTeamId: blueside.id,
-        redTeamId: redside.id
-      })
-    },
-    { label: `createGame(series ${seriesId})`, retries: 0 },
+/** The series plus every code issued and every game played against it. */
+export const getSeries = async (seriesId: number): Promise<SeriesWithGames> =>
+  apiGet(`/series/${seriesId}`, `getSeries(${seriesId})`, seriesWithGamesSchema);
+
+/**
+ * Which game the next code is for.
+ *
+ * Highest so far plus one, matching how Dennys assigns it, so a deleted game
+ * leaves a gap rather than colliding. Games exist only once a result has been
+ * written, so an unplayed code does not advance this.
+ */
+export const nextGameNumber = (series: SeriesWithGames): number =>
+  Math.max(0, ...series.games.map(game => game.number)) + 1;
+
+export const getNextGameNumber = async (seriesId: number): Promise<number> =>
+  nextGameNumber(await getSeries(seriesId));
+
+// Writes
+
+/**
+ * Ask Riot for a tournament code, via Dennys. Called createGame before 1.4.0;
+ * this creates a code, not a game - the game arrives when a result is written.
+ */
+export const issueTournamentCode = async (
+  seriesId: number,
+  blueside: Team,
+  redside: Team,
+): Promise<TournamentCode> => {
+  logger.info(
+    `Issuing tournament code for series ${seriesId} with blue team ${blueside.id} and red team ${redside.id}`,
   );
-  if (response.ok) {
-    const data = await parseJsonResponseUtf8<Game>(response);
-    return normalizeApiStrings(data);
-  }
-  const errorBody = await response.text().catch(() => '(unreadable)');
-  logger.error(`createGame [${response.status}]: ${errorBody}`);
-  throw new HttpError(
-    `Failed to create game [${response.status}]: ${errorBody}`,
-    response.status,
-    errorBody,
+  const body: CreateGameRequest = { blueTeamId: blueside.id, redTeamId: redside.id };
+  return apiSend(
+    'POST',
+    `/series/${seriesId}/game`,
+    `issueTournamentCode(series ${seriesId})`,
+    tournamentCodeSchema,
+    body,
   );
 };
 
+/**
+ * Record who won a game. 201 when newly recorded, 200 when Dennys already had
+ * it; both return the game, so the distinction does not reach callers.
+ *
+ * Identify the game by `tournamentCodeId` or `shortcode`; sending both is
+ * accepted, with `tournamentCodeId` winning. A result write is what closes a
+ * series once enough games have been played.
+ */
+export const reportSeriesResult = async (
+  seriesId: number,
+  result: ReportResultRequest,
+): Promise<Game> =>
+  apiSend('POST', `/series/${seriesId}/results`, `reportSeriesResult(${seriesId})`, gameSchema, result);
 
-// export const regenerateGameCode = async (gameId: number): Promise<Game> => {
-//   return { id: 1, blueTeamId: teams[0].id, redTeamId: teams[1].id, shortcode: 'SHORTCODE_PLACEHOLDER', number: 1, seriesId: 1 };
-// };
+/** Close a series by hand. 409 if it is already closed. An empty body is valid. */
+export const completeSeries = async (
+  seriesId: number,
+  outcome: CompleteSeriesRequest = {},
+): Promise<Series> =>
+  apiSend('POST', `/series/${seriesId}/complete`, `completeSeries(${seriesId})`, seriesSchema, outcome);
+
+/**
+ * Reopen a closed series. 409 if it is not closed. Dennys stamps `reopenedAt`
+ * once and never clears it, permanently disabling auto-completion for that
+ * series - reopening is not free.
+ */
+export const reopenSeries = async (seriesId: number): Promise<Series> =>
+  apiSend('DELETE', `/series/${seriesId}/complete`, `reopenSeries(${seriesId})`, seriesSchema);
+
+/**
+ * Code issue failed because of Riot rather than because of us: 502 is a hard
+ * failure from Riot, 503 is Riot unreachable. Neither should read to a captain
+ * as "no such series".
+ */
+export const isRiotGatewayError = (error: unknown): error is HttpError =>
+  error instanceof HttpError && (error.status === 502 || error.status === 503);
+
+/** Of the two, only 503 is worth pressing the button again for. */
+export const isRetryableRiotGatewayError = (error: unknown): boolean =>
+  error instanceof HttpError && error.status === 503;

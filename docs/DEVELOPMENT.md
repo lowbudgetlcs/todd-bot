@@ -95,7 +95,7 @@ gets updated when a new variable is added.
 | `npm test` | `vitest run` — the unit suite in `test/`, one pass |
 | `npm run test:watch` | `vitest` — re-runs affected tests on save |
 | `npm run lint` | `eslint .` |
-| `npm run typecheck` | `tsc --noEmit` |
+| `npm run typecheck` | `tsc --noEmit` over `src`, then again over `test` via `tsconfig.test.json` |
 | `npm run format` | Prettier over the whole repo |
 | `npm run build` | `tsup src/* --minify` — compiles to `dist/` |
 | `npm run build-ws` | Same, with a recursive glob (`src/**/*`) |
@@ -219,8 +219,8 @@ gateway connection or a live backend:
 | `state.test.ts` | Atomic write, reload survival, and corrupt-file fallback to defaults |
 | `interactionSafety.test.ts` | 10062 vs 40060 (dead token vs. our own double ack), defer/error channel selection, `runGuarded` |
 | `ackBeforeSlowWork.test.ts` | The 3-second rule: every button handler acks *before* its first dennys call |
-| `dennys.test.ts` | The backend contract: URL/auth on every call, **`createGame` passes `retries: 0`**, both series response shapes, the client-side re-check that a series matches on *both* teams and the stage, mojibake repair reaching real call sites, `HttpError` carrying status + body |
-| `tournament.test.ts` | The main flow: `handleBothTeamSubmission` and `handleTeamSelect` ack before their first dennys call, and an oversized stage is refused **before** `createGame` rather than stranding a real game behind an unusable button |
+| `dennys.test.ts` | The backend contract: URL/auth on every call, **every write passes `retries: 0`**, the `completed=false` series filter, the client-side re-check that a series matches on *both* teams and the stage, game numbering following games rather than codes, `DennysSchemaError` on a changed shape vs. tolerance for unread and added fields, mojibake repair reaching real call sites, `HttpError` carrying status + body |
+| `tournament.test.ts` | The main flow: `handleBothTeamSubmission` and `handleTeamSelect` ack before their first dennys call, the game number tracks games played rather than codes issued, the series resolves once by id for both the number and the Bo, and an oversized stage is refused **before** the code is issued rather than stranding a real series behind an unusable button |
 
 Tests are written against the contracts in
 [ARCHITECTURE.md](ARCHITECTURE.md) and [TROUBLESHOOTING.md](TROUBLESHOOTING.md),
@@ -239,7 +239,7 @@ request and every push to `main`:
 
 ```sh
 npm ci
-npx tsc --noEmit    # npm run typecheck
+npm run typecheck   # src, then test/ via tsconfig.test.json
 npx eslint .        # npm run lint
 npm test
 npm run build       # then asserts dist/commands/*.js is non-empty
