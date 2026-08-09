@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createButtonData, parseButtonData } from '../src/buttons/button.ts';
 import { SeriesData } from '../src/types/toddData.ts';
+import { CONTROL_MARKER } from '../src/seriesControl.ts';
 
 /**
  * tournament.ts owns the main flow, and the two things worth pinning are both
@@ -168,8 +169,11 @@ function makeInteraction(tag: string, data: SeriesData = seriesData, customId?: 
           // gives back the custom_id parseButtonData round-trips.
           send: vi.fn(async (payload: { content?: string; components?: unknown[] }) => {
             threadSends.push(payload?.content ?? '');
-            if (payload?.components?.length) threadComponents.push(payload.components);
+            threadComponents.push(payload?.components ?? []);
+            return { id: String(threadSends.length) };
           }),
+          // postSeriesControl scans for control messages it should replace.
+          messages: { fetch: vi.fn(async () => new Map()) },
         })),
       };
     }),
@@ -346,6 +350,38 @@ describe('picking between repeat series for the same pair', () => {
 
     // Back to asking, rather than carrying a series chosen against the old pair.
     expect(rowTags()).toContain('series_select');
+  });
+});
+
+describe('the thread ends with the controls', () => {
+  it('posts draft links, then the code, then the controls', async () => {
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    expect(threadSends[0]).toContain('draft links');
+    expect(threadSends[1]).toContain('# Game');
+    expect(threadSends.at(-1)).toContain(CONTROL_MARKER);
+  });
+
+  it('leaves the draft links and the code block without buttons', async () => {
+    // Only the control message carries them, so exactly one row is ever live.
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    expect(threadComponents[0]).toEqual([]);
+    expect(threadComponents[1]).toEqual([]);
+    expect(threadComponents.at(-1)).toHaveLength(1);
+  });
+
+  it('renders the score and the Bo on the control message', async () => {
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    expect(threadSends.at(-1)).toContain('**Team 11** 0 – **Team 22** 0');
+    expect(threadSends.at(-1)).toContain('Best of 3');
   });
 });
 

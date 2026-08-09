@@ -1,8 +1,10 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle } from "discord.js";
-import { createButton, createButtonData, parseButtonData } from "../button.ts";
+import { ButtonInteraction } from "discord.js";
+import { parseButtonData } from "../button.ts";
 import { getTournamentCode } from "../../commands/tournament.ts";
 import log from 'loglevel';
 import { safeDefer, safeInteractionError } from "../../interactionSafety.ts";
+import { buildControlRow, buildSeriesStatus, postSeriesControl } from "../../seriesControl.ts";
+import { SeriesData } from "../../types/toddData.ts";
 
 const logger =log.getLogger('generateAnotherConfirm');
 logger.setLevel('info');
@@ -56,15 +58,6 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
       return;
     }
 
-    // Create generate another button
-
-    // Regenerate button row
-    // data.metadata[3] = tournamentCode.gameId.toString(); 
-    // logger.info(data.metadata);
-    // const regenerateButtonData = createButtonData("regenerate_code", data.originalUserId, data.metadata);
-    // const regenerateButton = createButton(regenerateButtonData, "Code Not Work?", ButtonStyle.Secondary, '❓');
-
-
     // Drop the ephemeral "Generating..." message, then post the code publicly.
     await interaction.deleteReply();
 
@@ -80,6 +73,19 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
       flags: 1 << 2
     });
 
+    // Re-post the controls so they stay below the code that was just added.
+    const thread = interaction.channel;
+    if (thread && tournamentCode.series) {
+      const pinnedSeries: SeriesData = { ...seriesData, seriesId: tournamentCode.seriesId };
+      await postSeriesControl(
+        thread as unknown as Parameters<typeof postSeriesControl>[0],
+        buildSeriesStatus(tournamentCode.series, [
+          { id: seriesData.team1Id, name: tournamentCode.team1Name },
+          { id: seriesData.team2Id, name: tournamentCode.team2Name },
+        ]),
+        [buildControlRow(data.originalUserId, pinnedSeries)],
+      );
+    }
 
   } catch (error) {
     logger.error(error);

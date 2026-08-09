@@ -320,8 +320,38 @@ handleBothTeamSubmission  (tag: confirm)              │
   ├─ followUp: public "Division - Stage / Blue vs Red" message
   ├─ startThread(buildThreadName(...))
   ├─ thread.send: draft links + [Generate Next Game]
-  └─ thread.send: the game code block
+  ├─ thread.send: the game code block
+  └─ postSeriesControl: status + buttons, always last
 ```
+
+### The control message
+
+The thread is append-only, so the only way to keep the buttons reachable is to
+keep re-posting them last. `src/seriesControl.ts` does that:
+
+1. post the code message (content only);
+2. post the control message — status line plus the button row — and keep its id;
+3. only then scan the thread and delete every *other* control message.
+
+**The replacement is posted before the old one is removed.** Deleting first would
+leave the thread with no working buttons whenever the post then failed, stranding
+the captains. Two control messages for a moment is recoverable; none is not.
+
+Cleanup is best-effort and never fails the flow. Because the rule is "delete
+every control message except the newest", a skipped delete is corrected on the
+next post rather than accumulating — which is also what resolves the race when
+both captains generate at once and the loser's delete finds the message already
+gone (`10008`).
+
+**A control message is identified by `CONTROL_MARKER` at the start of its
+content**, never by "authored by the bot and carries components". Threads created
+before this existed carry the old Generate Next Game row on their *draft-links*
+message, and a components-only test would delete the draft links. Nothing else
+Todd posts may start with that marker.
+
+Code blocks and draft links are permanent. The control message is safe to delete
+precisely because everything on it is regenerated from `getSeries` on the next
+post.
 
 ### `getTournamentCode`
 

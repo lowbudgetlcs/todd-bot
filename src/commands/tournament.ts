@@ -13,6 +13,8 @@ import { buildThreadName, getDraftLinksMarkdown } from '../util.ts';
 import { runGuarded, safeDefer, safeInteractionError } from '../interactionSafety.ts';
 import { User } from '../interfaces.ts';
 import { createButton, createButtonData, parseButtonData, seriesDataFits } from '../buttons/button.ts';
+import { SeriesWithGames } from '../dennysSchemas.ts';
+import { buildControlRow, buildSeriesStatus, postSeriesControl } from '../seriesControl.ts';
 import { findSeriesForTeams, getEvent, getEvents, getEventWithTeams, getSeries, getSeriesId, getTeam, issueTournamentCode, nextGameNumber, Team } from '../dennys.ts';
 import log from 'loglevel';
 import { SeriesData } from '../types/toddData.ts';
@@ -373,20 +375,6 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
       // Pinned here, at the one point the series is known: every later press
       // reads it back out rather than resolving from the team pair again.
       const pinnedSeries: SeriesData = { ...seriesData, seriesId: tournamentCode.seriesId };
-      const generateButtonData = createButtonData('generate_another', user.id, pinnedSeries);
-      const generateButton = createButton(
-        generateButtonData,
-        'Generate Next Game',
-        ButtonStyle.Success,
-        '⚔️',
-      );
-
-      // data.metadata[3] = tournamentCode.tournamentCodeId.toString();
-      // logger.info(data.metadata);
-      // const regenerateButtonData = createButtonData("regenerate_code", data.originalUserId, data.metadata);
-      // const regenerateButton = createButton(regenerateButtonData, "Code Not Work?", ButtonStyle.Secondary, '❓');
-
-      const buttonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(generateButton);
       const discordResponse =
           `## ${tournamentCode.divisionName} - ${tournamentCode.stageName || 'UNKNOWN_STAGE'}\n` +
           `**__${tournamentCode.team1Name}__ v.s. __${tournamentCode.team2Name}__**\n\n` +
@@ -419,12 +407,24 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
       await thread.send({
         content: links!,
         flags: 1 << 2,
-        components: [buttonRow],
       });
 
       await thread.send({
         content: tournamentCode.discordResponse?.toString() || "",
       });
+
+      // Controls go last and stay last, so the newest state is always at the
+      // bottom of the thread rather than scrolled away above the codes.
+      if (tournamentCode.series) {
+        await postSeriesControl(
+          thread,
+          buildSeriesStatus(tournamentCode.series, [
+            { id: seriesData.team1Id, name: tournamentCode.team1Name },
+            { id: seriesData.team2Id, name: tournamentCode.team2Name },
+          ]),
+          [buildControlRow(user.id, pinnedSeries)],
+        );
+      }
     }
   } catch (error) {
     logger.error('Failed to generate tournament code:', error);
@@ -477,6 +477,8 @@ export async function getTournamentCode({
   totalGames: number;
   /** The resolved series, for callers building buttons that must pin it. */
   seriesId: number;
+  /** The series as read after the code was issued, or null on an error path. */
+  series: SeriesWithGames | null;
 }> {
   //TODO: Call api with this informatio nand let it handle all this logic
   const division  = divisionId? Number(divisionId) : null
@@ -495,6 +497,7 @@ export async function getTournamentCode({
       team2Name: team2.toString(),
       tournamentCodeId: 0,
       seriesId: 0,
+      series: null,
       totalGames: 0,
     };
   }
@@ -510,6 +513,7 @@ export async function getTournamentCode({
       team2Name: team2.toString(),
       tournamentCodeId: 0,
       seriesId: 0,
+      series: null,
       totalGames:0
     };
   }
@@ -534,6 +538,7 @@ export async function getTournamentCode({
       team2Name,
       tournamentCodeId: 0,
       seriesId: 0,
+      series: null,
       totalGames: 0
     };
   }
@@ -575,6 +580,7 @@ export async function getTournamentCode({
     team2Name,
     tournamentCodeId: code.id,
     seriesId,
+    series,
     totalGames
   };
 }
