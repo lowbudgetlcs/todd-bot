@@ -233,7 +233,7 @@ Things to check:
   absorbs the rest of the split, so `Week 1: Opener` round-trips. Nothing ahead
   of it can contain a `:`.
 - **Exceeding 100 characters.** Discord's cap on `custom_id`. Base36 ids and tag
-  codes put the realistic worst case at 68, leaving 52 characters for the stage
+  codes put the realistic worst case at 68, leaving 50 characters for the stage
   name — the one field dennys hands us as a free-form string. Past that you get
   `CustomIdTooLongError` in the logs and *"The stage **X** has too long a name for
   Todd to track this series"* in Discord, raised at stage selection before

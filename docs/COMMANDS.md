@@ -181,6 +181,7 @@ generated the original code can generate another one."*
 | `team1_select` | Collector | Blue side |
 | `team2_select` | Collector | Red side |
 | `stage_select` | Collector | Stage within the division |
+| `series_select` | Collector | Which series, when the pair has more than one in the stage with different Bo counts. Not shown otherwise. |
 
 Only `select_event_group` goes through the global interaction router. The series
 menus are bound to collectors with a 5-minute lifetime and a filter that pins

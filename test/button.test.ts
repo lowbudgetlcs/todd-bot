@@ -117,14 +117,17 @@ describe("Discord's 100-character custom_id cap", () => {
     expect(() => data.serialize()).toThrow(CustomIdTooLongError);
   });
 
-  it('fits a stage name of 52 characters alongside everything else', () => {
+  it('fits a stage name of 50 characters alongside everything else', () => {
     // Dennys hands us eventStages as free-form strings, so this is the budget
-    // that actually matters. 'PROMOTION_RELEGATION' is 20.
+    // that actually matters. 'PROMOTION_RELEGATION' is 20. 50 rather than 52
+    // because seriesDataFits sizes against a series id larger than this fixture.
+    const stage = 'X'.repeat(50);
     const data = createButtonData('generate_another_confirm', '1234567890123456789', {
       ...worstCase,
-      stage: 'X'.repeat(52),
+      stage,
     });
     expect(data.serialize().length).toBeLessThanOrEqual(MAX_CUSTOM_ID_LENGTH);
+    expect(seriesDataFits('1234567890123456789', { ...worstCase, stage })).toBe(true);
   });
 });
 
@@ -133,19 +136,39 @@ describe('seriesDataFits', () => {
     expect(seriesDataFits('123456789012345678', seriesData)).toBe(true);
   });
 
+  it('is sized against a series id larger than the one being carried', () => {
+    // The check runs while the series is still unresolved, and the id is pinned
+    // later - onto the button built after the code already exists in dennys. A
+    // check sized against the current id would pass here and throw there.
+    const user = '1234567890123456789';
+    const unpinned: SeriesData = {
+      enemyCaptainId: user,
+      divisionId: 9999,
+      team1Id: 9999,
+      team2Id: 9999,
+      seriesId: 0,
+      stage: 'X'.repeat(51),
+    };
+    // Serializing it as it stands is fine; the check still refuses it.
+    expect(
+      createButtonData('generate_another_confirm', user, unpinned).serialize().length,
+    ).toBeLessThanOrEqual(MAX_CUSTOM_ID_LENGTH);
+    expect(seriesDataFits(user, unpinned)).toBe(false);
+  });
+
   it('rejects a stage name that would only overflow at a later, longer tag', () => {
     // Sized against the longest code on purpose: a stage can fit inside
     // 's' (stage_select) and still blow up inside 'gc'
     // (generate_another_confirm), which is built after the game exists.
     // Abbreviating the tags narrowed that window from 12 characters to 1, so
     // this pins the exact boundary rather than a comfortable margin.
-    const stage = 'X'.repeat(53);
+    const stage = 'X'.repeat(51);
     const user = '1234567890123456789';
     const worst = { ...seriesData, enemyCaptainId: user, divisionId: 9999, team1Id: 9999, team2Id: 9999, seriesId: 9999, stage };
     const short = createButtonData('stage_select', user, worst);
     expect(short.serialize().length).toBeLessThanOrEqual(MAX_CUSTOM_ID_LENGTH);
     expect(seriesDataFits(user, worst)).toBe(false);
-    expect(seriesDataFits(user, { ...worst, stage: 'X'.repeat(52) })).toBe(true);
+    expect(seriesDataFits(user, { ...worst, stage: 'X'.repeat(50) })).toBe(true);
   });
 });
 

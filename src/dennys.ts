@@ -186,12 +186,20 @@ export const getTotalGames = async (
   return matchingSeries?.totalGames ?? 0;
 };
 
-const getSeriesForTeams = async (
+/**
+ * Every open series for this exact team pair and stage, lowest id first.
+ *
+ * More than one is legitimate: a double round-robin, or a lower-bracket match
+ * and a grand-final rematch, both of which land under the same `EventStage`.
+ * Sorted here so "pick the lowest id" is well defined without depending on the
+ * order dennys happens to return.
+ */
+export const findSeriesForTeams = async (
   eventId: number,
   team1: number,
   team2: number,
   stage: string,
-): Promise<Series | null> => {
+): Promise<Series[]> => {
   const query = new URLSearchParams();
   query.append('teamIds', String(team1));
   query.append('teamIds', String(team2));
@@ -201,27 +209,32 @@ const getSeriesForTeams = async (
   query.append('completed', 'false');
   const event = await apiGet(
     `/event/${eventId}/series?${query.toString()}`,
-    'getSeriesForTeams',
+    'findSeriesForTeams',
     eventWithSeriesSchema,
   );
-  for (const s of event.series) {
-    // Dennys filters on both query params server-side, so this is normally
-    // re-checking an already-correct single result. Defence in depth: a widened
-    // filter upstream would otherwise book a code against the wrong series.
-    if (
-      s.teamIds.includes(team1) &&
-      s.teamIds.includes(team2) &&
-      s.eventStage === stage
-    ) {
-      logger.info(
-        `Found matching series ${s.id} for teams ${team1}/${team2}, stage ${stage}, with totalGames: ${s.totalGames}`,
-      );
-      return s;
-    }
+  // Dennys filters on both query params server-side, so this is normally
+  // re-checking an already-correct result. Defence in depth: a widened filter
+  // upstream would otherwise book a code against the wrong series.
+  const matches = event.series
+    .filter(s => s.teamIds.includes(team1) && s.teamIds.includes(team2) && s.eventStage === stage)
+    .sort((a, b) => a.id - b.id);
+  if (matches.length === 0) {
+    logger.warn(`No matching series for teams ${team1}/${team2} in event ${eventId}, stage ${stage}`);
+  } else {
+    logger.info(
+      `Found ${matches.length} series for teams ${team1}/${team2}, stage ${stage}: ${matches.map(s => `${s.id} (Bo${s.totalGames})`).join(', ')}`,
+    );
   }
-  logger.warn(`No matching series for teams ${team1}/${team2} in event ${eventId}, stage ${stage}`);
-  return null;
+  return matches;
 };
+
+const getSeriesForTeams = async (
+  eventId: number,
+  team1: number,
+  team2: number,
+  stage: string,
+): Promise<Series | null> =>
+  (await findSeriesForTeams(eventId, team1, team2, stage))[0] ?? null;
 
 export const getSeriesId = async (
   eventId: number,

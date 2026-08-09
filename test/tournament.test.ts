@@ -25,6 +25,19 @@ let seriesGames: { id: number; seriesId: number; number: number }[] = [];
  */
 let issueRecoversLostGame = false;
 
+/** One open series for the pair unless a test says otherwise. */
+const aSeries = (id: number, totalGames: number) => ({
+  id,
+  eventId: 7,
+  teamIds: [11, 22],
+  totalGames,
+  eventStage: 'REGULAR_SEASON',
+  completed: false,
+  completedAt: null,
+  reopenedAt: null,
+});
+let seriesCandidates: ReturnType<typeof aSeries>[] = [];
+
 vi.mock('../src/dennys.ts', async importOriginal => {
   // nextGameNumber is pure, so keep the real one - the game number a captain
   // sees is derived here and a stub would only be testing itself.
@@ -54,6 +67,10 @@ vi.mock('../src/dennys.ts', async importOriginal => {
     getSeriesId: vi.fn(async () => {
       calls.push('getSeriesId');
       return 756;
+    }),
+    findSeriesForTeams: vi.fn(async () => {
+      calls.push('findSeriesForTeams');
+      return seriesCandidates;
     }),
     issueTournamentCode: vi.fn(async () => {
       calls.push('issueTournamentCode');
@@ -205,6 +222,7 @@ beforeEach(() => {
   threadComponents = [];
   seriesGames = [];
   issueRecoversLostGame = false;
+  seriesCandidates = [aSeries(756, 3)];
 });
 
 describe('handleBothTeamSubmission acknowledges before touching dennys', () => {
@@ -238,6 +256,96 @@ describe('handleBothTeamSubmission acknowledges before touching dennys', () => {
 
     expect(calls.indexOf('issueTournamentCode')).toBeLessThan(calls.indexOf('getSeries'));
     expect(threadSends.find(c => c.includes('# Game'))).toContain('# Game 2');
+  });
+});
+
+describe('picking between repeat series for the same pair', () => {
+  /** Rows on the last thing rendered to the selection message. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rows = () => ((editReplyPayloads.at(-1) as any)?.components ?? []) as any[];
+  const rowTags = () =>
+    rows().map(r => parseButtonData(r.toJSON().components[0].custom_id).tag);
+
+  async function chooseAll(data: SeriesData = seriesData) {
+    const interaction = makeInteraction('stage_select', { ...data, stage: '' });
+    interaction.values = ['REGULAR_SEASON'];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleTeamSelect(interaction as any);
+    return interaction;
+  }
+
+  it('says so when the pair has no open series', async () => {
+    seriesCandidates = [];
+    await chooseAll();
+
+    expect(editReplyPayloads.at(-1)).toMatchObject({
+      content: expect.stringContaining('Failed to find a matching series'),
+      components: [],
+    });
+  });
+
+  it('uses the only candidate without asking', async () => {
+    await chooseAll();
+
+    expect(rowTags()).toEqual(['confirm']);
+    expect(editReplyPayloads.at(-1)).toMatchObject({
+      content: expect.stringContaining('Best of 3'),
+    });
+  });
+
+  it('asks which series when two differ by Bo', async () => {
+    seriesCandidates = [aSeries(756, 3), aSeries(801, 5)];
+    await chooseAll();
+
+    expect(rowTags()).toEqual([
+      'team1_select',
+      'team2_select',
+      'stage_select',
+      'series_select',
+    ]);
+    const options = rows()[3].toJSON().components[0].options;
+    expect(options.map((o: { label: string }) => o.label)).toEqual(['Best of 3', 'Best of 5']);
+  });
+
+  it('does not offer Confirm until a series is chosen', async () => {
+    seriesCandidates = [aSeries(756, 3), aSeries(801, 5)];
+    await chooseAll();
+
+    expect(rowTags()).not.toContain('confirm');
+  });
+
+  it('auto-picks the lowest id when two are the same Bo', async () => {
+    // Interchangeable to a code-issuing service, and a "Bo3 / Bo3" dropdown
+    // reads as broken.
+    seriesCandidates = [aSeries(801, 3), aSeries(756, 3)];
+    await chooseAll();
+
+    expect(rowTags()).toEqual(['confirm']);
+    const parsed = parseButtonData(rows()[0].toJSON().components[0].custom_id);
+    expect(parsed.seriesData.seriesId).toBe(801);
+  });
+
+  it('pins the chosen series onto Confirm', async () => {
+    seriesCandidates = [aSeries(756, 3), aSeries(801, 5)];
+    const interaction = makeInteraction('series_select', { ...seriesData, seriesId: 0 });
+    interaction.values = ['801'];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleTeamSelect(interaction as any);
+
+    expect(rowTags()).toEqual(['confirm']);
+    const parsed = parseButtonData(rows()[0].toJSON().components[0].custom_id);
+    expect(parsed.seriesData.seriesId).toBe(801);
+  });
+
+  it('drops a chosen series when the teams change under it', async () => {
+    seriesCandidates = [aSeries(756, 3), aSeries(801, 5)];
+    const interaction = makeInteraction('team1_select', { ...seriesData, seriesId: 801 });
+    interaction.values = ['11'];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleTeamSelect(interaction as any);
+
+    // Back to asking, rather than carrying a series chosen against the old pair.
+    expect(rowTags()).toContain('series_select');
   });
 });
 

@@ -86,7 +86,30 @@ dispatches on the interaction type:
 
 Other string-select menus are **not** routed here. The series flow's dropdowns
 are handled by message component collectors attached to the message that created
-them (with a 5-minute window), not by the global router.
+them (with a 5-minute window), not by the global router. A new dropdown in that
+flow has to be added to the collector's filter list as well as to `TAG_CODES`,
+or it will never fire.
+
+### Choosing between repeat series
+
+Two teams can meet more than once inside a stage — a double round-robin, or a
+lower-bracket match and a grand-final rematch, both of which land under the same
+`EventStage`. Nothing on the series distinguishes them but the Bo count, and
+that is deliberate: two same-shape open series are interchangeable to a
+code-issuing service.
+
+`handleTeamSelect` resolves this once teams and stage are chosen, before
+anything exists in Dennys:
+
+| Open series for the pair | Behaviour |
+| --- | --- |
+| 0 | *"Failed to find a matching series for these teams."* |
+| 1 | used silently |
+| >1, same `totalGames` | lowest id, no prompt |
+| >1, different `totalGames` | a fourth dropdown labelled by Bo; Confirm is withheld until one is chosen |
+
+Changing a team or the stage clears a series already chosen against the old
+selection, so the prompt reappears rather than carrying a stale id forward.
 
 Every dispatch goes through `runGuarded(interaction, label, fn)`, which catches
 whatever the handler throws, distinguishes "the interaction is already dead" from
@@ -245,7 +268,7 @@ characters to 13; wire codes take the tag from 24 to 2.
 | Original | 100 | 20 |
 | Base36 ids | 86 | 34 |
 | ...plus tag codes | 64 | 56 |
-| ...plus `seriesId` | **68** | **52** |
+| ...plus `seriesId` | **68** | **50** |
 
 That still leaves 32 characters spare, so another id fits without revisiting
 this. `test/button.test.ts` pins both the boundary and the remaining headroom, so
@@ -257,7 +280,7 @@ the next field can be judged against a measurement rather than an estimate.
   that it absorbs the remainder of the split, so `Week 1: Opener` round-trips.
   The fields ahead of it are base36 or a tag, none of which can contain a `:`.
 - **The stage is still the field that can overflow.** Dennys returns
-  `eventStages` as free-form strings, so its length is not ours to control. 52
+  `eventStages` as free-form strings, so its length is not ours to control. 50
   characters fit. Past that, `seriesDataFits` refuses the series at stage
   selection — sized against the *longest* tag code, not the current one, because
   tags grow as a series advances (`s` is 1 character, `gc` is 2) and the late
@@ -308,10 +331,11 @@ The one function that talks to everything. Sequentially:
    chosen, falls back to its first stage.
 2. Rejects `team1 === team2` (*"This is not One For All"*).
 3. `getTeam(team1)`, `getTeam(team2)` — resolves display names.
-4. `getSeriesId(...)` — finds the scheduled series matching both teams and the
-   stage. **If no such series exists in Dennys, the flow stops here** with
-   *"Failed to find a matching series for these teams."* Todd never invents a
-   series; the schedule has to already be in the backend.
+4. `getSeriesId(...)` — only when the series is not already pinned, which is the
+   case for a series resolved before the picker existed. **If no such series
+   exists in Dennys, the flow stops here** with *"Failed to find a matching
+   series for these teams."* Todd never invents a series; the schedule has to
+   already be in the backend.
 5. `getSeries(seriesId)` — one lookup by id supplying both the Bo count
    (`totalGames`, which decides how many drafts to create) and the game number
    via `nextGameNumber`. These used to be two independent lookups by team pair,

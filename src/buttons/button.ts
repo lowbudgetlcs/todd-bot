@@ -37,6 +37,7 @@ const TAG_CODES: Record<string, string> = {
   team1_select: '1',
   team2_select: '2',
   stage_select: 's',
+  series_select: 'ss',
   confirm: 'c',
   switch: 'w',
   switch_sides: 'ws',
@@ -84,17 +85,24 @@ function serializeButtonData(tag: string, originalUserId: string, seriesData: Se
 }
 
 /**
+ * Sized against a series id well past anything dennys issues today, for the same
+ * reason the tag is sized against the longest code: the check runs while the
+ * series is still unresolved, and the id is pinned later, onto the button built
+ * after the code already exists.
+ */
+const WORST_CASE_SERIES_ID = 9999999;
+
+/**
  * True when this series still fits once it reaches the longest-tagged button in
  * the flow. Call it before doing anything irreversible - the stage name comes
  * from dennys as a free-form string, so it is the field that can push an
  * otherwise ordinary series over the cap.
  */
 export function seriesDataFits(originalUserId: string, seriesData: SeriesData): boolean {
-  const worstCase = serializeButtonData(
-    'x'.repeat(LONGEST_TAG_LENGTH),
-    originalUserId,
-    seriesData,
-  );
+  const worstCase = serializeButtonData('x'.repeat(LONGEST_TAG_LENGTH), originalUserId, {
+    ...seriesData,
+    seriesId: WORST_CASE_SERIES_ID,
+  });
   return worstCase.length <= MAX_CUSTOM_ID_LENGTH;
 }
 

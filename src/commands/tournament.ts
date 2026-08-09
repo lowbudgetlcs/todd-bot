@@ -13,7 +13,7 @@ import { buildThreadName, getDraftLinksMarkdown } from '../util.ts';
 import { runGuarded, safeDefer, safeInteractionError } from '../interactionSafety.ts';
 import { User } from '../interfaces.ts';
 import { createButton, createButtonData, parseButtonData, seriesDataFits } from '../buttons/button.ts';
-import { getEvent, getEvents, getEventWithTeams, getSeries, getSeriesId, getTeam, issueTournamentCode, nextGameNumber, Team } from '../dennys.ts';
+import { findSeriesForTeams, getEvent, getEvents, getEventWithTeams, getSeries, getSeriesId, getTeam, issueTournamentCode, nextGameNumber, Team } from '../dennys.ts';
 import log from 'loglevel';
 import { SeriesData } from '../types/toddData.ts';
 
@@ -97,7 +97,7 @@ export async function handleDivisionSelect(
   const collector = message.createMessageComponentCollector({
     componentType: ComponentType.StringSelect,
     filter: (i: { user: User; customId: string }) =>
-      i.user.id === interaction.user.id && ['team1_select', 'team2_select', 'stage_select'].includes(parseButtonData(i.customId).tag),
+      i.user.id === interaction.user.id && ['team1_select', 'team2_select', 'stage_select', 'series_select'].includes(parseButtonData(i.customId).tag),
     time: 5 * 60 * 1000,
   });
 
@@ -124,6 +124,7 @@ export async function handleTeamSelect(
   let team1 = seriesData.team1Id;
   let team2 = seriesData.team2Id;
   let stage = seriesData.stage;
+  let pinnedSeriesId = seriesData.seriesId;
   const division = seriesData.divisionId;
   const tag = data.tag; 
   const enemyCaptainId = seriesData.enemyCaptainId;
@@ -133,6 +134,7 @@ export async function handleTeamSelect(
     team1 = '' as unknown as number;
     team2 = '' as unknown as number;
     stage = "";
+    pinnedSeriesId = 0;
   } else if (tag === 'switch') {
     logger.info("Switching sides");
     const temp = team1;
@@ -147,6 +149,13 @@ export async function handleTeamSelect(
     team2 = Number(values[0]);
   } else if (tag === 'stage_select') {
     stage = values[0] || "";
+  } else if (tag === 'series_select') {
+    pinnedSeriesId = Number(values[0]);
+  }
+
+  // Changing any of these invalidates a series chosen against the old ones.
+  if (tag === 'team1_select' || tag === 'team2_select' || tag === 'stage_select') {
+    pinnedSeriesId = 0;
   }
 
   // Ack before hitting dennys, otherwise a slow response expires the token.
@@ -168,7 +177,7 @@ export async function handleTeamSelect(
     team2Id: team2,
     divisionId: division,
     enemyCaptainId: enemyCaptainId,
-    seriesId: seriesData.seriesId,
+    seriesId: pinnedSeriesId,
     stage
   };
 
@@ -231,17 +240,65 @@ export async function handleTeamSelect(
 
   
 
-  const confirmButtonData = createButtonData('confirm', user.id, seriesDataUpdated);
+  // Two teams can meet more than once in a stage, and nothing on the series
+  // distinguishes them but the Bo. Resolve here rather than at confirm time, so
+  // the choice is made before anything exists in dennys.
+  const candidates = await findSeriesForTeams(Number(division), Number(team1), Number(team2), stage);
+  if (candidates.length === 0) {
+    await interaction.editReply({
+      content: 'Failed to find a matching series for these teams.',
+      components: [],
+    });
+    return;
+  }
+
+  // Same Bo means genuinely interchangeable to a code-issuing service, and a
+  // "Bo3 / Bo3" dropdown reads as broken. Lowest id keeps it deterministic.
+  const interchangeable = candidates.every(s => s.totalGames === candidates[0].totalGames);
+  const chosen =
+    candidates.find(s => s.id === pinnedSeriesId) ?? (interchangeable ? candidates[0] : null);
+
+  const summary =
+    `Blue Side: **${team1Name}**\n` + `Red Side: **${team2Name}**\n` + `Stage: **${stage}**`;
+
+  if (!chosen) {
+    const seriesDropdown = new StringSelectMenuBuilder()
+      .setCustomId(createButtonData('series_select', user.id, seriesDataUpdated).serialize())
+      .setPlaceholder('Select which series')
+      .addOptions(
+        candidates.map(s => ({
+          label: `Best of ${s.totalGames}`,
+          value: String(s.id),
+          default: s.id === pinnedSeriesId,
+        })),
+      );
+    await interaction.editReply({
+      content:
+        `${summary}\n\nThese teams have more than one series in this stage. ` +
+        `Pick the one you are playing.`,
+      components: [
+        row1,
+        row2,
+        row3,
+        new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(seriesDropdown),
+      ],
+    });
+    return;
+  }
+
+  const resolved: SeriesData = { ...seriesDataUpdated, seriesId: chosen.id };
+
+  const confirmButtonData = createButtonData('confirm', user.id, resolved);
   const confirm = createButton(confirmButtonData, 'Confirm', ButtonStyle.Success, '✅');
 
-  const switchSidesButtonData = createButtonData('switch', user.id, seriesDataUpdated);
+  const switchSidesButtonData = createButtonData('switch', user.id, resolved);
   const switchSides = createButton(
     switchSidesButtonData,
     'Switch Sides',
     ButtonStyle.Primary,
     '🔄',
   );
-  const cancelButtonData = createButtonData('cancel', user.id, seriesDataUpdated);
+  const cancelButtonData = createButtonData('cancel', user.id, resolved);
   const cancel = createButton(cancelButtonData, 'Cancel', ButtonStyle.Danger, '❌');
 
   const confirmRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -254,7 +311,8 @@ export async function handleTeamSelect(
     `Please confirm all looks right\n` +
     `# Blue Side: ${team1Name}\n` +
     `# Red Side: ${team2Name}\n` +
-    `# Stage: ${stage}`;
+    `# Stage: ${stage}\n` +
+    `# Best of ${chosen.totalGames}`;
   await interaction.editReply({
     content,
     components: [confirmRow],
