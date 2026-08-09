@@ -150,6 +150,24 @@ describe('buildControlRow', () => {
     expect(parsed.tag).toBe('generate_another');
     expect(parsed.seriesData.seriesId).toBe(756);
   });
+
+  it('hides "Code not working?" once every issued code already has a matching game', () => {
+    const series = aSeries({ tournamentCodes: [aCode(1)], games: [aGame(1, 11)] });
+    const labels = buttonsOf(buildControlRow('123456789012345678', seriesData, series, NOW)).map(
+      b => b.label,
+    );
+    expect(labels).not.toContain('Code not working?');
+  });
+
+  it('shows "Code not working?" as soon as a code is outstanding, without waiting for staleness', () => {
+    const series = aSeries({ tournamentCodes: [aCode(1)], lastCodeIssuedAt: ago(1000) });
+    const labels = buttonsOf(buildControlRow('123456789012345678', seriesData, series, NOW)).map(
+      b => b.label,
+    );
+    expect(labels).toContain('Code not working?');
+    // Report result stays gated on staleness - only this button's gating changed.
+    expect(labels).not.toContain('Report result');
+  });
 });
 
 type FakeMessage = {

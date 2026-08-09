@@ -30,6 +30,15 @@ const aSeries = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+const aCode = (id: number) => ({
+  id,
+  shortcode: `CODE${id}`,
+  seriesId: 756,
+  blueTeamId: 11,
+  redTeamId: 22,
+  createdAt: null,
+});
+
 vi.mock('../src/dennys.ts', async importOriginal => {
   const actual = await importOriginal<typeof import('../src/dennys.ts')>();
   return {
@@ -126,7 +135,7 @@ describe('the Report button only appears once a code has gone unanswered', () =>
   it('is absent while the code is fresh', () => {
     // A report filed now would be recorded codeless and duplicated when Riot
     // catches up, so waiting is the better default.
-    const series = aSeries({ lastCodeIssuedAt: ago(1000) });
+    const series = aSeries({ tournamentCodes: [aCode(1)], lastCodeIssuedAt: ago(1000) });
     const labels = buttonsOf(buildControlRow(ORIGINAL_USER, seriesData, series, now)).map(
       b => b.label,
     );
@@ -134,7 +143,10 @@ describe('the Report button only appears once a code has gone unanswered', () =>
   });
 
   it('appears once the code is stale', () => {
-    const series = aSeries({ lastCodeIssuedAt: ago(STALE_CODE_MS + 1000) });
+    const series = aSeries({
+      tournamentCodes: [aCode(1)],
+      lastCodeIssuedAt: ago(STALE_CODE_MS + 1000),
+    });
     const labels = buttonsOf(buildControlRow(ORIGINAL_USER, seriesData, series, now)).map(
       b => b.label,
     );
@@ -144,16 +156,31 @@ describe('the Report button only appears once a code has gone unanswered', () =>
   it('still appears on a completed series', () => {
     // Dennys does not block a completed series from taking results either, and a
     // captain correcting one that closed early must not be locked out.
-    const series = aSeries({ completed: true, lastCodeIssuedAt: ago(STALE_CODE_MS * 5) });
+    const series = aSeries({
+      completed: true,
+      tournamentCodes: [aCode(1)],
+      lastCodeIssuedAt: ago(STALE_CODE_MS * 5),
+    });
     const labels = buttonsOf(buildControlRow(ORIGINAL_USER, seriesData, series, now)).map(
       b => b.label,
     );
     expect(labels).toContain('Report result');
   });
 
-  it('always offers the recovery entry point, code or no code', () => {
-    // A dead code and a code that never generated need the same exits.
+  it('hides the recovery entry point once nothing is outstanding', () => {
+    // "Code not working?" only makes sense against a code that hasn't been
+    // reported yet. No series data at all means nothing to recover.
     const labels = buttonsOf(buildControlRow(ORIGINAL_USER, seriesData, undefined, now)).map(
+      b => b.label,
+    );
+    expect(labels).not.toContain('Code not working?');
+  });
+
+  it('offers the recovery entry point immediately for an outstanding code, without waiting for staleness', () => {
+    // A dead code can be known the moment it's tried - it shouldn't wait on
+    // the same window Report result does.
+    const series = aSeries({ tournamentCodes: [aCode(1)], lastCodeIssuedAt: ago(1000) });
+    const labels = buttonsOf(buildControlRow(ORIGINAL_USER, seriesData, series, now)).map(
       b => b.label,
     );
     expect(labels).toContain('Code not working?');

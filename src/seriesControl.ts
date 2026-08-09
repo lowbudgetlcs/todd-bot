@@ -50,6 +50,10 @@ const isControlMessage = (message: ControlMessage) =>
 const winsFor = (series: SeriesWithGames, teamId: number) =>
   series.games.filter(game => game.result?.winningTeamId === teamId).length;
 
+/** A code issued with no matching game yet - the only thing "Code not working?" can apply to. */
+const hasOutstandingCode = (series: SeriesWithGames) =>
+  series.tournamentCodes.length > series.games.length;
+
 /**
  * True when the newest code has been outstanding long enough that waiting is no
  * longer the better option. Codes issued and games played differing is the
@@ -129,14 +133,21 @@ export function buildControlRow(
     );
   }
 
-  row.addComponents(
-    createButton(
-      createButtonData('code_not_working', originalUserId, seriesData),
-      'Code not working?',
-      ButtonStyle.Secondary,
-      '❓',
-    ),
-  );
+  // Not gated on staleness like Report result is - staleness exists to give
+  // Riot's callback time to land, but a dead code can be known immediately
+  // (League client says "invalid code"), so this shouldn't wait on it. Gated
+  // on there being an outstanding code at all: once every issued code already
+  // has a matching reported game, there's nothing left for this to recover.
+  if (series && hasOutstandingCode(series)) {
+    row.addComponents(
+      createButton(
+        createButtonData('code_not_working', originalUserId, seriesData),
+        'Code not working?',
+        ButtonStyle.Secondary,
+        '❓',
+      ),
+    );
+  }
 
   return row;
 }
