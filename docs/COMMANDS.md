@@ -165,7 +165,7 @@ lookup table is [src/buttons/handlers.ts](../src/buttons/handlers.ts).
 | `generate_another_confirm` | ✅ Confirm | `handleGenerateAnotherConfirm` | Creates the next game in the series and posts its code. |
 | `switch_sides` | 🔄 Switch Sides | `handleSwitchSides` | Swaps sides for the *next* game and re-confirms. |
 | `cancel_flow` | ❌ Cancel | `handleCancel` | Deletes the ephemeral confirmation. |
-| `end_series` | — | `handleEndSeries` | Strips the buttons off a series message. Registered, but no button currently uses this tag. |
+| `end_series` | — | — | Retired. No button ever used it, and Dennys now closes a series automatically when enough results are written. The wire code stays reserved so a new tag cannot inherit it. |
 
 **Who is allowed to click:** every handler checks `interaction.user.id` against
 `data.originalUserId` *or* `seriesData.enemyCaptainId`. Both captains can drive
