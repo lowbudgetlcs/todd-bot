@@ -4,13 +4,15 @@ import {
   ButtonInteraction,
   ButtonStyle,
   ComponentType,
+  Message,
   SlashCommandBuilder,
   StringSelectMenuBuilder,
+  StringSelectMenuInteraction,
 } from 'discord.js';
 import { buildThreadName, getDraftLinksMarkdown } from '../util.ts';
 import { runGuarded, safeDefer, safeInteractionError } from '../interactionSafety.ts';
 import { User } from '../interfaces.ts';
-import { createButton, createButtonData, parseButtonData, seriesDataFits, ButtonData } from '../buttons/button.ts';
+import { createButton, createButtonData, parseButtonData, seriesDataFits } from '../buttons/button.ts';
 import { createGame, getEvent, getEvents, getEventWithTeams, getSeriesId, getTeam, getTotalGames, Team } from '../dennys.ts';
 import log from 'loglevel';
 import { SeriesData } from '../types/toddData.ts';
@@ -22,9 +24,15 @@ async function grabTeams(divisionId: number): Promise<Team[]> {
   const teams = event?.teams || [];
   return teams;
 }
-// TODO: we should NOT use any here if we know what it's going to be.
-// i don't know what it is going to be LMFAO
-export async function handleDivisionSelect(interaction: any, message: any) {
+/**
+ * `message` is what `editReply` handed back when the division dropdown was
+ * posted - we only keep it to hang the next collector off, and it is the same
+ * message the team/stage dropdowns replace.
+ */
+export async function handleDivisionSelect(
+  interaction: StringSelectMenuInteraction,
+  message: Message,
+) {
   logger.info('Handling division select interaction: ' + interaction.customId);
   const data = parseButtonData(interaction.customId);
   const seriesData = data.seriesData;
@@ -88,19 +96,28 @@ export async function handleDivisionSelect(interaction: any, message: any) {
   const collector = message.createMessageComponentCollector({
     componentType: ComponentType.StringSelect,
     filter: (i: { user: User; customId: string }) =>
-      i.user === interaction.user && ['team1_select', 'team2_select', 'stage_select'].includes(parseButtonData(i.customId).tag),
+      i.user.id === interaction.user.id && ['team1_select', 'team2_select', 'stage_select'].includes(parseButtonData(i.customId).tag),
     time: 5 * 60 * 1000,
   });
 
-  collector.on('collect', async (interaction: any) => {
+  collector.on('collect', async (interaction: StringSelectMenuInteraction) => {
     logger.info('Collecting team select interaction:', interaction.customId);
     // Must be awaited inside a guard - an un-awaited reject here took the bot down.
     await runGuarded(interaction, 'team_select', () => handleTeamSelect(interaction));
   });
 }
 
-export async function handleTeamSelect(interaction: any) {
-  const { values, user } = interaction;
+/**
+ * Re-renders the selection step. Reached two ways: from the three dropdowns,
+ * and from the Switch Sides / Cancel buttons that `getButtonHandler` routes
+ * here - which is why the parameter is a union. Only the dropdown path carries
+ * `values`; the buttons act purely on the tag.
+ */
+export async function handleTeamSelect(
+  interaction: StringSelectMenuInteraction | ButtonInteraction,
+) {
+  const { user } = interaction;
+  const values = interaction.isStringSelectMenu() ? interaction.values : [];
   const data = parseButtonData(interaction.customId);
   const seriesData = data.seriesData;
   let team1 = seriesData.team1Id;
@@ -533,8 +550,11 @@ module.exports =  {
     });
     const collector = message.createMessageComponentCollector({
       componentType: ComponentType.StringSelect,
+      // Match on the parsed tag, not the raw id: custom_ids carry the compressed
+      // wire code ('d'), so a startsWith on the readable name never matches and
+      // the select goes unacked until Discord's 3s deadline kills it.
       filter: (i: { user: User; customId: string }) =>
-        i.user === interaction.user && i.customId.startsWith('division_select'),
+        i.user.id === interaction.user.id && parseButtonData(i.customId).tag === 'division_select',
       time: 5 * 60 * 1000,
     });
 
