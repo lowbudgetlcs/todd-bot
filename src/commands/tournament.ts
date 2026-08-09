@@ -8,6 +8,7 @@ import {
   SlashCommandBuilder,
   StringSelectMenuBuilder,
   StringSelectMenuInteraction,
+  ThreadAutoArchiveDuration,
 } from 'discord.js';
 import { buildThreadName, getDraftLinksMarkdown } from '../util.ts';
 import { runGuarded, safeDefer, safeInteractionError } from '../interactionSafety.ts';
@@ -352,7 +353,15 @@ async function openSeriesThread(
   logger.info(`Creating thread: ${threadName}`);
   const thread = await publicMessage.startThread({
     name: threadName,
-    autoArchiveDuration: 60, // in minutes
+    // The longest Discord offers - one hour, one day, three days and one week
+    // are the only values it accepts, and archiving cannot be turned off.
+    //
+    // The timer runs from the last message rather than from creation, so an
+    // active series never archives on its own. This is for the gaps: an
+    // emergency pause can leave a thread quiet for hours, and it should still be
+    // in the channel's thread list when play resumes. Archiving is not a dead
+    // end either - an unlocked thread accepts a message and unarchives itself.
+    autoArchiveDuration: ThreadAutoArchiveDuration.OneWeek,
     reason: `Series thread for ${header.team1Name} vs ${header.team2Name}`,
   });
 

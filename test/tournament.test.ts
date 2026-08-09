@@ -169,17 +169,20 @@ function makeInteraction(tag: string, data: SeriesData = seriesData, customId?: 
     followUp: vi.fn(async () => {
       calls.push('followUp');
       return {
-        startThread: vi.fn(async () => ({
-          // discord.js is not mocked, so these are real builders and toJSON()
-          // gives back the custom_id parseButtonData round-trips.
-          send: vi.fn(async (payload: { content?: string; components?: unknown[] }) => {
-            threadSends.push(payload?.content ?? '');
-            threadComponents.push(payload?.components ?? []);
-            return { id: String(threadSends.length) };
-          }),
-          // postSeriesControl scans for control messages it should replace.
-          messages: { fetch: vi.fn(async () => new Map()) },
-        })),
+        startThread: vi.fn(async (options: { name: string; autoArchiveDuration: number }) => {
+          threadOptions.push(options);
+          return {
+            // discord.js is not mocked, so these are real builders and toJSON()
+            // gives back the custom_id parseButtonData round-trips.
+            send: vi.fn(async (payload: { content?: string; components?: unknown[] }) => {
+              threadSends.push(payload?.content ?? '');
+              threadComponents.push(payload?.components ?? []);
+              return { id: String(threadSends.length) };
+            }),
+            // postSeriesControl scans for control messages it should replace.
+            messages: { fetch: vi.fn(async () => new Map()) },
+          };
+        }),
       };
     }),
     deleteReply: vi.fn(async () => {
@@ -205,6 +208,7 @@ function makeButtonInteraction(tag: string, data: SeriesData = seriesData) {
 let editReplyPayloads: unknown[] = [];
 let threadSends: string[] = [];
 let threadComponents: unknown[][] = [];
+let threadOptions: { name: string; autoArchiveDuration: number }[] = [];
 
 /** First point the interaction is acknowledged, i.e. the 3s deadline stops mattering. */
 const ackIndex = () =>
@@ -229,6 +233,7 @@ beforeEach(() => {
   editReplyPayloads = [];
   threadSends = [];
   threadComponents = [];
+  threadOptions = [];
   seriesGames = [];
   issueRecoversLostGame = false;
   seriesCandidates = [aSeries(756, 3)];
@@ -416,6 +421,30 @@ describe('Riot refusing a code at game 1', () => {
 
     expect(threadSends[0]).toContain('Riot');
     expect(threadSends[0]).not.toContain('matching series');
+  });
+});
+
+describe('the series thread', () => {
+  it('is given the longest archive window Discord allows', async () => {
+    // A series can sit paused for hours and still take games afterwards, and
+    // Todd cannot post the next code into an archived thread. There is no way
+    // to opt out of archiving, so the ceiling is the closest thing to it.
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    expect(threadOptions[0].autoArchiveDuration).toBe(10080);
+  });
+
+  it('gets the same window when Riot refused the code', async () => {
+    // That thread is the more important one: it is where a codeless series is
+    // played out, which takes longer than a normal one.
+    issueFailsWith = { status: 503 };
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    expect(threadOptions[0].autoArchiveDuration).toBe(10080);
   });
 });
 
