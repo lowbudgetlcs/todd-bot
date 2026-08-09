@@ -115,7 +115,10 @@ export function buildControlRow(
     ),
   );
 
-  if (series && !series.completed && isCodeStale(series, now)) {
+  // Not gated on completion. Dennys does not block a completed series from
+  // taking codes or results either, and a captain who needs to correct one
+  // should not be locked out because Dennys closed it early.
+  if (series && isCodeStale(series, now)) {
     row.addComponents(
       createButton(
         createButtonData('report_result', originalUserId, seriesData),
