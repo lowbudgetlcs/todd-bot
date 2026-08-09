@@ -132,7 +132,9 @@ export function parseButtonData(customId: string): ButtonData {
   const metadata = parts.slice(isVersioned ? 3 : 2);
   // The stage is last precisely so it can absorb the rest of the split. A stage
   // named "Week 1: Opener" used to shift every field after it; now it survives.
-  const fields = [...metadata.slice(0, 4), metadata.slice(4).join(':')];
+  // Legacy ids carry one field fewer, so its position differs.
+  const stageIndex = isVersioned ? 5 : 4;
+  const fields = [...metadata.slice(0, stageIndex), metadata.slice(stageIndex).join(':')];
   return {
     tag,
     originalUserId,

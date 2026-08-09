@@ -65,6 +65,7 @@ export async function handleDivisionSelect(
     team2Id: "" as unknown as number,
     divisionId: divisionKey,
     enemyCaptainId: enemyCaptainId,
+    seriesId: 0,
     stage: ""
   };
   const customId1 = createButtonData('team1_select', interaction.user.id, seriesDataUpdated);
@@ -167,6 +168,7 @@ export async function handleTeamSelect(
     team2Id: team2,
     divisionId: division,
     enemyCaptainId: enemyCaptainId,
+    seriesId: seriesData.seriesId,
     stage
   };
 
@@ -286,7 +288,16 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
   }
 
   try {
-    const tournamentCode = await getTournamentCode(seriesData.team1Id, seriesData.team2Id, seriesData.divisionId, seriesData.stage, interaction, seriesData.enemyCaptainId, true);
+    const tournamentCode = await getTournamentCode({
+      team1Id: seriesData.team1Id,
+      team2Id: seriesData.team2Id,
+      divisionId: seriesData.divisionId,
+      stage: seriesData.stage,
+      seriesId: seriesData.seriesId,
+      interaction,
+      enemyCaptainId: seriesData.enemyCaptainId,
+      first: true,
+    });
     if (tournamentCode.error != null) {
       // Handle error: Update original interaction
       await interaction.editReply({
@@ -301,7 +312,10 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
 
       await interaction.deleteReply();
 
-      const generateButtonData = createButtonData('generate_another', user.id, seriesData);
+      // Pinned here, at the one point the series is known: every later press
+      // reads it back out rather than resolving from the team pair again.
+      const pinnedSeries: SeriesData = { ...seriesData, seriesId: tournamentCode.seriesId };
+      const generateButtonData = createButtonData('generate_another', user.id, pinnedSeries);
       const generateButton = createButton(
         generateButtonData,
         'Generate Next Game',
@@ -366,15 +380,29 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
 }
 
 // TODO: Fix this as to not need to send interaction
-export async function getTournamentCode(
-  team1: number,
-  team2: number,
-  divisionId: number,
-  stage: string,
-  interaction: ButtonInteraction,
-  enemyCaptainId: string,
-  first: boolean
-): Promise<{
+export type TournamentCodeRequest = {
+  team1Id: number;
+  team2Id: number;
+  divisionId: number;
+  stage: string;
+  /** Pinned series, or 0 to resolve it from the team pair. */
+  seriesId: number;
+  interaction: ButtonInteraction;
+  enemyCaptainId: string;
+  /** Only the first game of a series gets draft links. */
+  first: boolean;
+};
+
+export async function getTournamentCode({
+  team1Id: team1,
+  team2Id: team2,
+  divisionId,
+  stage,
+  seriesId: pinnedSeriesId,
+  interaction,
+  enemyCaptainId,
+  first,
+}: TournamentCodeRequest): Promise<{
   discordResponse: string | null;
   draftLinks: string | null;
   shortcode: string | null;
@@ -389,6 +417,8 @@ export async function getTournamentCode(
   // is written. This is the handle reportSeriesResult takes.
   tournamentCodeId: number;
   totalGames: number;
+  /** The resolved series, for callers building buttons that must pin it. */
+  seriesId: number;
 }> {
   //TODO: Call api with this informatio nand let it handle all this logic
   const division  = divisionId? Number(divisionId) : null
@@ -406,6 +436,7 @@ export async function getTournamentCode(
       team1Name: team1.toString(),
       team2Name: team2.toString(),
       tournamentCodeId: 0,
+      seriesId: 0,
       totalGames: 0,
     };
   }
@@ -420,6 +451,7 @@ export async function getTournamentCode(
       team1Name: team1.toString(),
       team2Name: team2.toString(),
       tournamentCodeId: 0,
+      seriesId: 0,
       totalGames:0
     };
   }
@@ -429,7 +461,9 @@ export async function getTournamentCode(
   const team1Name = team1Data?.name || 'Unknown Team 1';
   const team2Name = team2Data?.name || 'Unknown Team 2';
   logger.info(`Fetched teams - Team 1: ${team1Data?.id}  ${team1Data?.name}, Team 2: ${team2Data?.id}  ${team2Data?.name}`);
-  const seriesId = await getSeriesId(division!, team1, team2, selectedStage);
+  // Once pinned, the series never gets looked up by team pair again. Re-resolving
+  // is what let a completed series hand the next code to the wrong one.
+  const seriesId = pinnedSeriesId || (await getSeriesId(division!, team1, team2, selectedStage));
   if (!seriesId) {
     return {
       discordResponse: null,
@@ -441,6 +475,7 @@ export async function getTournamentCode(
       team1Name,
       team2Name,
       tournamentCodeId: 0,
+      seriesId: 0,
       totalGames: 0
     };
   }
@@ -481,6 +516,7 @@ export async function getTournamentCode(
     team1Name,
     team2Name,
     tournamentCodeId: code.id,
+    seriesId,
     totalGames
   };
 }
@@ -522,6 +558,7 @@ module.exports =  {
       team2Id: "" as unknown as number,
       divisionId: 0,
       enemyCaptainId: enemyCaptain.id,
+      seriesId: 0,
       stage: ""
     };
     // Show division select menu

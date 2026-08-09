@@ -207,7 +207,7 @@ valid regardless of restarts.
 The format (`src/buttons/button.ts` + `src/types/toddData.ts`):
 
 ```
-tag : v1 : originalUserId : enemyCaptainId : divisionId : team1Id : team2Id : stage
+tag : v1 : originalUserId : enemyCaptainId : divisionId : team1Id : team2Id : seriesId : stage
 ```
 
 - `tag` selects the handler in `src/buttons/handlers.ts`. On the wire it is a
@@ -223,8 +223,13 @@ tag : v1 : originalUserId : enemyCaptainId : divisionId : team1Id : team2Id : st
   keep arriving after a redeploy.
 - `originalUserId` is who started the flow. Handlers allow only that user or the
   enemy captain to act.
-- The remaining five fields are `SeriesData`, encoded by `encodeSeriesData` and
+- The remaining six fields are `SeriesData`, encoded by `encodeSeriesData` and
   read back by `decodeSeriesData`.
+- `seriesId` is the series every later button acts on, pinned the first time it
+  is resolved and `0` until then. Without it each press re-resolves from the team
+  pair, so the moment Dennys closes one series the next code lands in the other
+  one for the same pair. Legacy ids predate it and decode as `0`, which falls
+  back to resolving by team pair.
 
 **The 100-character budget.** Discord caps `custom_id` at 100, and in the
 original encoding that budget was already spent: the longest tag
@@ -239,10 +244,12 @@ characters to 13; wire codes take the tag from 24 to 2.
 | --- | --- | --- |
 | Original | 100 | 20 |
 | Base36 ids | 86 | 34 |
-| ...plus tag codes | **64** | **56** |
+| ...plus tag codes | 64 | 56 |
+| ...plus `seriesId` | **68** | **52** |
 
-That leaves 36 characters spare — room for another id (a base36 `seriesId` and
-its separator is ~5) without revisiting this.
+That still leaves 32 characters spare, so another id fits without revisiting
+this. `test/button.test.ts` pins both the boundary and the remaining headroom, so
+the next field can be judged against a measurement rather than an estimate.
 
 `parseButtonData` splits on `:`. Two consequences worth knowing:
 
@@ -250,7 +257,7 @@ its separator is ~5) without revisiting this.
   that it absorbs the remainder of the split, so `Week 1: Opener` round-trips.
   The fields ahead of it are base36 or a tag, none of which can contain a `:`.
 - **The stage is still the field that can overflow.** Dennys returns
-  `eventStages` as free-form strings, so its length is not ours to control. 56
+  `eventStages` as free-form strings, so its length is not ours to control. 52
   characters fit. Past that, `seriesDataFits` refuses the series at stage
   selection — sized against the *longest* tag code, not the current one, because
   tags grow as a series advances (`s` is 1 character, `gc` is 2) and the late

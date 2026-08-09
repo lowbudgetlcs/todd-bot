@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createButtonData } from '../src/buttons/button.ts';
+import { createButtonData, parseButtonData } from '../src/buttons/button.ts';
 import { SeriesData } from '../src/types/toddData.ts';
 
 /**
@@ -104,11 +104,14 @@ const { handleBothTeamSubmission, handleTeamSelect } = await import('../src/comm
 
 const ORIGINAL_USER = '123456789012345678';
 
+// Unpinned, which is the state the selection flow is in: the series is not known
+// until handleBothTeamSubmission resolves it.
 const seriesData: SeriesData = {
   enemyCaptainId: '223456789012345678',
   divisionId: 7,
   team1Id: 11,
   team2Id: 22,
+  seriesId: 0,
   stage: 'REGULAR_SEASON',
 };
 
@@ -144,8 +147,11 @@ function makeInteraction(tag: string, data: SeriesData = seriesData, customId?: 
       calls.push('followUp');
       return {
         startThread: vi.fn(async () => ({
-          send: vi.fn(async (payload: { content?: string }) => {
+          // discord.js is not mocked, so these are real builders and toJSON()
+          // gives back the custom_id parseButtonData round-trips.
+          send: vi.fn(async (payload: { content?: string; components?: unknown[] }) => {
             threadSends.push(payload?.content ?? '');
+            if (payload?.components?.length) threadComponents.push(payload.components);
           }),
         })),
       };
@@ -172,6 +178,7 @@ function makeButtonInteraction(tag: string, data: SeriesData = seriesData) {
 
 let editReplyPayloads: unknown[] = [];
 let threadSends: string[] = [];
+let threadComponents: unknown[][] = [];
 
 /** First point the interaction is acknowledged, i.e. the 3s deadline stops mattering. */
 const ackIndex = () =>
@@ -195,6 +202,7 @@ beforeEach(() => {
   calls.length = 0;
   editReplyPayloads = [];
   threadSends = [];
+  threadComponents = [];
   seriesGames = [];
   issueRecoversLostGame = false;
 });
@@ -230,6 +238,44 @@ describe('handleBothTeamSubmission acknowledges before touching dennys', () => {
 
     expect(calls.indexOf('issueTournamentCode')).toBeLessThan(calls.indexOf('getSeries'));
     expect(threadSends.find(c => c.includes('# Game'))).toContain('# Game 2');
+  });
+});
+
+describe('the series is pinned once resolved', () => {
+  /** The row on the message that drives every later game. */
+  const generateButton = () => {
+    const row = threadComponents.at(-1)?.[0];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (row as any)?.toJSON().components[0];
+  };
+
+  it('resolves by team pair when nothing is pinned yet', async () => {
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    expect(calls).toContain('getSeriesId');
+  });
+
+  it('carries the resolved series on the button it posts', async () => {
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    const parsed = parseButtonData(generateButton().custom_id);
+    expect(parsed.tag).toBe('generate_another');
+    expect(parsed.seriesData.seriesId).toBe(756);
+  });
+
+  it('does not resolve by team pair again once pinned', async () => {
+    // The failure this prevents: dennys closes series 1, and the next press
+    // silently starts issuing codes into series 2 for the same pair.
+    const interaction = makeInteraction('confirm', { ...seriesData, seriesId: 756 });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    expect(calls).not.toContain('getSeriesId');
+    expect(calls).toContain('issueTournamentCode');
   });
 });
 

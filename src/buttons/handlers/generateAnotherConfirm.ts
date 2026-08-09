@@ -35,15 +35,16 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
       components: [],
     });
 
-    const tournamentCode = await getTournamentCode(
-      team1,
-      team2,
-      division,
-      seriesData.stage,
+    const tournamentCode = await getTournamentCode({
+      team1Id: team1,
+      team2Id: team2,
+      divisionId: division,
+      stage: seriesData.stage,
+      seriesId: seriesData.seriesId,
       interaction,
-      opposing_captain,
-      false
-    );
+      enemyCaptainId: opposing_captain,
+      first: false,
+    });
 
     if (tournamentCode.error) {
       // Report in place of the "Generating..." message. followUp() here used to

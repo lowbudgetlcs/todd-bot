@@ -15,19 +15,27 @@ const sample: SeriesData = {
   divisionId: 7,
   team1Id: 11,
   team2Id: 22,
+  seriesId: 756,
   stage: 'Week 1',
 };
 
 describe('encodeSeriesData', () => {
-  it('emits the five fields in the documented custom_id order, base36 encoded', () => {
-    // ARCHITECTURE.md: enemyCaptainId : divisionId : team1Id : team2Id : stage
+  it('emits the fields in the documented custom_id order, base36 encoded', () => {
+    // enemyCaptainId : divisionId : team1Id : team2Id : seriesId : stage
     expect(encodeSeriesData(sample)).toEqual([
       encodeSnowflake('123456789012345678'),
       '7',
       'b',
       'm',
+      'l0',
       'Week 1',
     ]);
+  });
+
+  it('keeps the stage last, so a new field cannot displace it', () => {
+    // The stage absorbs the rest of the split, which is the only reason a stage
+    // containing a colon survives. Anything appended after it would break that.
+    expect(encodeSeriesData(sample).at(-1)).toBe('Week 1');
   });
 });
 
@@ -89,7 +97,7 @@ describe('id base36', () => {
 
 describe('decodeSeriesData fallbacks for a truncated array', () => {
   it('defaults a missing stage to an empty string', () => {
-    expect(decodeSeriesData(['cap', '1', '2', '3']).stage).toBe('');
+    expect(decodeSeriesData(['cap', '1', '2', '3', '4']).stage).toBe('');
   });
 
   it('defaults missing numeric fields to 0', () => {
@@ -97,14 +105,17 @@ describe('decodeSeriesData fallbacks for a truncated array', () => {
     expect(decoded.divisionId).toBe(0);
     expect(decoded.team1Id).toBe(0);
     expect(decoded.team2Id).toBe(0);
+    expect(decoded.seriesId).toBe(0);
   });
 });
 
 describe('legacy decimal decoder', () => {
   it('still reads ids minted before base36', () => {
     // Buttons live in Discord messages, so these keep arriving after a deploy.
-    expect(decodeLegacySeriesData(['123456789012345678', '7', '11', '22', 'Week 1'])).toEqual(
-      sample,
-    );
+    expect(decodeLegacySeriesData(['123456789012345678', '7', '11', '22', 'Week 1'])).toEqual({
+      ...sample,
+      // Predates the field; the series is resolved from the team pair instead.
+      seriesId: 0,
+    });
   });
 });

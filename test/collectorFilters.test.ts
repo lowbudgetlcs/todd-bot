@@ -39,10 +39,13 @@ vi.mock('../src/dennys.ts', () => ({
       { id: 22, name: 'Team 22', logo: null, eventId: id },
     ],
   })),
+  // These tests only reach the collector filters, but a bare factory mock fails
+  // on first *access*, so every export tournament.ts imports has to be present.
   getTeam: vi.fn(),
   getSeriesId: vi.fn(),
-  getTotalGames: vi.fn(),
-  createGame: vi.fn(),
+  getSeries: vi.fn(),
+  issueTournamentCode: vi.fn(),
+  nextGameNumber: vi.fn(),
 }));
 
 const tournament = await import('../src/commands/tournament.ts');
@@ -59,6 +62,7 @@ const seriesData: SeriesData = {
   divisionId: 7,
   team1Id: 11,
   team2Id: 22,
+  seriesId: 756,
   stage: 'REGULAR_SEASON',
 };
 
