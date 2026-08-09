@@ -18,6 +18,13 @@ const calls: string[] = [];
 /** Games played against the series, swapped per test to drive the game number. */
 let seriesGames: { id: number; seriesId: number; number: number }[] = [];
 
+/**
+ * Stands in for dennys pulling a played game off Riot when a code is issued
+ * (`SeriesService.createGame` calls `refreshQuietly` before minting one). Set by
+ * the test that pins Todd reading the series *after* that has had a chance to run.
+ */
+let issueRecoversLostGame = false;
+
 vi.mock('../src/dennys.ts', async importOriginal => {
   // nextGameNumber is pure, so keep the real one - the game number a captain
   // sees is derived here and a stub would only be testing itself.
@@ -50,6 +57,7 @@ vi.mock('../src/dennys.ts', async importOriginal => {
     }),
     issueTournamentCode: vi.fn(async () => {
       calls.push('issueTournamentCode');
+      if (issueRecoversLostGame) seriesGames = [{ id: 4, seriesId: 756, number: 1 }];
       return {
         id: 9,
         shortcode: 'ABC123',
@@ -188,6 +196,7 @@ beforeEach(() => {
   editReplyPayloads = [];
   threadSends = [];
   seriesGames = [];
+  issueRecoversLostGame = false;
 });
 
 describe('handleBothTeamSubmission acknowledges before touching dennys', () => {
@@ -210,14 +219,17 @@ describe('handleBothTeamSubmission acknowledges before touching dennys', () => {
     expect(interaction.followUp).toHaveBeenCalled();
   });
 
-  it('resolves the series before minting a code', async () => {
-    // A tournament code is a real Riot artifact, so everything that can fail
-    // cheaply fails first - the same reason the custom_id check runs earlier.
+  it('reads the series after the code is issued, so a recovered game counts', async () => {
+    // Issuing a code makes dennys pull any played game it has not heard about
+    // yet. Reading the series first reports the pre-pull count, which renders
+    // "# Game 1" forever whenever a Riot callback went missing.
+    issueRecoversLostGame = true;
     const interaction = makeInteraction('confirm');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleBothTeamSubmission(interaction as any);
 
-    expect(calls.indexOf('getSeries')).toBeLessThan(calls.indexOf('issueTournamentCode'));
+    expect(calls.indexOf('issueTournamentCode')).toBeLessThan(calls.indexOf('getSeries'));
+    expect(threadSends.find(c => c.includes('# Game'))).toContain('# Game 2');
   });
 });
 

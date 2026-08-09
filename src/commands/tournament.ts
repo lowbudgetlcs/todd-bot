@@ -445,18 +445,20 @@ export async function getTournamentCode(
     };
   }
 
-  // One lookup by id for both figures. They previously came from two independent
+  const code = await issueTournamentCode(seriesId, team1Data!, team2Data!);
+  const shortcode = code.shortcode;
+
+  // Read the series *after* issuing, not before. Issuing a code makes dennys pull
+  // any played game it has not heard about yet, so a lookup that runs first
+  // reports the pre-pull count - which reads as "# Game 1" forever whenever a
+  // Riot callback went missing.
+  //
+  // One lookup covers both figures. They previously came from two independent
   // resolutions by team pair, so the code could be booked against one series
   // while the Bo count and draft links came from another (todd-bot#97).
-  //
-  // Ahead of the code for the same reason the custom_id check above is: a code
-  // is a real Riot artifact, so anything that can fail cheaply fails first.
   const series = await getSeries(seriesId);
   const gameNumber = nextGameNumber(series);
   const totalGames = series.totalGames;
-
-  const code = await issueTournamentCode(seriesId, team1Data!, team2Data!);
-  const shortcode = code.shortcode;
 
   const division_name = divisionEvent?.name || 'Unknown Division';
   const member = await interaction.guild!.members.fetch(interaction.user.id);
