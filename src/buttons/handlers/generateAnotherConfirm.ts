@@ -3,7 +3,7 @@ import { parseButtonData } from "../button.ts";
 import { getTournamentCode } from "../../commands/tournament.ts";
 import log from 'loglevel';
 import { safeDefer, safeInteractionError } from "../../interactionSafety.ts";
-import { buildControlRow, buildSeriesStatus, postSeriesControl } from "../../seriesControl.ts";
+import { buildControlRow, buildRecoveryRow, buildSeriesStatus, postSeriesControl } from "../../seriesControl.ts";
 import { SeriesData } from "../../types/toddData.ts";
 
 const logger =log.getLogger('generateAnotherConfirm');
@@ -47,6 +47,30 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
       enemyCaptainId: opposing_captain,
       first: false,
     });
+
+    if (tournamentCode.riotUnavailable) {
+      // Report in place of the "Generating..." message. followUp() here used to
+      // run before the interaction had been acknowledged at all.
+      await interaction.editReply({
+        content: tournamentCode.error!,
+        components: [],
+      });
+
+      // A mid-series regenerate that never got a code has nothing for
+      // "Code not working?" to gate on - hasOutstandingCode only sees codes
+      // Riot actually issued. Without this, the only failure exit is the one
+      // posted at series start, which this series may not have gone through.
+      const thread = interaction.channel;
+      if (thread && 'send' in thread) {
+        await thread.send({
+          content: `${tournamentCode.error}`,
+          components: [
+            buildRecoveryRow(data.originalUserId, seriesData, tournamentCode.retryable),
+          ],
+        });
+      }
+      return;
+    }
 
     if (tournamentCode.error) {
       // Report in place of the "Generating..." message. followUp() here used to
