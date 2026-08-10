@@ -123,7 +123,9 @@ vi.mock('../src/util.ts', async importOriginal => {
   };
 });
 
-const { handleBothTeamSubmission, handleTeamSelect } = await import('../src/commands/tournament.ts');
+const { getTournamentCode, handleBothTeamSubmission, handleTeamSelect } = await import(
+  '../src/commands/tournament.ts'
+);
 
 const ORIGINAL_USER = '123456789012345678';
 
@@ -459,15 +461,32 @@ describe('the thread ends with the controls', () => {
     expect(threadSends.at(-1)).toContain(CONTROL_MARKER);
   });
 
-  it('leaves the draft links and the code block without buttons', async () => {
-    // Only the control message carries them, so exactly one row is ever live.
+  it('leaves the draft links without buttons', async () => {
     const interaction = makeInteraction('confirm');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleBothTeamSubmission(interaction as any);
 
     expect(threadComponents[0]).toEqual([]);
-    expect(threadComponents[1]).toEqual([]);
     expect(threadComponents.at(-1)).toHaveLength(1);
+  });
+
+  it('puts the report button on the code message, where it can name its code', async () => {
+    // Not on the control message: a button there could only mean "the game I
+    // think you mean", and it would have no code to name.
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [button] = (threadComponents[1] as any[])[0].toJSON().components as {
+      label: string;
+      custom_id: string;
+    }[];
+    expect(button.label).toBe('Report Game 1');
+    const parsed = parseButtonData(button.custom_id);
+    expect(parsed.tag).toBe('report_result');
+    // The code dennys just issued, and the game number the thread is showing.
+    expect(parsed.tagArg).toBe('9-1');
   });
 
   it('renders the score and the Bo on the control message', async () => {
@@ -550,6 +569,90 @@ describe('the game number tracks games played, not codes issued', () => {
 
     expect(calls.filter(c => c === 'getSeries')).toHaveLength(1);
     expect(calls).not.toContain('getTotalGames');
+  });
+});
+
+/**
+ * Recorded results only move when someone reports, so they cannot tell a second
+ * "Generate Next Game" apart from a replacement for the code already out. The
+ * thread's own "# Game N" headings are the missing half.
+ */
+describe('the game number of a code issued mid-series', () => {
+  const codeMessage = (id: string, game: number) => ({
+    id,
+    content: `# Game ${game} \n 🟦 A v.s. B 🟥\nCode: \`\`\`STUB-${game}\`\`\``,
+    components: [],
+  });
+
+  /** A thread already showing the code messages Todd posted for this series. */
+  const inThread = (posted: { id: string; content: string; components: unknown[] }[]) => {
+    const interaction = makeInteraction('generate_another_confirm');
+    return Object.assign(interaction, {
+      channel: { messages: { fetch: vi.fn(async () => new Map(posted.map(m => [m.id, m]))) } },
+    });
+  };
+
+  const issue = async (
+    interaction: ReturnType<typeof inThread>,
+    replacement: boolean,
+  ) =>
+    getTournamentCode({
+      team1Id: 11,
+      team2Id: 22,
+      divisionId: 7,
+      stage: 'REGULAR_SEASON',
+      seriesId: 756,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      interaction: interaction as any,
+      enemyCaptainId: seriesData.enemyCaptainId,
+      first: false,
+      replacement,
+    });
+
+  it('advances past the last code even when nothing has been reported', async () => {
+    // Generate Next Game twice: the second is game 3, not game 2 again.
+    seriesGames = [{ id: 4, seriesId: 756, number: 1 }];
+    const result = await issue(inThread([codeMessage('1', 1), codeMessage('2', 2)]), false);
+
+    expect(result.gameNumber).toBe(3);
+  });
+
+  it('holds the number when the code it replaces was declared dead', async () => {
+    // The recovery flow promises exactly this: "a replacement code does not
+    // affect the game number".
+    seriesGames = [{ id: 4, seriesId: 756, number: 1 }];
+    const result = await issue(inThread([codeMessage('1', 1), codeMessage('2', 2)]), true);
+
+    expect(result.gameNumber).toBe(2);
+  });
+
+  it('holds the number through repeated replacements', async () => {
+    // Each regenerate deletes the message it replaced, so the thread keeps
+    // showing one code for the slot and the number stays put.
+    seriesGames = [{ id: 4, seriesId: 756, number: 1 }];
+    const result = await issue(inThread([codeMessage('1', 1), codeMessage('3', 2)]), true);
+
+    expect(result.gameNumber).toBe(2);
+  });
+
+  it('falls back to recorded results when the thread has no code messages', async () => {
+    // A series played entirely on customs still has to number its first code.
+    seriesGames = [{ id: 4, seriesId: 756, number: 1 }];
+    const result = await issue(inThread([]), false);
+
+    expect(result.gameNumber).toBe(2);
+  });
+
+  it('never goes backwards when the thread lags behind the recorded results', async () => {
+    // Results can arrive from Riot without a code message ever being posted.
+    seriesGames = [
+      { id: 4, seriesId: 756, number: 1 },
+      { id: 5, seriesId: 756, number: 2 },
+      { id: 6, seriesId: 756, number: 3 },
+    ];
+    const result = await issue(inThread([codeMessage('1', 1)]), true);
+
+    expect(result.gameNumber).toBe(4);
   });
 });
 

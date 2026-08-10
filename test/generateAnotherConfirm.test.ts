@@ -35,9 +35,25 @@ const seriesData: SeriesData = {
 const threadSends: { content?: string; components?: unknown[] }[] = [];
 const editReplyPayloads: { content?: string; components?: unknown[] }[] = [];
 
-function makeInteraction() {
+type FakeMessage = {
+  id: string;
+  content: string;
+  components: unknown[];
+  delete: ReturnType<typeof vi.fn>;
+  edit: ReturnType<typeof vi.fn>;
+};
+
+const aCodeMessage = (id: string, game: number, shortcode: string): FakeMessage => ({
+  id,
+  content: `# Game ${game} \n 🟦 A v.s. B 🟥\nCode: \`\`\`${shortcode}\`\`\``,
+  components: [],
+  delete: vi.fn(async () => {}),
+  edit: vi.fn(async () => {}),
+});
+
+function makeInteraction(existing: FakeMessage[] = [], tag = 'generate_another_confirm') {
   const interaction = {
-    customId: createButtonData('generate_another_confirm', ORIGINAL_USER, seriesData).serialize(),
+    customId: createButtonData(tag, ORIGINAL_USER, seriesData).serialize(),
     user: { id: ORIGINAL_USER },
     replied: false,
     deferred: false,
@@ -48,12 +64,18 @@ function makeInteraction() {
         threadSends.push(payload);
         return { id: '1' };
       }),
+      messages: { fetch: vi.fn(async () => new Map(existing.map(m => [m.id, m]))) },
     },
     deferUpdate: vi.fn(async () => {
       interaction.deferred = true;
     }),
     editReply: vi.fn(async (payload: { content?: string; components?: unknown[] }) => {
       editReplyPayloads.push(payload);
+    }),
+    deleteReply: vi.fn(async () => {}),
+    followUp: vi.fn(async (payload: { content?: string }) => {
+      threadSends.push(payload);
+      return { id: 'fresh-code' };
     }),
   };
   return interaction;
@@ -144,6 +166,62 @@ describe('a mid-series regenerate that Riot refuses', () => {
       b => parseButtonData(b.custom_id).seriesData.seriesId,
     );
     expect(ids).toEqual([756]);
+  });
+});
+
+describe('a regenerate that succeeds', () => {
+  const issued = {
+    error: null,
+    riotUnavailable: false,
+    retryable: false,
+    discordResponse: '# Game 2 \n 🟦 A v.s. B 🟥\nCode: ```STUB-6-3```',
+    gameNumber: 2,
+    team1Name: 'A',
+    team2Name: 'B',
+    seriesId: 756,
+    series: {
+      id: 756,
+      totalGames: 5,
+      completed: false,
+      tournamentCodes: [{ id: 1 }, { id: 2 }, { id: 3 }],
+      games: [{ number: 1, result: { winningTeamId: 11 } }],
+      lastCodeIssuedAt: null,
+      lastGameAt: null,
+    },
+  };
+
+  it('removes the code message it just replaced, when the code was declared dead', async () => {
+    // Two live codes for one game, with nothing to say which to use.
+    const superseded = aCodeMessage('old', 2, 'STUB-6-2');
+    getTournamentCode.mockResolvedValue(issued);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleGenerateAnotherConfirm(makeInteraction([superseded], 'regenerate_confirm') as any);
+
+    expect(superseded.delete).toHaveBeenCalled();
+  });
+
+  it('keeps the codes of games already played', async () => {
+    const gameOne = aCodeMessage('one', 1, 'STUB-6-1');
+    getTournamentCode.mockResolvedValue(issued);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleGenerateAnotherConfirm(makeInteraction([gameOne], 'regenerate_confirm') as any);
+
+    expect(gameOne.delete).not.toHaveBeenCalled();
+  });
+
+  it('leaves the current code alone when it was Generate Next Game, not a regenerate', async () => {
+    // Game numbers only advance on a result, so pressing Generate Next Game
+    // before reporting issues a second code for the *same* game number. That
+    // captain never said the first code was dead - they may be playing on it.
+    const inUse = aCodeMessage('current', 2, 'STUB-6-2');
+    getTournamentCode.mockResolvedValue(issued);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleGenerateAnotherConfirm(makeInteraction([inUse], 'generate_another_confirm') as any);
+
+    expect(inUse.delete).not.toHaveBeenCalled();
   });
 });
 

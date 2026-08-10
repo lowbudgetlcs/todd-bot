@@ -39,6 +39,40 @@ const aCode = (id: number) => ({
   createdAt: null,
 });
 
+const aGame = (number: number, winningTeamId: number, tournamentCodeId: number | null = null) => ({
+  id: 700 + number,
+  seriesId: 756,
+  number,
+  result: { winningTeamId, losingTeamId: winningTeamId === 11 ? 22 : 11 },
+  tournamentCodeId,
+  riotMatchId: null,
+  createdAt: null,
+});
+
+/** What getSeries hands back. Overridden per test; reset in beforeEach. */
+let seriesState: ReturnType<typeof aSeries> = aSeries();
+
+/**
+ * What reportSeriesResult hands back. Overridden per test; reset in beforeEach.
+ *
+ * Codeless by default, which is what dennys records for a report that named no
+ * code. A code id coming back on one of those means a Riot pull answered for an
+ * outstanding code instead - see the swallowed-report tests.
+ */
+let reportedGame: ReturnType<typeof aGame> = aGame(1, 11, null);
+
+/**
+ * Game 2 was played on code 2, and Riot's callback has already recorded it.
+ * Game 1 on code 1 is recorded too; only code 3 is still outstanding.
+ */
+const alreadyReported = () =>
+  aSeries({
+    tournamentCodes: [aCode(1), aCode(2), aCode(3)],
+    games: [aGame(1, 11, 1), aGame(2, 22, 2)],
+    lastCodeIssuedAt: '2026-08-09T12:00:00Z',
+    lastGameAt: '2026-08-09T12:20:00Z',
+  });
+
 vi.mock('../src/dennys.ts', async importOriginal => {
   const actual = await importOriginal<typeof import('../src/dennys.ts')>();
   return {
@@ -49,12 +83,12 @@ vi.mock('../src/dennys.ts', async importOriginal => {
     }),
     getSeries: vi.fn(async () => {
       calls.push('getSeries');
-      return aSeries();
+      return seriesState;
     }),
     reportSeriesResult: vi.fn(async (seriesId: number, body: unknown) => {
       calls.push('reportSeriesResult');
       reported.push({ seriesId, body });
-      return { id: 1, seriesId, number: 1, result: null };
+      return reportedGame;
     }),
   };
 });
@@ -63,7 +97,9 @@ const { handleReportResult, handleReportTeam1Won } = await import(
   '../src/buttons/handlers/reportResult.ts'
 );
 const { createButtonData, parseButtonData } = await import('../src/buttons/button.ts');
-const { buildControlRow, STALE_CODE_MS } = await import('../src/seriesControl.ts');
+const { buildControlRow, CUSTOM_MARKER, RECOVERY_MARKER, STALE_CODE_MS } = await import(
+  '../src/seriesControl.ts'
+);
 
 const ORIGINAL_USER = '123456789012345678';
 const ENEMY_CAPTAIN = '223456789012345678';
@@ -80,9 +116,51 @@ const seriesData: SeriesData = {
 const editReplyPayloads: unknown[] = [];
 const threadSends: { content: string; components?: unknown[] }[] = [];
 
-function makeInteraction(tag: string, userId = ORIGINAL_USER) {
+type FakeMessage = {
+  id: string;
+  content: string;
+  components: { components?: { customId?: string | null }[] }[];
+  delete: ReturnType<typeof vi.fn>;
+  edit: ReturnType<typeof vi.fn>;
+};
+
+const aThreadMessage = (id: string, content: string, customId?: string): FakeMessage => ({
+  id,
+  content,
+  components: [{ components: customId ? [{ customId }] : [] }],
+  delete: vi.fn(async () => {}),
+  edit: vi.fn(async () => {}),
+});
+
+/** A code message carrying its own report button, as the thread has it. */
+const aGameMessage = (id: string, gameNumber: number, tournamentCodeId: number) =>
+  aThreadMessage(
+    id,
+    `# Game ${gameNumber} \nCode: \`\`\`CODE${tournamentCodeId}\`\`\``,
+    createButtonData(
+      'report_result',
+      ORIGINAL_USER,
+      seriesData,
+      `${tournamentCodeId}-${gameNumber}`,
+    ).serialize(),
+  );
+
+/** The custom-in-progress message, whose button names its game but no code. */
+const aCustomMessage = (id: string, gameNumber: number) =>
+  aThreadMessage(
+    id,
+    `${CUSTOM_MARKER} A custom game is being played for **Game ${gameNumber}**.`,
+    createButtonData('report_custom', ORIGINAL_USER, seriesData, `0-${gameNumber}`).serialize(),
+  );
+
+function makeInteraction(
+  tag: string,
+  userId = ORIGINAL_USER,
+  existing: FakeMessage[] = [],
+  tagArg?: string,
+) {
   const interaction = {
-    customId: createButtonData(tag, ORIGINAL_USER, seriesData).serialize(),
+    customId: createButtonData(tag, ORIGINAL_USER, seriesData, tagArg).serialize(),
     user: { id: userId },
     replied: false,
     deferred: false,
@@ -93,7 +171,7 @@ function makeInteraction(tag: string, userId = ORIGINAL_USER) {
         threadSends.push(payload);
         return { id: '1' };
       }),
-      messages: { fetch: vi.fn(async () => new Map()) },
+      messages: { fetch: vi.fn(async () => new Map(existing.map(m => [m.id, m]))) },
     },
     deferUpdate: vi.fn(async () => {
       calls.push('deferUpdate');
@@ -126,63 +204,40 @@ beforeEach(() => {
   reported.length = 0;
   editReplyPayloads.length = 0;
   threadSends.length = 0;
+  seriesState = aSeries();
+  reportedGame = aGame(1, 11, null);
 });
 
-describe('the Report button only appears once a code has gone unanswered', () => {
+describe('reporting does not live on the control message', () => {
   const now = Date.parse('2026-08-09T12:00:00Z');
   const ago = (ms: number) => new Date(now - ms).toISOString();
 
-  it('is absent while the code is fresh', () => {
-    // A report filed now would be recorded codeless and duplicated when Riot
-    // catches up, so waiting is the better default.
-    const series = aSeries({ tournamentCodes: [aCode(1)], lastCodeIssuedAt: ago(1000) });
-    const labels = buttonsOf(buildControlRow(ORIGINAL_USER, seriesData, series, now)).map(
-      b => b.label,
-    );
-    expect(labels).toEqual(['Generate Next Game', 'Code not working?']);
-  });
-
-  it('appears once the code is stale', () => {
+  it('offers no Report button, however long the code has gone unanswered', () => {
+    // A button here could only mean "the game I think you mean", and it has no
+    // code to name. Dennys handles a codeless report badly: it inserts a new
+    // game every time instead of returning the one it already has.
     const series = aSeries({
-      tournamentCodes: [aCode(1)],
-      lastCodeIssuedAt: ago(STALE_CODE_MS + 1000),
-    });
-    const labels = buttonsOf(buildControlRow(ORIGINAL_USER, seriesData, series, now)).map(
-      b => b.label,
-    );
-    expect(labels).toEqual(['Generate Next Game', 'Report result', 'Code not working?']);
-  });
-
-  it('still appears on a completed series', () => {
-    // Dennys does not block a completed series from taking results either, and a
-    // captain correcting one that closed early must not be locked out.
-    const series = aSeries({
-      completed: true,
       tournamentCodes: [aCode(1)],
       lastCodeIssuedAt: ago(STALE_CODE_MS * 5),
     });
-    const labels = buttonsOf(buildControlRow(ORIGINAL_USER, seriesData, series, now)).map(
-      b => b.label,
-    );
-    expect(labels).toContain('Report result');
+    const labels = buttonsOf(buildControlRow(ORIGINAL_USER, seriesData, series)).map(b => b.label);
+    expect(labels).toEqual(['Generate Next Game', 'Code not working?']);
   });
 
   it('hides the recovery entry point once nothing is outstanding', () => {
     // "Code not working?" only makes sense against a code that hasn't been
     // reported yet. No series data at all means nothing to recover.
-    const labels = buttonsOf(buildControlRow(ORIGINAL_USER, seriesData, undefined, now)).map(
+    const labels = buttonsOf(buildControlRow(ORIGINAL_USER, seriesData, undefined)).map(
       b => b.label,
     );
     expect(labels).not.toContain('Code not working?');
   });
 
-  it('offers the recovery entry point immediately for an outstanding code, without waiting for staleness', () => {
-    // A dead code can be known the moment it's tried - it shouldn't wait on
-    // the same window Report result does.
+  it('offers the recovery entry point immediately for an outstanding code', () => {
+    // A dead code can be known the moment it's tried, so it does not wait on
+    // the staleness window.
     const series = aSeries({ tournamentCodes: [aCode(1)], lastCodeIssuedAt: ago(1000) });
-    const labels = buttonsOf(buildControlRow(ORIGINAL_USER, seriesData, series, now)).map(
-      b => b.label,
-    );
+    const labels = buttonsOf(buildControlRow(ORIGINAL_USER, seriesData, series)).map(b => b.label);
     expect(labels).toContain('Code not working?');
   });
 });
@@ -208,8 +263,8 @@ describe('opening the winner picker', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const row = (editReplyPayloads.at(-1) as any).components[0];
     const emoji = row.toJSON().components.map((b: { emoji?: { name?: string } }) => b.emoji?.name);
-    expect(emoji).not.toContain('🟦');
-    expect(emoji).not.toContain('🟥');
+    expect(emoji).not.toContain('ðŸŸ¦');
+    expect(emoji).not.toContain('ðŸŸ¥');
   });
 
   it('lets the enemy captain report too', async () => {
@@ -232,15 +287,211 @@ describe('opening the winner picker', () => {
   });
 });
 
+/**
+ * A captain cannot see whether Riot's callback has landed, and the button they
+ * are pressing was minted before it had any chance to. Reporting on top of a
+ * game dennys already has would record a second game for the same match.
+ *
+ * The button names its own tournament code, so this asks whether *that* game is
+ * recorded - not whether some game is. Counting codes against games cannot tell
+ * the two apart once a regenerate has left an extra code behind.
+ */
+describe('checking whether Riot got there first', () => {
+  it('does not open the picker for a game that is already recorded', async () => {
+    seriesState = alreadyReported();
+    const interaction = makeInteraction('report_result', ORIGINAL_USER, [], '2-2');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const last = editReplyPayloads.at(-1) as any;
+    expect(last.content).toContain('already recorded');
+    expect(last.components).toEqual([]);
+  });
+
+  it('names the winner rather than just refusing', async () => {
+    // The captain pressed this because they could not tell whether the result
+    // had landed. Showing it is the answer to that.
+    seriesState = alreadyReported();
+    const interaction = makeInteraction('report_result', ORIGINAL_USER, [], '2-2');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const last = editReplyPayloads.at(-1) as any;
+    expect(last.content).toContain('Game 2');
+    expect(last.content).toContain('Team 22');
+  });
+
+  it('uses the number on the button, not the one dennys assigned', async () => {
+    // Dennys numbers games in the order results are written. This game is its
+    // number 2, but the thread has been calling it Game 4 all along.
+    seriesState = alreadyReported();
+    const interaction = makeInteraction('report_result', ORIGINAL_USER, [], '2-4');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const last = editReplyPayloads.at(-1) as any;
+    expect(last.content).toContain('Game 4');
+    expect(last.content).not.toContain('Game 2');
+  });
+
+  it('retires the stale button for the other captain too', async () => {
+    // Riot's callback lands without anyone pressing anything, so this press is
+    // the first chance Todd has had to notice.
+    seriesState = alreadyReported();
+    const game2 = aGameMessage('9', 2, 2);
+    const interaction = makeInteraction('report_result', ORIGINAL_USER, [game2], '2-2');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    expect(game2.edit).toHaveBeenCalledWith({ components: [] });
+  });
+
+  it('opens the picker for a game whose own code is still unanswered', async () => {
+    // Code 3 has no game against it, even though codes 1 and 2 do.
+    seriesState = alreadyReported();
+    const interaction = makeInteraction('report_result', ORIGINAL_USER, [], '3-3');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const row = (editReplyPayloads.at(-1) as any).components[0];
+    expect(buttonsOf(row).map(b => b.label)).toEqual(['Team 11 won', 'Team 22 won', 'Cancel']);
+  });
+
+  it('does not refuse game 3 because game 2 is recorded', async () => {
+    // The regression this replaces: a check that only knew "some game landed
+    // after the newest code" refused every game once any of them was recorded.
+    seriesState = alreadyReported();
+    const interaction = makeInteraction('report_result', ORIGINAL_USER, [], '3-3');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((editReplyPayloads.at(-1) as any).content).not.toContain('already recorded');
+  });
+
+  it('names the game it is about, so the captain knows which one they answered', async () => {
+    seriesState = alreadyReported();
+    const interaction = makeInteraction('report_result', ORIGINAL_USER, [], '3-3');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((editReplyPayloads.at(-1) as any).content).toContain('Game 3');
+  });
+
+  it('carries the target through to the winner buttons', async () => {
+    // This click only opens the picker; the next one writes, so it needs to
+    // know which game it is writing for.
+    const interaction = makeInteraction('report_result', ORIGINAL_USER, [], '3-3');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const row = (editReplyPayloads.at(-1) as any).components[0];
+    const [team1Won] = buttonsOf(row);
+    expect(parseButtonData(team1Won.custom_id).tagArg).toBe('3-3');
+  });
+
+  it('always opens the picker for a custom, which dennys can never know about', async () => {
+    // A custom is played outside Riot, so there is no code and nothing to check
+    // against. Checking anyway would read another game's result and refuse the
+    // one report only a captain can file.
+    seriesState = alreadyReported();
+    const interaction = makeInteraction('report_custom');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const row = (editReplyPayloads.at(-1) as any).components[0];
+    expect(buttonsOf(row).map(b => b.label)).toContain('Team 11 won');
+    expect(calls).not.toContain('getSeries');
+  });
+});
+
 describe('recording the result', () => {
-  it('sends the winner and nothing that identifies a code', async () => {
-    // With two codes outstanding Todd cannot know which the lobby used. Dennys
-    // asks Riot; naming the wrong code records a duplicate game.
+  it('names the code the button was for', async () => {
+    // This is what makes the write idempotent and correctly attributed: dennys
+    // returns the game it already has for that code rather than inserting a
+    // second one, even while another code is outstanding.
+    const interaction = makeInteraction('report_team1_won', ORIGINAL_USER, [], '42-3');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportTeam1Won(interaction as any);
+
+    expect(reported).toEqual([
+      { seriesId: 756, body: { winnerTeamId: 11, tournamentCodeId: 42 } },
+    ]);
+  });
+
+  it('sends no shortcode alongside the code id', async () => {
+    // Dennys 1.4.0 rejects a request carrying both outright.
+    const interaction = makeInteraction('report_team1_won', ORIGINAL_USER, [], '42-3');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportTeam1Won(interaction as any);
+
+    expect(reported[0]).not.toHaveProperty('body.shortcode');
+  });
+
+  it('names no code for a custom, which never had one', async () => {
     const interaction = makeInteraction('report_team1_won');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleReportTeam1Won(interaction as any);
 
     expect(reported).toEqual([{ seriesId: 756, body: { winnerTeamId: 11 } }]);
+  });
+
+  it('credits the game number from the button, not the one dennys assigned', async () => {
+    // Dennys numbers games in the order results are written, so reporting out of
+    // play order makes its number disagree with the heading the thread shows.
+    reportedGame = aGame(2, 11, 42);
+    const interaction = makeInteraction('report_team1_won', ORIGINAL_USER, [], '42-4');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportTeam1Won(interaction as any);
+
+    const credit = threadSends.find(m => m.content.includes('Reported By'))!;
+    expect(credit.content).toContain('Game 4');
+    expect(credit.content).not.toContain('Game 2');
+  });
+
+  it('falls back to dennys for the number when the button carried none', async () => {
+    // A custom has no code message to take a number from.
+    reportedGame = aGame(3, 11, null);
+    const interaction = makeInteraction('report_team1_won');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportTeam1Won(interaction as any);
+
+    const credit = threadSends.find(m => m.content.includes('Reported By'))!;
+    expect(credit.content).toContain('Game 3');
+  });
+
+  it('retires the report button on the game it just recorded', async () => {
+    seriesState = aSeries({ games: [aGame(1, 11, 42)] });
+    const game = aGameMessage('9', 3, 42);
+    const interaction = makeInteraction('report_team1_won', ORIGINAL_USER, [game], '42-3');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportTeam1Won(interaction as any);
+
+    expect(game.edit).toHaveBeenCalledWith({ components: [] });
+  });
+
+  it('leaves the report button on a game that is still unreported', async () => {
+    // Reporting game 3 must not disarm game 4.
+    seriesState = aSeries({ games: [aGame(1, 11, 42)] });
+    const reportedMessage = aGameMessage('9', 3, 42);
+    const stillOpen = aGameMessage('10', 4, 43);
+    const interaction = makeInteraction(
+      'report_team1_won',
+      ORIGINAL_USER,
+      [reportedMessage, stillOpen],
+      '42-3',
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportTeam1Won(interaction as any);
+
+    expect(stillOpen.edit).not.toHaveBeenCalled();
   });
 
   it('refreshes the control message afterwards', async () => {
@@ -249,6 +500,117 @@ describe('recording the result', () => {
     await handleReportTeam1Won(interaction as any);
 
     expect(threadSends.at(-1)!.content).toContain('Best of 3');
+  });
+
+  it('retires the recovery buttons the recorded game just answered', async () => {
+    // "Try again" and "Go play a custom game" both stayed live for the rest of
+    // the series, so a captain reaching for the next game's controls could
+    // press one and re-report a game that was already reported.
+    const recoveryRow = aThreadMessage('9', `${RECOVERY_MARKER} Riot refused to create a code.`);
+    const customGame = aCustomMessage('10', 3);
+    const interaction = makeInteraction(
+      'report_team1_won',
+      ORIGINAL_USER,
+      [recoveryRow, customGame],
+      '0-3',
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportTeam1Won(interaction as any);
+
+    expect(recoveryRow.edit).toHaveBeenCalledWith({ components: [] });
+    expect(customGame.edit).toHaveBeenCalledWith({ components: [] });
+  });
+
+  it('retires the dead code button for the game the custom stood in for', async () => {
+    // The custom records a game with no code on it, so nothing dennys holds
+    // marks that code answered - its Report button used to survive and offer a
+    // second report of the game the custom had just recorded.
+    const deadCode = aGameMessage('9', 3, 1003);
+    const interaction = makeInteraction('report_team1_won', ORIGINAL_USER, [deadCode], '0-3');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportTeam1Won(interaction as any);
+
+    expect(deadCode.edit).toHaveBeenCalledWith({ components: [] });
+  });
+
+  it('leaves an unrelated game alone when a custom is reported', async () => {
+    const otherGame = aGameMessage('9', 4, 1004);
+    const interaction = makeInteraction('report_team1_won', ORIGINAL_USER, [otherGame], '0-3');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportTeam1Won(interaction as any);
+
+    expect(otherGame.edit).not.toHaveBeenCalled();
+  });
+
+  it('credits the custom under the game it stood in for', async () => {
+    // Dennys numbers it by write order; the thread has been calling it Game 3.
+    reportedGame = aGame(1, 11, null);
+    const interaction = makeInteraction('report_team1_won', ORIGINAL_USER, [], '0-3');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportTeam1Won(interaction as any);
+
+    const credit = threadSends.find(m => m.content.includes('Reported By'))!;
+    expect(credit.content).toContain('Game 3');
+  });
+
+  it('leaves the custom game button alone when a coded game is what was reported', async () => {
+    // The tangle this fixes: with a coded game and a custom both unreported,
+    // reporting either one used to retire the other's button, and the control
+    // row had nothing left to offer. The custom became unreportable.
+    const customGame = aThreadMessage('10', `${CUSTOM_MARKER} A custom game is being played`);
+    const interaction = makeInteraction(
+      'report_team1_won',
+      ORIGINAL_USER,
+      [customGame],
+      '42-3',
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportTeam1Won(interaction as any);
+
+    expect(customGame.edit).not.toHaveBeenCalled();
+  });
+
+  it('says so when dennys answered for an outstanding code instead of the custom', async () => {
+    // Dennys pulls from Riot before it records. A codeless report takes whatever
+    // that pull found, so the captain's custom result is dropped - which used to
+    // happen silently, credited to a game they did not report.
+    reportedGame = aGame(2, 22, 42);
+    const interaction = makeInteraction('report_team1_won');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportTeam1Won(interaction as any);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((editReplyPayloads.at(-1) as any).content).toContain('Report the custom again');
+  });
+
+  it('posts no credit for a report that was swallowed', async () => {
+    // Crediting it would claim a result that was never recorded.
+    reportedGame = aGame(2, 22, 42);
+    const interaction = makeInteraction('report_team1_won');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportTeam1Won(interaction as any);
+
+    expect(threadSends.find(m => m.content.includes('Reported By'))).toBeUndefined();
+  });
+
+  it('keeps the custom game button live when the report was swallowed', async () => {
+    // The custom still needs reporting - that is the whole point of the notice.
+    reportedGame = aGame(2, 22, 42);
+    const customGame = aThreadMessage('10', `${CUSTOM_MARKER} A custom game is being played`);
+    const interaction = makeInteraction('report_team1_won', ORIGINAL_USER, [customGame]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportTeam1Won(interaction as any);
+
+    expect(customGame.edit).not.toHaveBeenCalled();
+  });
+
+  it('records the result even if the recovery sweep cannot reach the thread', async () => {
+    const interaction = makeInteraction('report_team1_won');
+    interaction.channel.messages.fetch.mockRejectedValue(new Error('no permission'));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportTeam1Won(interaction as any);
+
+    expect(reported).toEqual([{ seriesId: 756, body: { winnerTeamId: 11 } }]);
   });
 
   it('credits whoever reported it, in a message of its own', async () => {

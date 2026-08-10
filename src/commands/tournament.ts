@@ -15,7 +15,15 @@ import { runGuarded, safeDefer, safeInteractionError } from '../interactionSafet
 import { User } from '../interfaces.ts';
 import { createButton, createButtonData, parseButtonData, seriesDataFits } from '../buttons/button.ts';
 import { SeriesWithGames } from '../dennysSchemas.ts';
-import { buildControlRow, buildRecoveryRow, buildSeriesStatus, postSeriesControl } from '../seriesControl.ts';
+import {
+  buildControlRow,
+  buildGameReportRow,
+  buildRecoveryRow,
+  buildSeriesStatus,
+  highestPostedGameNumber,
+  postSeriesControl,
+  RECOVERY_MARKER,
+} from '../seriesControl.ts';
 import { findSeriesForTeams, getEvent, getEvents, getEventWithTeams, getSeries, getSeriesId, getTeam, isRetryableRiotGatewayError, isRiotGatewayError, issueTournamentCode, nextGameNumber, Team } from '../dennys.ts';
 import log from 'loglevel';
 import { SeriesData } from '../types/toddData.ts';
@@ -415,7 +423,7 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
       });
       await interaction.deleteReply();
       await openSeriesThread(interaction, user.id, tournamentCode, {
-        content: `${tournamentCode.error}`,
+        content: `${RECOVERY_MARKER} ${tournamentCode.error}`,
         components: [
           buildRecoveryRow(
             user.id,
@@ -448,15 +456,25 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
         flags: 1 << 2,
       });
 
+      // The report button lives here rather than on the control message, so it
+      // can name the code it is reporting - see buildGameReportRow.
       await thread.send({
         content: tournamentCode.discordResponse?.toString() || "",
+        components: [
+          buildGameReportRow(
+            user.id,
+            pinnedSeries,
+            tournamentCode.tournamentCodeId,
+            tournamentCode.gameNumber,
+          ),
+        ],
       });
 
       // Controls go last and stay last, so the newest state is always at the
       // bottom of the thread rather than scrolled away above the codes.
       if (tournamentCode.series) {
         await postSeriesControl(
-          thread,
+          thread as unknown as Parameters<typeof postSeriesControl>[0],
           buildSeriesStatus(tournamentCode.series, [
             { id: seriesData.team1Id, name: tournamentCode.team1Name },
             { id: seriesData.team2Id, name: tournamentCode.team2Name },
@@ -488,6 +506,12 @@ export type TournamentCodeRequest = {
   enemyCaptainId: string;
   /** Only the first game of a series gets draft links. */
   first: boolean;
+  /**
+   * The captain declared the existing code dead, so this code takes its slot
+   * rather than the next one. Without it, a replacement would advance the game
+   * number - the thing the recovery flow promises it will not do.
+   */
+  replacement?: boolean;
 };
 
 export async function getTournamentCode({
@@ -499,6 +523,7 @@ export async function getTournamentCode({
   interaction,
   enemyCaptainId,
   first,
+  replacement = false,
 }: TournamentCodeRequest): Promise<{
   discordResponse: string | null;
   draftLinks: string | null;
@@ -633,8 +658,23 @@ export async function getTournamentCode({
   // resolutions by team pair, so the code could be booked against one series
   // while the Bo count and draft links came from another (todd-bot#97).
   const series = await getSeries(seriesId);
-  const gameNumber = nextGameNumber(series);
   const totalGames = series.totalGames;
+
+  // Recorded results are the floor, not the answer. They only move when a
+  // result is written, so generating twice without reporting would stamp the
+  // same number on both codes. What the thread already shows is the missing
+  // half: the slot the last code went out for.
+  //
+  // Both are combined with max() rather than trusting the thread outright, so a
+  // thread with no code messages - a series that has only ever played customs,
+  // or a scan that failed - still lands on a sane number.
+  const baseline = nextGameNumber(series);
+  const posted = first
+    ? 0
+    : await highestPostedGameNumber(
+        interaction.channel as unknown as Parameters<typeof highestPostedGameNumber>[0],
+      );
+  const gameNumber = Math.max(baseline, replacement ? posted : posted + 1);
 
   const division_name = divisionEvent?.name || 'Unknown Division';
   const member = await interaction.guild!.members.fetch(interaction.user.id);

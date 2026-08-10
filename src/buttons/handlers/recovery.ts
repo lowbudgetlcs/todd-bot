@@ -1,6 +1,14 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle, MessageFlags } from 'discord.js';
 import { createButton, createButtonData, parseButtonData } from '../button.ts';
 import { safeDefer, safeInteractionError } from '../../interactionSafety.ts';
+import {
+  CUSTOM_MARKER,
+  encodeReportTarget,
+  highestPostedGameNumber,
+  retireGameButtons,
+  shareThreadScan,
+} from '../../seriesControl.ts';
+import type { ControlThread } from '../../seriesControl.ts';
 import log from 'loglevel';
 
 const logger = log.getLogger('recovery');
@@ -8,6 +16,17 @@ logger.setLevel('info');
 
 const mayAct = (interaction: ButtonInteraction, originalUserId: string, enemyCaptainId: string) =>
   interaction.user.id === originalUserId || interaction.user.id === enemyCaptainId;
+
+/**
+ * "Go play a custom game" is minted onto two different kinds of message: the
+ * public recovery row posted in-thread when a code fails outright, and the
+ * private "Code not working?" menu. Only the latter should be edited in
+ * place - editing the public row would fold a private-looking confirmation
+ * into a message the other captain relies on, and would put "Cancel" a click
+ * away from deleting it outright.
+ */
+const cameFromEphemeralMessage = (interaction: ButtonInteraction) =>
+  interaction.message?.flags?.has(MessageFlags.Ephemeral) ?? false;
 
 async function refuse(interaction: ButtonInteraction) {
   await interaction.reply({
@@ -29,8 +48,11 @@ export async function handleCodeNotWorking(interaction: ButtonInteraction) {
     if (!(await safeDefer(interaction, { ephemeral: true }))) return;
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      // regenerate_confirm, not generate_another_confirm: reaching this button
+      // means the captain has declared the current code dead, which is the only
+      // thing that licenses removing its message from the thread.
       createButton(
-        createButtonData('generate_another_confirm', data.originalUserId, seriesData),
+        createButtonData('regenerate_confirm', data.originalUserId, seriesData),
         'Generate a new one',
         ButtonStyle.Primary,
         '🔄',
@@ -67,7 +89,11 @@ export async function handlePlayCustom(interaction: ButtonInteraction) {
     const data = parseButtonData(interaction.customId);
     const seriesData = data.seriesData;
     if (!mayAct(interaction, data.originalUserId, seriesData.enemyCaptainId)) return refuse(interaction);
-    if (!(await safeDefer(interaction, { ephemeral: true }))) return;
+    // Editing in place on the ephemeral menu is what stops the previous step
+    // ("A replacement code does not affect the game number...") from being
+    // left behind - see cameFromEphemeralMessage above.
+    const opts = cameFromEphemeralMessage(interaction) ? { update: true } : { ephemeral: true };
+    if (!(await safeDefer(interaction, opts))) return;
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       createButton(
@@ -119,14 +145,39 @@ export async function handlePlayCustomConfirm(interaction: ButtonInteraction) {
 
     const thread = interaction.channel;
     if (thread && 'send' in thread) {
+      // Which game the custom is being played for. The thread is the only
+      // record: dennys assigns a number when the result is written, and a
+      // custom consumes no tournament code on the way there.
+      // Read the thread once for both the number and the sweep below it.
+      const scan = shareThreadScan(thread as unknown as ControlThread);
+      const gameNumber = Math.max(1, await highestPostedGameNumber(scan));
+
+      // The code for this game is dead - that is what the captain just said by
+      // choosing the custom - so its Report button goes now rather than staying
+      // up to offer a second report of the game the custom is about to record.
+      // Before the message below, so the button it carries survives the sweep.
+      await retireGameButtons(scan, gameNumber);
+
       await thread.send({
+        // CUSTOM_MARKER, not RECOVERY_MARKER: this button has to survive every
+        // result recorded between now and the custom being reported, and the ⚠️
+        // sweep retires its messages on the first one.
         content:
-          '⚠️ A custom game is being played for this series. ' +
+          `${CUSTOM_MARKER} A custom game is being played for **Game ${gameNumber}**. ` +
           'Report the winner here once it is done — remember the scoreboard screenshot.',
         components: [
           new ActionRowBuilder<ButtonBuilder>().addComponents(
             createButton(
-              createButtonData('report_result', data.originalUserId, seriesData),
+              // report_custom, not report_result: a custom leaves no trace in
+              // dennys, so the check that stops a duplicate report has nothing
+              // to look at and would read another game's result instead. The
+              // target carries no code for the same reason.
+              createButtonData(
+                'report_custom',
+                data.originalUserId,
+                seriesData,
+                encodeReportTarget(null, gameNumber),
+              ),
               'We finished the custom game',
               ButtonStyle.Success,
               '✅',

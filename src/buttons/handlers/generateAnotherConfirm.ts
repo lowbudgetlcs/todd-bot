@@ -3,7 +3,18 @@ import { parseButtonData } from "../button.ts";
 import { getTournamentCode } from "../../commands/tournament.ts";
 import log from 'loglevel';
 import { safeDefer, safeInteractionError } from "../../interactionSafety.ts";
-import { buildControlRow, buildRecoveryRow, buildSeriesStatus, postSeriesControl } from "../../seriesControl.ts";
+import {
+  buildControlRow,
+  buildGameReportRow,
+  buildRecoveryRow,
+  buildSeriesStatus,
+  clearSupersededCodes,
+  gamesAwaitingReport,
+  postSeriesControl,
+  RECOVERY_MARKER,
+  shareThreadScan,
+} from "../../seriesControl.ts";
+import type { ControlThread } from "../../seriesControl.ts";
 import { SeriesData } from "../../types/toddData.ts";
 
 const logger =log.getLogger('generateAnotherConfirm');
@@ -37,6 +48,12 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
       components: [],
     });
 
+    // Only "Code not working?" means the existing code is dead. Generate Next
+    // Game asks for the following slot, even when the current game has not been
+    // reported yet - game numbers move on results, so nothing else would tell
+    // these two apart.
+    const replacement = data.tag === 'regenerate_confirm';
+
     const tournamentCode = await getTournamentCode({
       team1Id: team1,
       team2Id: team2,
@@ -46,6 +63,7 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
       interaction,
       enemyCaptainId: opposing_captain,
       first: false,
+      replacement,
     });
 
     if (tournamentCode.riotUnavailable) {
@@ -63,7 +81,7 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
       const thread = interaction.channel;
       if (thread && 'send' in thread) {
         await thread.send({
-          content: `${tournamentCode.error}`,
+          content: `${RECOVERY_MARKER} ${tournamentCode.error}`,
           components: [
             buildRecoveryRow(data.originalUserId, seriesData, tournamentCode.retryable),
           ],
@@ -91,22 +109,56 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
     // it and "fixing" it would have duplicated the code line.
     const response = tournamentCode.discordResponse?.toString() || "";
 
-    await interaction.followUp({
+    const pinnedSeries: SeriesData = { ...seriesData, seriesId: tournamentCode.seriesId };
+
+    const posted = await interaction.followUp({
       content: response,
       ephemeral: false,
-      flags: 1 << 2
+      flags: 1 << 2,
+      // The report button rides on the code message so it can name the code it
+      // reports - see buildGameReportRow.
+      components: [
+        buildGameReportRow(
+          data.originalUserId,
+          pinnedSeries,
+          tournamentCode.tournamentCodeId,
+          tournamentCode.gameNumber,
+        ),
+      ],
     });
 
     // Re-post the controls so they stay below the code that was just added.
     const thread = interaction.channel;
     if (thread && tournamentCode.series) {
-      const pinnedSeries: SeriesData = { ...seriesData, seriesId: tournamentCode.seriesId };
+      // Sweep, list, post - three passes over the same fifty messages, and the
+      // fetch is lazy, so it still happens after the code above was posted and
+      // sees it. See shareThreadScan.
+      const scan = shareThreadScan(thread as unknown as ControlThread);
+
+      // Only when the captain came through "Code not working?", which is the one
+      // path that declares the existing code dead. Generate Next Game pressed
+      // before the current result is in produces a code for that same game
+      // number, and removing its message would take away a code still in use.
+      if (replacement) {
+        await clearSupersededCodes(scan, tournamentCode.gameNumber, posted.id);
+      }
+
+      // Issuing a code is the moment an unreported game falls behind: the game
+      // it was issued for becomes the one in progress, and anything below it
+      // that nobody reported is now genuinely overdue rather than in flight.
+      const awaiting = await gamesAwaitingReport(scan, tournamentCode.series);
+
       await postSeriesControl(
-        thread as unknown as Parameters<typeof postSeriesControl>[0],
-        buildSeriesStatus(tournamentCode.series, [
-          { id: seriesData.team1Id, name: tournamentCode.team1Name },
-          { id: seriesData.team2Id, name: tournamentCode.team2Name },
-        ]),
+        scan,
+        buildSeriesStatus(
+          tournamentCode.series,
+          [
+            { id: seriesData.team1Id, name: tournamentCode.team1Name },
+            { id: seriesData.team2Id, name: tournamentCode.team2Name },
+          ],
+          Date.now(),
+          awaiting,
+        ),
         [buildControlRow(data.originalUserId, pinnedSeries, tournamentCode.series)],
       );
     }
