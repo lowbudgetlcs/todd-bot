@@ -8,7 +8,25 @@ import {
   SeriesData,
 } from "../types/toddData";
 
-export type ButtonData = { tag: string, originalUserId: string, seriesData: SeriesData, serialize: () => string }
+export type ButtonData = {
+  tag: string,
+  /**
+   * Small integers the handler needs that are not part of the series: which
+   * tournament code this button reports, and which game number the thread shows
+   * for it. Rides inside the tag field rather than as a field of its own,
+   * because `stage` is deliberately last and absorbs every remaining colon -
+   * adding a field would shift `stageIndex` and misparse every button already
+   * sitting in a Discord message.
+   *
+   * A shortcode would not fit. Riot's are long enough to push an ordinary series
+   * past the 100-character cap on their own, which is why this carries the
+   * code's id instead and lets dennys resolve it.
+   */
+  tagArg?: string,
+  originalUserId: string,
+  seriesData: SeriesData,
+  serialize: () => string,
+}
 
 /** Discord rejects any component whose custom_id is longer than this. */
 export const MAX_CUSTOM_ID_LENGTH = 100;
@@ -46,7 +64,17 @@ const TAG_CODES: Record<string, string> = {
   cancel_switch: 'xw',
   generate_another: 'g',
   generate_another_confirm: 'gc',
+  // Same handler as generate_another_confirm, deliberately a separate tag: only
+  // this one means "the code I have is dead", which is what licenses replacing
+  // its message. Pressing Generate Next Game before reporting also produces a
+  // code for the same game number, and must not.
+  regenerate_confirm: 'rc',
   report_result: 'r',
+  // Same handler as report_result, deliberately a separate tag: a custom is
+  // played outside Riot, so dennys has no record of it and never will. Only
+  // this tag skips the "has Riot already reported this?" check, which would
+  // otherwise read the previous game's result and refuse the report.
+  report_custom: 'rk',
   report_team1_won: 'r1',
   report_team2_won: 'r2',
   code_not_working: 'cn',
@@ -80,14 +108,26 @@ export class CustomIdTooLongError extends Error {
   }
 }
 
-function serializeButtonData(tag: string, originalUserId: string, seriesData: SeriesData): string {
+/**
+ * Separates the tag from its argument. A dot rather than a colon, so the tag
+ * field stays one `split(':')` part and every existing index holds.
+ */
+const TAG_ARG_SEPARATOR = '.';
+
+function serializeButtonData(
+  tag: string,
+  originalUserId: string,
+  seriesData: SeriesData,
+  tagArg?: string,
+): string {
   const parts = encodeSeriesData(seriesData);
   // An unregistered tag rides along verbatim rather than throwing. It still
   // routes (parseButtonData hands back whatever it can't map), it just spends
   // the characters - and the length check below is what catches it if that
   // spending matters.
   const code = TAG_CODES[tag] ?? tag;
-  return `${code}:${VERSION}:${encodeSnowflake(originalUserId)}:${parts.join(':')}`;
+  const head = tagArg ? `${code}${TAG_ARG_SEPARATOR}${tagArg}` : code;
+  return `${head}:${VERSION}:${encodeSnowflake(originalUserId)}:${parts.join(':')}`;
 }
 
 /**
@@ -99,26 +139,47 @@ function serializeButtonData(tag: string, originalUserId: string, seriesData: Se
 const WORST_CASE_SERIES_ID = 9999999;
 
 /**
+ * Sized the same way as the tag and the series id: a code id and a game number,
+ * both far past anything dennys will issue. The report buttons that carry one
+ * are built long after `seriesDataFits` runs, so the budget has to be reserved
+ * up front or a late button is the first to discover it does not fit.
+ */
+const WORST_CASE_TAG_ARG = '9999999-99';
+
+/**
  * True when this series still fits once it reaches the longest-tagged button in
  * the flow. Call it before doing anything irreversible - the stage name comes
  * from dennys as a free-form string, so it is the field that can push an
  * otherwise ordinary series over the cap.
  */
 export function seriesDataFits(originalUserId: string, seriesData: SeriesData): boolean {
-  const worstCase = serializeButtonData('x'.repeat(LONGEST_TAG_LENGTH), originalUserId, {
-    ...seriesData,
-    seriesId: WORST_CASE_SERIES_ID,
-  });
+  const worstCase = serializeButtonData(
+    'x'.repeat(LONGEST_TAG_LENGTH),
+    originalUserId,
+    { ...seriesData, seriesId: WORST_CASE_SERIES_ID },
+    WORST_CASE_TAG_ARG,
+  );
   return worstCase.length <= MAX_CUSTOM_ID_LENGTH;
 }
 
-export function createButtonData(tag: string, originalUserId: string, seriesData: SeriesData): ButtonData {
+export function createButtonData(
+  tag: string,
+  originalUserId: string,
+  seriesData: SeriesData,
+  tagArg?: string,
+): ButtonData {
   return {
     tag,
+    tagArg,
     originalUserId,
     seriesData,
     serialize() {
-      const customId = serializeButtonData(this.tag, this.originalUserId, this.seriesData);
+      const customId = serializeButtonData(
+        this.tag,
+        this.originalUserId,
+        this.seriesData,
+        this.tagArg,
+      );
       // Fail here rather than inside discord.js, where this surfaces as a bare
       // "Invalid Form Body" with no clue which field was the long one.
       if (customId.length > MAX_CUSTOM_ID_LENGTH) throw new CustomIdTooLongError(customId);
@@ -137,10 +198,16 @@ export function createButton(data: ButtonData, label: string, style: ButtonStyle
 
 export function parseButtonData(customId: string): ButtonData {
   const parts = customId.split(':');
+  // Split the argument off before mapping. A tag that never carried one is
+  // unaffected, and no registered code contains a dot, so this cannot bite an
+  // id minted before tag arguments existed.
+  const separator = parts[0].indexOf(TAG_ARG_SEPARATOR);
+  const tagCode = separator === -1 ? parts[0] : parts[0].slice(0, separator);
+  const tagArg = separator === -1 ? undefined : parts[0].slice(separator + 1);
   // Legacy ids carry the full name, which is never also a code, so the fallback
   // covers them. Everything downstream - handlers.ts, the collector filters,
   // the logs - only ever sees the readable name.
-  const tag = TAG_NAMES[parts[0]] ?? parts[0];
+  const tag = TAG_NAMES[tagCode] ?? tagCode;
   const isVersioned = parts[1] === VERSION;
   const originalUserId = isVersioned ? decodeSnowflake(parts[2]) : (parts[1] ?? '');
   const metadata = parts.slice(isVersioned ? 3 : 2);
@@ -151,6 +218,7 @@ export function parseButtonData(customId: string): ButtonData {
   const fields = [...metadata.slice(0, stageIndex), metadata.slice(stageIndex).join(':')];
   return {
     tag,
+    tagArg,
     originalUserId,
     seriesData: isVersioned ? decodeSeriesData(fields) : decodeLegacySeriesData(fields),
     serialize: () => customId,

@@ -19,11 +19,19 @@ export function getButtonHandler(tag: string) {
         return handleGenerateAnotherCode;
     // case 'regenerate_code':
     //     return handleRegenerateCode;
+    // Both issue a code for the same game number. They differ only in whether
+    // the captain declared the existing code dead, which the handler reads off
+    // the tag to decide if that code's message should go.
     case 'generate_another_confirm':
+    case 'regenerate_confirm':
       return handleGenerateAnotherConfirm;
     case 'switch_sides':
       return handleSwitchSides;
+    // Both open the winner picker. They differ only in whether dennys could
+    // possibly know the result already, which the handler reads off the tag
+    // before deciding to check.
     case 'report_result':
+    case 'report_custom':
       return handleReportResult;
     case 'report_team1_won':
       return handleReportTeam1Won;

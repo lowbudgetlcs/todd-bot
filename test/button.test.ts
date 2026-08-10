@@ -119,11 +119,12 @@ describe("Discord's 100-character custom_id cap", () => {
     expect(() => data.serialize()).toThrow(CustomIdTooLongError);
   });
 
-  it('fits a stage name of 50 characters alongside everything else', () => {
+  it('fits a stage name of 39 characters alongside everything else', () => {
     // Dennys hands us eventStages as free-form strings, so this is the budget
-    // that actually matters. 'PROMOTION_RELEGATION' is 20. 50 rather than 52
-    // because seriesDataFits sizes against a series id larger than this fixture.
-    const stage = 'X'.repeat(50);
+    // that actually matters. The longest dennys actually issues is
+    // 'PROMOTION_RELEGATION' at 20, so this is still near double the real worst
+    // case. It was 50 before report buttons reserved room for a tag argument.
+    const stage = 'X'.repeat(39);
     const data = createButtonData('generate_another_confirm', '1234567890123456789', {
       ...worstCase,
       stage,
@@ -164,13 +165,25 @@ describe('seriesDataFits', () => {
     // (generate_another_confirm), which is built after the game exists.
     // Abbreviating the tags narrowed that window from 12 characters to 1, so
     // this pins the exact boundary rather than a comfortable margin.
-    const stage = 'X'.repeat(51);
+    const stage = 'X'.repeat(40);
     const user = '1234567890123456789';
     const worst = { ...seriesData, enemyCaptainId: user, divisionId: 9999, team1Id: 9999, team2Id: 9999, seriesId: 9999, stage };
     const short = createButtonData('stage_select', user, worst);
     expect(short.serialize().length).toBeLessThanOrEqual(MAX_CUSTOM_ID_LENGTH);
     expect(seriesDataFits(user, worst)).toBe(false);
-    expect(seriesDataFits(user, { ...worst, stage: 'X'.repeat(50) })).toBe(true);
+    expect(seriesDataFits(user, { ...worst, stage: 'X'.repeat(39) })).toBe(true);
+  });
+
+  it('reserves room for a report button, which is built long after this runs', () => {
+    // The report button carries a tag argument and is minted onto the code
+    // message once the code already exists in dennys. A budget sized without it
+    // would pass here and throw there, with the code already issued.
+    const user = '1234567890123456789';
+    const worst = { ...seriesData, enemyCaptainId: user, divisionId: 9999, team1Id: 9999, team2Id: 9999, seriesId: 9999, stage: 'X'.repeat(39) };
+    expect(seriesDataFits(user, worst)).toBe(true);
+
+    const report = createButtonData('report_result', user, { ...worst, seriesId: 9999999 }, '9999999-99');
+    expect(report.serialize().length).toBeLessThanOrEqual(MAX_CUSTOM_ID_LENGTH);
   });
 });
 
