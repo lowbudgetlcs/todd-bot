@@ -520,8 +520,22 @@ response shapes in `src/dennysSchemas.ts`.
 
 Bodies: `{ blueTeamId, redTeamId }` for the code, `{ winnerTeamId?, loserTeamId?,
 tournamentCodeId?, shortcode? }` for a result, `{ winnerTeamId?, loserTeamId? }`
-for a completion. **None of the writes are retried** — none are idempotent, and a
-replay would issue a second code or record a second result.
+for a completion. **None of the writes are retried** — a replay would issue a
+second code, and a result naming no code records a second game.
+
+A result naming a code is the exception, and Todd depends on it. Dennys returns
+the game it already holds for that code with a 200 instead of inserting a second
+one, and attributes the result to that game even while other codes are
+outstanding. A result naming *no* code gets neither: `SeriesService.reportResult`
+pulls from Riot first and hands back whatever that pull turned up, so a custom
+game reported alongside a live code can come back as the coded game with the
+captain's result dropped. Every report Todd can attribute carries its code; only
+customs, which have none, take the codeless path.
+
+Game numbers come from write order regardless — `GameRepository.insert` takes
+`max(number) + 1` for the series under an advisory lock, so naming the code does
+not influence numbering. Todd shows the number from the thread rather than the
+one dennys assigns; see `encodeReportTarget` in `seriesControl.ts`.
 
 Of these, the `/start-series` flow uses only the reads and the code issue. Todd
 never completes, reopens or forfeits a series — Dennys closes one automatically
@@ -591,7 +605,7 @@ these were verified against the DTOs on `release/1.4.0`:
 | `TeamDto.logo` | non-nullable `string` | `String?` — usually null |
 | `EventStage` | includes `PROMOTION_RELEGATION` | only `REGULAR_SEASON`, `PLAYOFFS` |
 | `eventGroupId` on the wrapper DTOs | the event's group | always `null`; the mappers never set it. Only `/event/{id}` carries a real value |
-| `ReportResultDto` | `tournamentCodeId` and `shortcode` mutually exclusive | both accepted, `tournamentCodeId` wins |
+| `ReportResultDto` | `tournamentCodeId` and `shortcode` mutually exclusive | enforced as of 1.4.0 — `SeriesService.reportResult` rejects a request carrying both. 1.3.x accepted both and preferred `tournamentCodeId`, which is what this row used to say |
 | Nullable fields | may be absent | always present, explicitly `null` |
 
 The hosted spec (`/swagger/documentation.yaml`) is behind auth and returns 403 to

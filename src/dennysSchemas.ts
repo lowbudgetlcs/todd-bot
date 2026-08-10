@@ -149,7 +149,10 @@ export const gameSchema = z.object({
   seriesId: z.number(),
   number: z.number(),
   result: gameResultSchema.nullish().catch(null),
-  tournamentCodeId: unread(z.number()),
+  // Read, and load-bearing: this is how Todd tells "the game this button is for
+  // is recorded" from "some game is recorded". Nullable rather than unread - a
+  // custom is genuinely codeless - but a rename must fail at the seam.
+  tournamentCodeId: z.number().nullable(),
   riotMatchId: unread(z.string()),
   createdAt: unread(z.string()),
 });
@@ -157,8 +160,14 @@ export const gameSchema = z.object({
 export const seriesWithGamesSchema = seriesSchema.extend({
   tournamentCodes: z.array(tournamentCodeSchema),
   games: z.array(gameSchema),
-  lastCodeIssuedAt: unread(z.string()),
-  lastGameAt: unread(z.string()),
+  // Read, and the only evidence dennys carries for "has the newest code been
+  // answered": nothing names a code that was abandoned for a custom, so the
+  // ordering of these two is what says it has been superseded. Null until the
+  // first code and the first game respectively - but degrading a rename to null
+  // would silently turn the staleness warning and "Code not working?" off, so
+  // they are required rather than unread.
+  lastCodeIssuedAt: z.string().nullable(),
+  lastGameAt: z.string().nullable(),
 });
 
 export const eventGroupListSchema = z.array(eventGroupSchema);
