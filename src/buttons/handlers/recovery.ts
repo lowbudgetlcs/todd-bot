@@ -73,8 +73,8 @@ export async function handleCodeNotWorking(interaction: ButtonInteraction) {
 
     await interaction.editReply({
       content:
-        'A replacement code does not affect the game number — a code nobody played does not count.\n' +
-        'If Riot will not give you a working one, play a custom instead.',
+        'You may either regenerate a new code to use OR play a custom.\n' +
+        'If regenerating a code fails for any reason, please use a custom game.',
       components: [row],
     });
   } catch (error) {
@@ -90,8 +90,7 @@ export async function handlePlayCustom(interaction: ButtonInteraction) {
     const seriesData = data.seriesData;
     if (!mayAct(interaction, data.originalUserId, seriesData.enemyCaptainId)) return refuse(interaction);
     // Editing in place on the ephemeral menu is what stops the previous step
-    // ("A replacement code does not affect the game number...") from being
-    // left behind - see cameFromEphemeralMessage above.
+    // from being left behind - see cameFromEphemeralMessage above.
     const opts = cameFromEphemeralMessage(interaction) ? { update: true } : { ephemeral: true };
     if (!(await safeDefer(interaction, opts))) return;
 

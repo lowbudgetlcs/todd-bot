@@ -151,6 +151,17 @@ describe('a code that generated but does not work', () => {
     ]);
   });
 
+  it('points at the custom game as the way out', async () => {
+    const interaction = makeInteraction('code_not_working');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleCodeNotWorking(interaction as any);
+
+    expect(editReplyPayloads.at(-1)!.content).toBe(
+      'You may either regenerate a new code to use OR play a custom.\n' +
+        'If regenerating a code fails for any reason, please use a custom game.',
+    );
+  });
+
   it('replaces the code through the ordinary issue path, so the number holds', async () => {
     // A code nobody played produces no game, so reissuing does not advance the
     // number. That makes a replacement the same operation as the next game -
@@ -218,8 +229,7 @@ describe('committing to a custom game', () => {
 
   it('edits the "Code not working?" menu in place rather than leaving it behind', async () => {
     // Previously this deferred a brand new ephemeral reply, so the prior step
-    // ("A replacement code does not affect the game number...") stayed on
-    // screen forever with dead buttons once the flow moved on.
+    // stayed on screen forever with dead buttons once the flow moved on.
     const interaction = makeInteraction('play_custom', ORIGINAL_USER, { ephemeralOrigin: true });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handlePlayCustom(interaction as any);
