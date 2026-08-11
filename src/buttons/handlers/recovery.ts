@@ -164,7 +164,8 @@ export async function handlePlayCustomConfirm(interaction: ButtonInteraction) {
         // sweep retires its messages on the first one.
         content:
           `${CUSTOM_MARKER} A custom game is being played for **Game ${gameNumber}**. ` +
-          'Report the winner here once it is done — remember the scoreboard screenshot.',
+          'Report the winner here once it is done.\n' +
+          'The scoreboard screenshot goes in your **post-game form**, not in this thread.',
         components: [
           new ActionRowBuilder<ButtonBuilder>().addComponents(
             createButton(

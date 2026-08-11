@@ -265,6 +265,15 @@ describe('committing to a custom game', () => {
     expect(parseButtonData(button.custom_id).tagArg).toBe('0-3');
   });
 
+  it('sends the screenshot to the post-game form rather than the thread', async () => {
+    const interaction = makeInteraction('play_custom_confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handlePlayCustomConfirm(interaction as any);
+
+    expect(threadSends[0].content).toContain('post-game form');
+    expect(threadSends[0].content).toContain('not in this thread');
+  });
+
   it('retires the dead code button as soon as the custom is committed', async () => {
     // Choosing the custom *is* the captain saying that code will not be played.
     // Leaving its Report button up offered a second report of the same game -
