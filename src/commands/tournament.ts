@@ -8,12 +8,23 @@ import {
   SlashCommandBuilder,
   StringSelectMenuBuilder,
   StringSelectMenuInteraction,
+  ThreadAutoArchiveDuration,
 } from 'discord.js';
 import { buildThreadName, getDraftLinksMarkdown } from '../util.ts';
 import { runGuarded, safeDefer, safeInteractionError } from '../interactionSafety.ts';
 import { User } from '../interfaces.ts';
 import { createButton, createButtonData, parseButtonData, seriesDataFits } from '../buttons/button.ts';
-import { createGame, getEvent, getEvents, getEventWithTeams, getSeriesId, getTeam, getTotalGames, Team } from '../dennys.ts';
+import { SeriesWithGames } from '../dennysSchemas.ts';
+import {
+  buildControlRow,
+  buildGameReportRow,
+  buildRecoveryRow,
+  buildSeriesStatus,
+  highestPostedGameNumber,
+  postSeriesControl,
+  RECOVERY_MARKER,
+} from '../seriesControl.ts';
+import { findSeriesForTeams, getEvent, getEvents, getEventWithTeams, getSeries, getSeriesId, getTeam, isRetryableRiotGatewayError, isRiotGatewayError, issueTournamentCode, nextGameNumber, Team } from '../dennys.ts';
 import log from 'loglevel';
 import { SeriesData } from '../types/toddData.ts';
 
@@ -65,6 +76,7 @@ export async function handleDivisionSelect(
     team2Id: "" as unknown as number,
     divisionId: divisionKey,
     enemyCaptainId: enemyCaptainId,
+    seriesId: 0,
     stage: ""
   };
   const customId1 = createButtonData('team1_select', interaction.user.id, seriesDataUpdated);
@@ -96,7 +108,7 @@ export async function handleDivisionSelect(
   const collector = message.createMessageComponentCollector({
     componentType: ComponentType.StringSelect,
     filter: (i: { user: User; customId: string }) =>
-      i.user.id === interaction.user.id && ['team1_select', 'team2_select', 'stage_select'].includes(parseButtonData(i.customId).tag),
+      i.user.id === interaction.user.id && ['team1_select', 'team2_select', 'stage_select', 'series_select'].includes(parseButtonData(i.customId).tag),
     time: 5 * 60 * 1000,
   });
 
@@ -123,6 +135,7 @@ export async function handleTeamSelect(
   let team1 = seriesData.team1Id;
   let team2 = seriesData.team2Id;
   let stage = seriesData.stage;
+  let pinnedSeriesId = seriesData.seriesId;
   const division = seriesData.divisionId;
   const tag = data.tag; 
   const enemyCaptainId = seriesData.enemyCaptainId;
@@ -132,6 +145,7 @@ export async function handleTeamSelect(
     team1 = '' as unknown as number;
     team2 = '' as unknown as number;
     stage = "";
+    pinnedSeriesId = 0;
   } else if (tag === 'switch') {
     logger.info("Switching sides");
     const temp = team1;
@@ -146,6 +160,13 @@ export async function handleTeamSelect(
     team2 = Number(values[0]);
   } else if (tag === 'stage_select') {
     stage = values[0] || "";
+  } else if (tag === 'series_select') {
+    pinnedSeriesId = Number(values[0]);
+  }
+
+  // Changing any of these invalidates a series chosen against the old ones.
+  if (tag === 'team1_select' || tag === 'team2_select' || tag === 'stage_select') {
+    pinnedSeriesId = 0;
   }
 
   // Ack before hitting dennys, otherwise a slow response expires the token.
@@ -167,6 +188,7 @@ export async function handleTeamSelect(
     team2Id: team2,
     divisionId: division,
     enemyCaptainId: enemyCaptainId,
+    seriesId: pinnedSeriesId,
     stage
   };
 
@@ -229,17 +251,65 @@ export async function handleTeamSelect(
 
   
 
-  const confirmButtonData = createButtonData('confirm', user.id, seriesDataUpdated);
+  // Two teams can meet more than once in a stage, and nothing on the series
+  // distinguishes them but the Bo. Resolve here rather than at confirm time, so
+  // the choice is made before anything exists in dennys.
+  const candidates = await findSeriesForTeams(Number(division), Number(team1), Number(team2), stage);
+  if (candidates.length === 0) {
+    await interaction.editReply({
+      content: 'Failed to find a matching series for these teams.',
+      components: [],
+    });
+    return;
+  }
+
+  // Same Bo means genuinely interchangeable to a code-issuing service, and a
+  // "Bo3 / Bo3" dropdown reads as broken. Lowest id keeps it deterministic.
+  const interchangeable = candidates.every(s => s.totalGames === candidates[0].totalGames);
+  const chosen =
+    candidates.find(s => s.id === pinnedSeriesId) ?? (interchangeable ? candidates[0] : null);
+
+  const summary =
+    `Blue Side: **${team1Name}**\n` + `Red Side: **${team2Name}**\n` + `Stage: **${stage}**`;
+
+  if (!chosen) {
+    const seriesDropdown = new StringSelectMenuBuilder()
+      .setCustomId(createButtonData('series_select', user.id, seriesDataUpdated).serialize())
+      .setPlaceholder('Select which series')
+      .addOptions(
+        candidates.map(s => ({
+          label: `Best of ${s.totalGames}`,
+          value: String(s.id),
+          default: s.id === pinnedSeriesId,
+        })),
+      );
+    await interaction.editReply({
+      content:
+        `${summary}\n\nThese teams have more than one series in this stage. ` +
+        `Pick the one you are playing.`,
+      components: [
+        row1,
+        row2,
+        row3,
+        new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(seriesDropdown),
+      ],
+    });
+    return;
+  }
+
+  const resolved: SeriesData = { ...seriesDataUpdated, seriesId: chosen.id };
+
+  const confirmButtonData = createButtonData('confirm', user.id, resolved);
   const confirm = createButton(confirmButtonData, 'Confirm', ButtonStyle.Success, '✅');
 
-  const switchSidesButtonData = createButtonData('switch', user.id, seriesDataUpdated);
+  const switchSidesButtonData = createButtonData('switch', user.id, resolved);
   const switchSides = createButton(
     switchSidesButtonData,
     'Switch Sides',
     ButtonStyle.Primary,
     '🔄',
   );
-  const cancelButtonData = createButtonData('cancel', user.id, seriesDataUpdated);
+  const cancelButtonData = createButtonData('cancel', user.id, resolved);
   const cancel = createButton(cancelButtonData, 'Cancel', ButtonStyle.Danger, '❌');
 
   const confirmRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -252,11 +322,59 @@ export async function handleTeamSelect(
     `Please confirm all looks right\n` +
     `# Blue Side: ${team1Name}\n` +
     `# Red Side: ${team2Name}\n` +
-    `# Stage: ${stage}`;
+    `# Stage: ${stage}\n` +
+    `# Best of ${chosen.totalGames}`;
   await interaction.editReply({
     content,
     components: [confirmRow],
   });
+}
+
+type SeriesHeader = Pick<
+  Awaited<ReturnType<typeof getTournamentCode>>,
+  'divisionName' | 'stageName' | 'team1Name' | 'team2Name' | 'shortcode'
+>;
+
+/**
+ * Posts the public series header and opens its thread, then puts `first` inside
+ * it. Reached from both the success path and the Riot-outage path: a series with
+ * no code still needs somewhere to live, or there is nowhere to report from.
+ */
+async function openSeriesThread(
+  interaction: ButtonInteraction,
+  userId: string,
+  header: SeriesHeader,
+  first: { content: string; components?: ActionRowBuilder<ButtonBuilder>[]; flags?: number },
+) {
+  const publicMessage = await interaction.followUp({
+    content:
+      `## ${header.divisionName} - ${header.stageName || 'UNKNOWN_STAGE'}\n` +
+      `**__${header.team1Name}__ v.s. __${header.team2Name}__**\n\n` +
+      `Series Created By: <@${userId}>`,
+    ephemeral: false,
+  });
+
+  const dateString = new Date().toISOString().split('T')[0];
+  // buildThreadName keeps us under Discord's 100 char cap; team names with
+  // special characters are already repaired upstream in dennys.ts.
+  const threadName = buildThreadName(header.team1Name, header.team2Name, dateString);
+  logger.info(`Creating thread: ${threadName}`);
+  const thread = await publicMessage.startThread({
+    name: threadName,
+    // The longest Discord offers - one hour, one day, three days and one week
+    // are the only values it accepts, and archiving cannot be turned off.
+    //
+    // The timer runs from the last message rather than from creation, so an
+    // active series never archives on its own. This is for the gaps: an
+    // emergency pause can leave a thread quiet for hours, and it should still be
+    // in the channel's thread list when play resumes. Archiving is not a dead
+    // end either - an unlocked thread accepts a message and unarchives itself.
+    autoArchiveDuration: ThreadAutoArchiveDuration.OneWeek,
+    reason: `Series thread for ${header.team1Name} vs ${header.team2Name}`,
+  });
+
+  await thread.send(first);
+  return thread;
 }
 
 export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
@@ -274,7 +392,7 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
   // "Generate Next Game" button won't serialize leaves a series stranded.
   if (!seriesDataFits(user.id, seriesData)) {
     logger.error(
-      `Series context too long for a custom_id - refusing before createGame. Stage "${seriesData.stage}"`,
+      `Series context too long for a custom_id - refusing before the code is issued. Stage "${seriesData.stage}"`,
     );
     await interaction.editReply({
       content:
@@ -286,8 +404,35 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
   }
 
   try {
-    const tournamentCode = await getTournamentCode(seriesData.team1Id, seriesData.team2Id, seriesData.divisionId, seriesData.stage, interaction, seriesData.enemyCaptainId, true);
-    if (tournamentCode.error != null) {
+    const tournamentCode = await getTournamentCode({
+      team1Id: seriesData.team1Id,
+      team2Id: seriesData.team2Id,
+      divisionId: seriesData.divisionId,
+      stage: seriesData.stage,
+      seriesId: seriesData.seriesId,
+      interaction,
+      enemyCaptainId: seriesData.enemyCaptainId,
+      first: true,
+    });
+    if (tournamentCode.riotUnavailable) {
+      // The series still gets a thread. A series played entirely on customs has
+      // to live somewhere, and without one there is nowhere to report from.
+      await interaction.editReply({
+        content: 'Riot would not issue a code. Continuing in a thread.',
+        components: [],
+      });
+      await interaction.deleteReply();
+      await openSeriesThread(interaction, user.id, tournamentCode, {
+        content: `${RECOVERY_MARKER} ${tournamentCode.error}`,
+        components: [
+          buildRecoveryRow(
+            user.id,
+            { ...seriesData, seriesId: tournamentCode.seriesId },
+            tournamentCode.retryable,
+          ),
+        ],
+      });
+    } else if (tournamentCode.error != null) {
       // Handle error: Update original interaction
       await interaction.editReply({
         content: tournamentCode.error,
@@ -301,58 +446,42 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
 
       await interaction.deleteReply();
 
-      const generateButtonData = createButtonData('generate_another', user.id, seriesData);
-      const generateButton = createButton(
-        generateButtonData,
-        'Generate Next Game',
-        ButtonStyle.Success,
-        '⚔️',
-      );
-
-      // data.metadata[3] = tournamentCode.gameId.toString(); 
-      // logger.info(data.metadata);
-      // const regenerateButtonData = createButtonData("regenerate_code", data.originalUserId, data.metadata);
-      // const regenerateButton = createButton(regenerateButtonData, "Code Not Work?", ButtonStyle.Secondary, '❓');
-
-      const buttonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(generateButton);
-      const discordResponse =
-          `## ${tournamentCode.divisionName} - ${tournamentCode.stageName || 'UNKNOWN_STAGE'}\n` +
-          `**__${tournamentCode.team1Name}__ v.s. __${tournamentCode.team2Name}__**\n\n` +
-          `Series Created By: <@${user.id}>`;
-      const publicMessage = await interaction.followUp({
-        content: discordResponse,
-        ephemeral: false,
-      });
-
-      // Create a thread from the public message
-      const now = new Date();
-      const dateString = now.toISOString().split('T')[0];
-      // buildThreadName keeps us under Discord's 100 char cap; team names with
-      // special characters are already repaired upstream in dennys.ts.
-      const threadName = buildThreadName(
-        tournamentCode.team1Name,
-        tournamentCode.team2Name,
-        dateString,
-      );
-      logger.info(`Creating thread: ${threadName}`);
-      const thread = await publicMessage.startThread({
-        name: threadName,
-        autoArchiveDuration: 60, // in minutes
-        reason: `Draft links thread for tournament code ${tournamentCode.shortcode}`,
-      });
-
+      // Pinned here, at the one point the series is known: every later press
+      // reads it back out rather than resolving from the team pair again.
+      const pinnedSeries: SeriesData = { ...seriesData, seriesId: tournamentCode.seriesId };
       const links = tournamentCode.draftLinks?.toString().concat("<@"+seriesData.enemyCaptainId+">") || null;
       logger.info(`Draft Links: ${links}`);
-      // Post the draft links in the thread
-      await thread.send({
+      const thread = await openSeriesThread(interaction, user.id, tournamentCode, {
         content: links!,
         flags: 1 << 2,
-        components: [buttonRow],
       });
 
+      // The report button lives here rather than on the control message, so it
+      // can name the code it is reporting - see buildGameReportRow.
       await thread.send({
         content: tournamentCode.discordResponse?.toString() || "",
+        components: [
+          buildGameReportRow(
+            user.id,
+            pinnedSeries,
+            tournamentCode.tournamentCodeId,
+            tournamentCode.gameNumber,
+          ),
+        ],
       });
+
+      // Controls go last and stay last, so the newest state is always at the
+      // bottom of the thread rather than scrolled away above the codes.
+      if (tournamentCode.series) {
+        await postSeriesControl(
+          thread as unknown as Parameters<typeof postSeriesControl>[0],
+          buildSeriesStatus(tournamentCode.series, [
+            { id: seriesData.team1Id, name: tournamentCode.team1Name },
+            { id: seriesData.team2Id, name: tournamentCode.team2Name },
+          ]),
+          [buildControlRow(user.id, pinnedSeries, tournamentCode.series)],
+        );
+      }
     }
   } catch (error) {
     logger.error('Failed to generate tournament code:', error);
@@ -366,15 +495,36 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
 }
 
 // TODO: Fix this as to not need to send interaction
-export async function getTournamentCode(
-  team1: number,
-  team2: number,
-  divisionId: number,
-  stage: string,
-  interaction: ButtonInteraction,
-  enemyCaptainId: string,
-  first: boolean
-): Promise<{
+export type TournamentCodeRequest = {
+  team1Id: number;
+  team2Id: number;
+  divisionId: number;
+  stage: string;
+  /** Pinned series, or 0 to resolve it from the team pair. */
+  seriesId: number;
+  interaction: ButtonInteraction;
+  enemyCaptainId: string;
+  /** Only the first game of a series gets draft links. */
+  first: boolean;
+  /**
+   * The captain declared the existing code dead, so this code takes its slot
+   * rather than the next one. Without it, a replacement would advance the game
+   * number - the thing the recovery flow promises it will not do.
+   */
+  replacement?: boolean;
+};
+
+export async function getTournamentCode({
+  team1Id: team1,
+  team2Id: team2,
+  divisionId,
+  stage,
+  seriesId: pinnedSeriesId,
+  interaction,
+  enemyCaptainId,
+  first,
+  replacement = false,
+}: TournamentCodeRequest): Promise<{
   discordResponse: string | null;
   draftLinks: string | null;
   shortcode: string | null;
@@ -385,8 +535,18 @@ export async function getTournamentCode(
   stageName?: string;
   team1Name: string;
   team2Name: string;
-  gameId: number;
+  // The code's id, not a game's - since 1.4.0 a game exists only once a result
+  // is written. This is the handle reportSeriesResult takes.
+  tournamentCodeId: number;
   totalGames: number;
+  /** The resolved series, for callers building buttons that must pin it. */
+  seriesId: number;
+  /** The series as read after the code was issued, or null on an error path. */
+  series: SeriesWithGames | null;
+  /** Riot, not us, refused the code. The custom-game path is the way forward. */
+  riotUnavailable: boolean;
+  /** Only meaningful with riotUnavailable: whether pressing again is worth it. */
+  retryable: boolean;
 }> {
   //TODO: Call api with this informatio nand let it handle all this logic
   const division  = divisionId? Number(divisionId) : null
@@ -403,7 +563,11 @@ export async function getTournamentCode(
       divisionId: division,
       team1Name: team1.toString(),
       team2Name: team2.toString(),
-      gameId: 0,
+      tournamentCodeId: 0,
+      seriesId: 0,
+      series: null,
+      riotUnavailable: false,
+      retryable: false,
       totalGames: 0,
     };
   }
@@ -417,7 +581,11 @@ export async function getTournamentCode(
       divisionId: division,
       team1Name: team1.toString(),
       team2Name: team2.toString(),
-      gameId:0,
+      tournamentCodeId: 0,
+      seriesId: 0,
+      series: null,
+      riotUnavailable: false,
+      retryable: false,
       totalGames:0
     };
   }
@@ -427,7 +595,9 @@ export async function getTournamentCode(
   const team1Name = team1Data?.name || 'Unknown Team 1';
   const team2Name = team2Data?.name || 'Unknown Team 2';
   logger.info(`Fetched teams - Team 1: ${team1Data?.id}  ${team1Data?.name}, Team 2: ${team2Data?.id}  ${team2Data?.name}`);
-  const seriesId = await getSeriesId(division!, team1, team2, selectedStage);
+  // Once pinned, the series never gets looked up by team pair again. Re-resolving
+  // is what let a completed series hand the next code to the wrong one.
+  const seriesId = pinnedSeriesId || (await getSeriesId(division!, team1, team2, selectedStage));
   if (!seriesId) {
     return {
       discordResponse: null,
@@ -438,34 +608,77 @@ export async function getTournamentCode(
       divisionId: division,
       team1Name,
       team2Name,
-      gameId: 0,
+      tournamentCodeId: 0,
+      seriesId: 0,
+      series: null,
+      riotUnavailable: false,
+      retryable: false,
       totalGames: 0
     };
   }
 
-  const game = await createGame(seriesId, team1Data!, team2Data!);
-  const gameNumber = game.number || 1; // Assuming gameNumber is part of the Game object
-  const shortcode = game.shortcode;
-  if (!game) {
+  let code;
+  try {
+    code = await issueTournamentCode(seriesId, team1Data!, team2Data!);
+  } catch (error) {
+    // Riot refusing is not a lookup failure, and telling a captain "no such
+    // series" when Riot is down leaves them with nothing to try.
+    if (!isRiotGatewayError(error)) throw error;
+    const retryable = isRetryableRiotGatewayError(error);
+    logger.error(`Riot could not issue a code for series ${seriesId}:`, error);
     return {
       discordResponse: null,
       draftLinks: null,
       shortcode: null,
-      gameNumber: gameNumber,
-      error: 'Failed to create game. Please try again later.',
+      gameNumber: 0,
+      error: retryable
+        ? 'Riot is not answering right now. Try again in a moment, or play a custom game.'
+        : 'Riot refused to create a code for this game. Playing a custom is the way forward.',
       divisionId: division,
+      divisionName: divisionEvent?.name,
+      stageName: selectedStage,
       team1Name,
       team2Name,
-      gameId:0,
-      totalGames:0
+      tournamentCodeId: 0,
+      totalGames: 0,
+      seriesId,
+      series: null,
+      riotUnavailable: true,
+      retryable,
     };
   }
- 
+  const shortcode = code.shortcode;
+
+  // Read the series *after* issuing, not before. Issuing a code makes dennys pull
+  // any played game it has not heard about yet, so a lookup that runs first
+  // reports the pre-pull count - which reads as "# Game 1" forever whenever a
+  // Riot callback went missing.
+  //
+  // One lookup covers both figures. They previously came from two independent
+  // resolutions by team pair, so the code could be booked against one series
+  // while the Bo count and draft links came from another (todd-bot#97).
+  const series = await getSeries(seriesId);
+  const totalGames = series.totalGames;
+
+  // Recorded results are the floor, not the answer. They only move when a
+  // result is written, so generating twice without reporting would stamp the
+  // same number on both codes. What the thread already shows is the missing
+  // half: the slot the last code went out for.
+  //
+  // Both are combined with max() rather than trusting the thread outright, so a
+  // thread with no code messages - a series that has only ever played customs,
+  // or a scan that failed - still lands on a sane number.
+  const baseline = nextGameNumber(series);
+  const posted = first
+    ? 0
+    : await highestPostedGameNumber(
+        interaction.channel as unknown as Parameters<typeof highestPostedGameNumber>[0],
+      );
+  const gameNumber = Math.max(baseline, replacement ? posted : posted + 1);
+
   const division_name = divisionEvent?.name || 'Unknown Division';
-  const totalGames = await getTotalGames(division!, team1, team2, selectedStage);
   const member = await interaction.guild!.members.fetch(interaction.user.id);
   const draftLinkMarkdown = first? (await getDraftLinksMarkdown(team1Data.name, team2Data.name, shortcode, totalGames)) + '\n': '';
-  const gameId = game.id || 0;
   const sideShow = `# Game ${gameNumber} \n 🟦 __**${team1Name}**__ v.s.  __**${team2Name}**__ 🟥\n`;
   const gameCode: string = `\nCode: \`\`\`${shortcode}\`\`\`\n`;
   const generatedBy : string = `Game Generated By: <@${member.id}>\n`;
@@ -483,7 +696,11 @@ export async function getTournamentCode(
     stageName: selectedStage,
     team1Name,
     team2Name,
-    gameId,
+    tournamentCodeId: code.id,
+    seriesId,
+    series,
+    riotUnavailable: false,
+    retryable: false,
     totalGames
   };
 }
@@ -525,6 +742,7 @@ module.exports =  {
       team2Id: "" as unknown as number,
       divisionId: 0,
       enemyCaptainId: enemyCaptain.id,
+      seriesId: 0,
       stage: ""
     };
     // Show division select menu

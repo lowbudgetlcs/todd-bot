@@ -21,8 +21,10 @@ jobs:
       - name: Install
         run: npm ci
 
+      # Covers test/ as well as src/, so a fixture cannot drift from the dennys
+      # types it stands in for without failing the build.
       - name: Typecheck
-        run: npx tsc --noEmit
+        run: npm run typecheck
 
       - name: Lint
         run: npx eslint .
