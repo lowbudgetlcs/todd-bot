@@ -33,9 +33,14 @@ const {
   reopenSeries,
   isRiotGatewayError,
   isRetryableRiotGatewayError,
+  isCodeLimitError,
+  dennysErrorMessage,
+  remainingCodeAllowance,
+  outstandingCodeId,
   DennysSchemaError,
 } = await import('../src/dennys.ts');
 const { HttpError } = await import('../src/http.ts');
+const { seriesWithGamesSchema } = await import('../src/dennysSchemas.ts');
 
 const API_URL = 'https://dennys.test'; // seeded by test/setup.ts
 const WHEN = '2026-08-09T00:00:00Z';
@@ -410,5 +415,105 @@ describe('riot gateway failures are distinguishable', () => {
   it('marks only 503 as worth another press', () => {
     expect(isRetryableRiotGatewayError(new HttpError('boom', 503, ''))).toBe(true);
     expect(isRetryableRiotGatewayError(new HttpError('boom', 502, ''))).toBe(false);
+  });
+});
+
+/**
+ * Dennys 1.4.1 caps codes per game, counted since the most recent recorded
+ * game, and answers 409 past that (todd-bot#126).
+ */
+describe('the tournament code allowance', () => {
+  const LIMIT_BODY = JSON.stringify({
+    code: 409,
+    message: "Series '756' has already been issued 2 tournament code(s).",
+  });
+
+  it('is not retried - the write policy already forbids it', async () => {
+    fetchWithRetry.mockResolvedValue(fail(409, LIMIT_BODY));
+    await expect(issueTournamentCode(756, BLUE, RED)).rejects.toThrow(HttpError);
+    expect(optsOf().retries).toBe(0);
+    expect(fetchWithRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('classifies the 409 as a spent allowance, and nothing else as one', () => {
+    expect(isCodeLimitError(new HttpError('nope', 409, LIMIT_BODY))).toBe(true);
+    expect(isCodeLimitError(new HttpError('nope', 502, ''))).toBe(false);
+    expect(isCodeLimitError(new Error('network'))).toBe(false);
+  });
+
+  it("hands back dennys's own message, which names the series and the count", () => {
+    expect(dennysErrorMessage(new HttpError('nope', 409, LIMIT_BODY))).toBe(
+      "Series '756' has already been issued 2 tournament code(s).",
+    );
+  });
+
+  it('repairs mojibake in the message, like every other string from dennys', () => {
+    const body = JSON.stringify({ code: 409, message: mojibake('Série ’756’ is done') });
+    expect(dennysErrorMessage(new HttpError('nope', 409, body))).toBe('Série ’756’ is done');
+  });
+
+  it('says nothing when the body is not the shape dennys documents', () => {
+    expect(dennysErrorMessage(new HttpError('nope', 409, 'Gateway Timeout'))).toBeNull();
+    expect(dennysErrorMessage(new HttpError('nope', 409, '{"code":409}'))).toBeNull();
+    expect(dennysErrorMessage(new HttpError('nope', 409, ''))).toBeNull();
+    expect(dennysErrorMessage(new Error('network'))).toBeNull();
+  });
+
+  it('trims a message too long to sit in a Discord reply', () => {
+    const body = JSON.stringify({ code: 409, message: 'x'.repeat(900) });
+    expect(dennysErrorMessage(new HttpError('nope', 409, body))!.length).toBe(501);
+  });
+
+  it('counts the allowance from the codes issued since the last recorded game', () => {
+    const series = seriesWithGamesSchema.parse(
+      aSeriesWithGames({
+        tournamentCodes: [
+          aCode({ id: 1, createdAt: '2026-08-09T10:00:00Z' }),
+          aCode({ id: 2, createdAt: '2026-08-09T12:00:00Z' }),
+        ],
+        games: [aGame({ tournamentCodeId: 1 })],
+        lastGameAt: '2026-08-09T11:00:00Z',
+      }),
+    );
+    expect(remainingCodeAllowance(series)).toBe(1);
+  });
+
+  it('counts every code when no game has been recorded yet', () => {
+    const series = seriesWithGamesSchema.parse(
+      aSeriesWithGames({
+        tournamentCodes: [
+          aCode({ id: 1, createdAt: '2026-08-09T10:00:00Z' }),
+          aCode({ id: 2, createdAt: '2026-08-09T11:00:00Z' }),
+        ],
+      }),
+    );
+    expect(remainingCodeAllowance(series)).toBe(0);
+  });
+
+  it('reports the count as unknown rather than guessing it', () => {
+    const series = seriesWithGamesSchema.parse(
+      aSeriesWithGames({ tournamentCodes: [aCode({ createdAt: null })] }),
+    );
+    expect(remainingCodeAllowance(series)).toBeNull();
+  });
+
+  it('finds the newest code no game has been recorded against', () => {
+    const series = seriesWithGamesSchema.parse(
+      aSeriesWithGames({
+        tournamentCodes: [aCode({ id: 1 }), aCode({ id: 2 }), aCode({ id: 3 })],
+        games: [aGame({ tournamentCodeId: 3 })],
+      }),
+    );
+    expect(outstandingCodeId(series)).toBe(2);
+  });
+
+  it('has no code to report against once every one is answered', () => {
+    const series = seriesWithGamesSchema.parse(
+      aSeriesWithGames({
+        tournamentCodes: [aCode({ id: 1 })],
+        games: [aGame({ tournamentCodeId: 1 })],
+      }),
+    );
+    expect(outstandingCodeId(series)).toBeNull();
   });
 });

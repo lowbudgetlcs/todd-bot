@@ -316,6 +316,53 @@ export const completeSeries = async (
 export const reopenSeries = async (seriesId: number): Promise<Series> =>
   apiSend('DELETE', `/series/${seriesId}/complete`, `reopenSeries(${seriesId})`, seriesSchema);
 
+/** Codes allowed for one game before dennys refuses, counted since the last result. */
+export const TOURNAMENT_CODE_LIMIT = 2;
+
+/** The code allowance for this game is spent. 409 on POST /series/{id}/game means this. */
+export const isCodeLimitError = (error: unknown): error is HttpError =>
+  error instanceof HttpError && error.status === 409;
+
+/** What dennys said, from its `{ code, message }` error body. Null if it did not say. */
+export const dennysErrorMessage = (error: unknown): string | null => {
+  if (!(error instanceof HttpError) || !error.body) return null;
+  try {
+    const parsed = normalizeApiStrings(JSON.parse(error.body) as { message?: unknown });
+    const message = typeof parsed?.message === 'string' ? parsed.message.trim() : '';
+    if (!message) return null;
+    return message.length > 500 ? `${message.slice(0, 500)}…` : message;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Codes the game in progress may still take, or null when the series does not
+ * carry enough to tell. Unknown is reported as such: the number gates a button.
+ */
+export const remainingCodeAllowance = (series: SeriesWithGames): number | null => {
+  const since = series.lastGameAt ? Date.parse(series.lastGameAt) : 0;
+  if (Number.isNaN(since)) return null;
+  let issued = 0;
+  for (const code of series.tournamentCodes) {
+    if (!code.createdAt) return null;
+    const at = Date.parse(code.createdAt);
+    if (Number.isNaN(at)) return null;
+    if (at > since) issued++;
+  }
+  return Math.max(0, TOURNAMENT_CODE_LIMIT - issued);
+};
+
+/** The newest code no game has been recorded against - what a result would be for. */
+export const outstandingCodeId = (series: SeriesWithGames): number | null => {
+  const answered = new Set(
+    series.games.map(game => game.tournamentCodeId).filter((id): id is number => id != null),
+  );
+  return series.tournamentCodes
+    .filter(code => !answered.has(code.id))
+    .reduce<number | null>((newest, code) => (newest === null || code.id > newest ? code.id : newest), null);
+};
+
 /**
  * Code issue failed because of Riot rather than because of us: 502 is a hard
  * failure from Riot, 503 is Riot unreachable. Neither should read to a captain

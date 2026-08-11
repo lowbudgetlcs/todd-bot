@@ -16,6 +16,7 @@ import { User } from '../interfaces.ts';
 import { createButton, createButtonData, parseButtonData, seriesDataFits } from '../buttons/button.ts';
 import { SeriesWithGames } from '../dennysSchemas.ts';
 import {
+  buildCodeLimitRow,
   buildControlRow,
   buildGameReportRow,
   buildRecoveryRow,
@@ -24,7 +25,7 @@ import {
   postSeriesControl,
   RECOVERY_MARKER,
 } from '../seriesControl.ts';
-import { findSeriesForTeams, getEvent, getEvents, getEventWithTeams, getSeries, getSeriesId, getTeam, isRetryableRiotGatewayError, isRiotGatewayError, issueTournamentCode, nextGameNumber, Team } from '../dennys.ts';
+import { dennysErrorMessage, findSeriesForTeams, getEvent, getEvents, getEventWithTeams, getSeries, getSeriesId, getTeam, isCodeLimitError, isRetryableRiotGatewayError, isRiotGatewayError, issueTournamentCode, nextGameNumber, outstandingCodeId, Team } from '../dennys.ts';
 import log from 'loglevel';
 import { SeriesData } from '../types/toddData.ts';
 
@@ -414,22 +415,29 @@ export async function handleBothTeamSubmission(interaction: ButtonInteraction) {
       enemyCaptainId: seriesData.enemyCaptainId,
       first: true,
     });
-    if (tournamentCode.riotUnavailable) {
+    if (tournamentCode.riotUnavailable || tournamentCode.codeLimitReached) {
       // The series still gets a thread. A series played entirely on customs has
-      // to live somewhere, and without one there is nowhere to report from.
+      // to live somewhere, and without one there is nowhere to report from -
+      // which goes double for a series whose codes have run out.
       await interaction.editReply({
-        content: 'Riot would not issue a code. Continuing in a thread.',
+        content: tournamentCode.codeLimitReached
+          ? 'No more codes can be issued for this game. Continuing in a thread.'
+          : 'Riot would not issue a code. Continuing in a thread.',
         components: [],
       });
       await interaction.deleteReply();
+      const pinned: SeriesData = { ...seriesData, seriesId: tournamentCode.seriesId };
       await openSeriesThread(interaction, user.id, tournamentCode, {
         content: `${RECOVERY_MARKER} ${tournamentCode.error}`,
         components: [
-          buildRecoveryRow(
-            user.id,
-            { ...seriesData, seriesId: tournamentCode.seriesId },
-            tournamentCode.retryable,
-          ),
+          tournamentCode.codeLimitReached
+            ? buildCodeLimitRow(
+                user.id,
+                pinned,
+                tournamentCode.tournamentCodeId || null,
+                tournamentCode.gameNumber,
+              )
+            : buildRecoveryRow(user.id, pinned, tournamentCode.retryable),
         ],
       });
     } else if (tournamentCode.error != null) {
@@ -547,6 +555,8 @@ export async function getTournamentCode({
   riotUnavailable: boolean;
   /** Only meaningful with riotUnavailable: whether pressing again is worth it. */
   retryable: boolean;
+  /** Dennys refused: this game has used its code allowance. Never retryable. */
+  codeLimitReached: boolean;
 }> {
   //TODO: Call api with this informatio nand let it handle all this logic
   const division  = divisionId? Number(divisionId) : null
@@ -568,6 +578,7 @@ export async function getTournamentCode({
       series: null,
       riotUnavailable: false,
       retryable: false,
+      codeLimitReached: false,
       totalGames: 0,
     };
   }
@@ -586,6 +597,7 @@ export async function getTournamentCode({
       series: null,
       riotUnavailable: false,
       retryable: false,
+      codeLimitReached: false,
       totalGames:0
     };
   }
@@ -613,6 +625,7 @@ export async function getTournamentCode({
       series: null,
       riotUnavailable: false,
       retryable: false,
+      codeLimitReached: false,
       totalGames: 0
     };
   }
@@ -621,6 +634,42 @@ export async function getTournamentCode({
   try {
     code = await issueTournamentCode(seriesId, team1Data!, team2Data!);
   } catch (error) {
+    // Dennys caps codes per game since the last result. Never retried: the cap
+    // lifts on a result being written, so another press cannot clear it.
+    if (isCodeLimitError(error)) {
+      logger.warn(`Dennys refused a code for series ${seriesId}: the allowance for this game is spent`);
+      // A read, so failing it costs only the Report button on the row below.
+      const limited = await getSeries(seriesId).catch(() => null);
+      const postedSoFar = first
+        ? 0
+        : await highestPostedGameNumber(
+            interaction.channel as unknown as Parameters<typeof highestPostedGameNumber>[0],
+          );
+      return {
+        discordResponse: null,
+        draftLinks: null,
+        shortcode: null,
+        // The codes were all issued for the game in progress, so this is that
+        // game rather than the next one.
+        gameNumber: Math.max(1, limited ? nextGameNumber(limited) : 1, postedSoFar),
+        error:
+          `${dennysErrorMessage(error) ?? 'No more codes can be issued for this game.'}\n\n` +
+          'Another code will not help. Report the result of the game you already played, ' +
+          'or play a custom game and report the winner.',
+        divisionId: division,
+        divisionName: divisionEvent?.name,
+        stageName: selectedStage,
+        team1Name,
+        team2Name,
+        tournamentCodeId: (limited && outstandingCodeId(limited)) || 0,
+        totalGames: limited?.totalGames ?? 0,
+        seriesId,
+        series: limited,
+        riotUnavailable: false,
+        retryable: false,
+        codeLimitReached: true,
+      };
+    }
     // Riot refusing is not a lookup failure, and telling a captain "no such
     // series" when Riot is down leaves them with nothing to try.
     if (!isRiotGatewayError(error)) throw error;
@@ -645,6 +694,7 @@ export async function getTournamentCode({
       series: null,
       riotUnavailable: true,
       retryable,
+      codeLimitReached: false,
     };
   }
   const shortcode = code.shortcode;
@@ -701,6 +751,7 @@ export async function getTournamentCode({
     series,
     riotUnavailable: false,
     retryable: false,
+    codeLimitReached: false,
     totalGames
   };
 }

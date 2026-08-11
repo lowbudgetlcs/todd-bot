@@ -40,8 +40,14 @@ const aSeries = (id: number, totalGames: number) => ({
 });
 let seriesCandidates: ReturnType<typeof aSeries>[] = [];
 
-/** Set to make the code request fail the way Riot being down makes it fail. */
-let issueFailsWith: { status: number } | null = null;
+/** Set to make the code request fail: Riot being down, or the allowance being spent. */
+let issueFailsWith: { status: number; body?: string } | null = null;
+
+/** Codes already issued against the series, for the allowance the 409 reports on. */
+let seriesCodes: { id: number; createdAt: string | null }[] = [];
+
+/** Set to make the read that follows a refused code fail too. */
+let seriesFailsToLoad = false;
 
 vi.mock('../src/dennys.ts', async importOriginal => {
   // nextGameNumber is pure, so keep the real one - the game number a captain
@@ -79,7 +85,8 @@ vi.mock('../src/dennys.ts', async importOriginal => {
     }),
     issueTournamentCode: vi.fn(async () => {
       calls.push('issueTournamentCode');
-      if (issueFailsWith) throw new HttpError('riot', issueFailsWith.status, '');
+      if (issueFailsWith)
+        throw new HttpError('riot', issueFailsWith.status, issueFailsWith.body ?? '');
       if (issueRecoversLostGame) seriesGames = [{ id: 4, seriesId: 756, number: 1 }];
       return {
         id: 9,
@@ -92,6 +99,7 @@ vi.mock('../src/dennys.ts', async importOriginal => {
     }),
     getSeries: vi.fn(async (id: number) => {
       calls.push('getSeries');
+      if (seriesFailsToLoad) throw new HttpError('series', 500, '');
       return {
         id,
         eventId: 7,
@@ -101,7 +109,7 @@ vi.mock('../src/dennys.ts', async importOriginal => {
         completed: false,
         completedAt: null,
         reopenedAt: null,
-        tournamentCodes: [],
+        tournamentCodes: seriesCodes,
         games: seriesGames,
         lastCodeIssuedAt: null,
         lastGameAt: null,
@@ -240,6 +248,8 @@ beforeEach(() => {
   issueRecoversLostGame = false;
   seriesCandidates = [aSeries(756, 3)];
   issueFailsWith = null;
+  seriesCodes = [];
+  seriesFailsToLoad = false;
 });
 
 describe('handleBothTeamSubmission acknowledges before touching dennys', () => {
@@ -423,6 +433,98 @@ describe('Riot refusing a code at game 1', () => {
 
     expect(threadSends[0]).toContain('Riot');
     expect(threadSends[0]).not.toContain('matching series');
+  });
+});
+
+/**
+ * Dennys 1.4.1 answers 409 once a game has taken its codes, counted since the
+ * most recent recorded game (todd-bot#126). Another press cannot clear it, so
+ * the captain gets the message dennys wrote and the two things that can.
+ */
+describe('dennys refusing a code because the allowance is spent', () => {
+  const MESSAGE = "Series '756' has already been issued 2 tournament code(s).";
+
+  beforeEach(() => {
+    issueFailsWith = { status: 409, body: JSON.stringify({ code: 409, message: MESSAGE }) };
+    seriesCodes = [
+      { id: 8, createdAt: '2026-08-09T11:00:00Z' },
+      { id: 9, createdAt: '2026-08-09T12:00:00Z' },
+    ];
+  });
+
+  it('shows what dennys said, not generic failure text', async () => {
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    expect(threadSends[0]).toContain(MESSAGE);
+    expect(threadSends[0]).not.toContain('An error occurred');
+  });
+
+  it('opens the thread anyway, so the series has somewhere to be played out', async () => {
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    expect(interaction.followUp).toHaveBeenCalled();
+    expect(threadSends).toHaveLength(1);
+  });
+
+  it('offers both remedies and no retry', async () => {
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const labels = (threadComponents[0][0] as any)
+      .toJSON()
+      .components.map((b: { label: string }) => b.label);
+    expect(labels).toEqual(['Report Game 1', 'Go play a custom game']);
+  });
+
+  it('points the report button at the code still outstanding', async () => {
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [report] = (threadComponents[0][0] as any).toJSON().components;
+    const parsed = parseButtonData(report.custom_id);
+    expect(parsed.tag).toBe('report_result');
+    expect(parsed.tagArg).toBe('9-1');
+    expect(parsed.seriesData.seriesId).toBe(756);
+  });
+
+  it('asks dennys once - pressing again cannot clear the allowance', async () => {
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    expect(calls.filter(c => c === 'issueTournamentCode')).toHaveLength(1);
+  });
+
+  it('falls back to its own wording when dennys sends no message', async () => {
+    issueFailsWith = { status: 409, body: 'Conflict' };
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    expect(threadSends[0]).toContain('No more codes can be issued for this game');
+  });
+
+  it('drops the report button when the series cannot be read back', async () => {
+    // The custom game is still the way forward; only the button that has to
+    // name a code goes with the failed lookup.
+    seriesFailsToLoad = true;
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const labels = (threadComponents[0][0] as any)
+      .toJSON()
+      .components.map((b: { label: string }) => b.label);
+    expect(labels).toEqual(['Go play a custom game']);
   });
 });
 

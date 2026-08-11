@@ -225,6 +225,68 @@ describe('a regenerate that succeeds', () => {
   });
 });
 
+/**
+ * Dennys 1.4.1 answers 409 once a game has taken its codes (todd-bot#126).
+ * The clicking captain sees it on their ephemeral message, but the remedies go
+ * in the thread: either captain can report the game or start the custom.
+ */
+describe('a mid-series regenerate dennys refuses on the code allowance', () => {
+  const refused = {
+    error:
+      "Series '756' has already been issued 2 tournament code(s).\n\n" +
+      'Another code will not help. Report the result of the game you already played, ' +
+      'or play a custom game and report the winner.',
+    riotUnavailable: false,
+    retryable: false,
+    codeLimitReached: true,
+    discordResponse: null,
+    tournamentCodeId: 9,
+    gameNumber: 2,
+    series: null,
+    seriesId: 756,
+  };
+
+  it('posts the remedies to the thread, and no retry among them', async () => {
+    getTournamentCode.mockResolvedValue(refused);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleGenerateAnotherConfirm(makeInteraction() as any);
+
+    expect(threadSends).toHaveLength(1);
+    expect(labelsOf(threadSends[0])).toEqual(['Report Game 2', 'Go play a custom game']);
+    expect(tagsOf(threadSends[0])).toEqual(['report_result', 'play_custom']);
+  });
+
+  it("shows dennys's message rather than a generic failure", async () => {
+    getTournamentCode.mockResolvedValue(refused);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleGenerateAnotherConfirm(makeInteraction() as any);
+
+    expect(editReplyPayloads.at(-1)?.content).toContain('already been issued 2 tournament code(s)');
+    expect(threadSends[0].content).toContain('already been issued 2 tournament code(s)');
+  });
+
+  it('leaves the report button out when no code is outstanding', async () => {
+    getTournamentCode.mockResolvedValue({ ...refused, tournamentCodeId: 0 });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleGenerateAnotherConfirm(makeInteraction() as any);
+
+    expect(labelsOf(threadSends[0])).toEqual(['Go play a custom game']);
+  });
+
+  it('does not post a code message - there is no code', async () => {
+    getTournamentCode.mockResolvedValue(refused);
+    const interaction = makeInteraction();
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleGenerateAnotherConfirm(interaction as any);
+
+    expect(interaction.followUp).not.toHaveBeenCalled();
+  });
+});
+
 describe('a non-Riot error on regenerate', () => {
   it('does not post a recovery row - there is nothing to recover from', async () => {
     getTournamentCode.mockResolvedValue({

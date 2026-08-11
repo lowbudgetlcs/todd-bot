@@ -5,6 +5,7 @@ import {
   CUSTOM_MARKER,
   RECOVERY_MARKER,
   STALE_CODE_MS,
+  buildCodeLimitRow,
   buildControlRow,
   buildGameReportRow,
   buildSeriesStatus,
@@ -59,13 +60,13 @@ const aGame = (number: number, winningTeamId: number, tournamentCodeId: number |
   createdAt: null,
 });
 
-const aCode = (id: number) => ({
+const aCode = (id: number, createdAt: string | null = null) => ({
   id,
   shortcode: `CODE${id}`,
   seriesId: 756,
   blueTeamId: 11,
   redTeamId: 22,
-  createdAt: null,
+  createdAt,
 });
 
 const seriesData: SeriesData = {
@@ -327,6 +328,108 @@ describe('buildControlRow', () => {
       b => b.label,
     );
     expect(labels).not.toContain('Report result');
+  });
+});
+
+/**
+ * Dennys 1.4.1 caps tournament codes per game, counted since the most recent
+ * recorded game (todd-bot#126). Todd counts the same way so it can say how many
+ * are left before a captain spends the last one.
+ */
+describe('the code allowance', () => {
+  const USER = '123456789012345678';
+  const spent = () =>
+    aSeries({
+      tournamentCodes: [aCode(1, ago(2000)), aCode(2, ago(1000))],
+      lastCodeIssuedAt: ago(1000),
+    });
+  const labelsOfControl = (series?: SeriesWithGames) =>
+    buttonsOf(buildControlRow(USER, seriesData, series)).map(b => b.label);
+  const generateIsDisabled = (series?: SeriesWithGames) =>
+    (buttonsOf(buildControlRow(USER, seriesData, series))[0] as { disabled?: boolean }).disabled ===
+    true;
+
+  it('says nothing before a code has gone out for this game', () => {
+    // Both codes belong to the game already in the books, so the game in
+    // progress has its full allowance.
+    const series = aSeries({
+      tournamentCodes: [aCode(1, ago(5000)), aCode(2, ago(4000))],
+      games: [aGame(1, 11, 2)],
+      lastGameAt: ago(3000),
+    });
+    const status = buildSeriesStatus(series, TEAMS, NOW);
+    expect(status).not.toContain('No more codes');
+    expect(status).not.toContain('One more code');
+  });
+
+  it('warns when one code is left', () => {
+    const series = aSeries({ tournamentCodes: [aCode(1, ago(1000))] });
+    expect(buildSeriesStatus(series, TEAMS, NOW)).toContain('One more code can be issued');
+  });
+
+  it('says why, and names the remedies, once the allowance is spent', () => {
+    const status = buildSeriesStatus(spent(), TEAMS, NOW);
+    expect(status).toContain('No more codes can be issued for this game');
+    expect(status).toContain('Report a result');
+    expect(status).toContain('custom game');
+  });
+
+  it('greys out Generate Next Game at zero rather than removing it', () => {
+    expect(labelsOfControl(spent())).toContain('Generate Next Game');
+    expect(generateIsDisabled(spent())).toBe(true);
+  });
+
+  it('counts only the codes issued since the last recorded game', () => {
+    // The first two belong to a game that is now in the books. Counting those
+    // would read as spent and grey the button out with a code still owed.
+    const series = aSeries({
+      tournamentCodes: [aCode(1, ago(5000)), aCode(2, ago(4000)), aCode(3, ago(1000))],
+      games: [aGame(1, 11, 2)],
+      lastGameAt: ago(3000),
+    });
+    expect(buildSeriesStatus(series, TEAMS, NOW)).not.toContain('No more codes');
+    expect(generateIsDisabled(series)).toBe(false);
+  });
+
+  it('stays quiet and leaves the button live when the count cannot be worked out', () => {
+    // A code with no createdAt makes the count a guess, and a guess that reads
+    // low locks captains out of a code they are owed. Dennys can refuse instead.
+    const series = aSeries({ tournamentCodes: [aCode(1), aCode(2)] });
+    expect(buildSeriesStatus(series, TEAMS, NOW)).not.toContain('No more codes');
+    expect(generateIsDisabled(series)).toBe(false);
+  });
+
+  it('leaves the button live when there is no series to read', () => {
+    expect(generateIsDisabled()).toBe(false);
+  });
+});
+
+describe('buildCodeLimitRow', () => {
+  const USER = '123456789012345678';
+
+  it('offers both remedies: report what was played, or play a custom', () => {
+    const buttons = buttonsOf(buildCodeLimitRow(USER, seriesData, 9, 2));
+    expect(buttons.map(b => b.label)).toEqual(['Report Game 2', 'Go play a custom game']);
+    expect(buttons.map(b => parseButtonData(b.custom_id).tag)).toEqual([
+      'report_result',
+      'play_custom',
+    ]);
+  });
+
+  it('never offers a retry - the allowance clears on a result, not on a press', () => {
+    const labels = buttonsOf(buildCodeLimitRow(USER, seriesData, 9, 2)).map(b => b.label);
+    expect(labels).not.toContain('Try again');
+    expect(labels).not.toContain('Generate Next Game');
+  });
+
+  it('names the code a result would be credited to', () => {
+    const [report] = buttonsOf(buildCodeLimitRow(USER, seriesData, 9, 2));
+    expect(parseButtonData(report.custom_id).tagArg).toBe('9-2');
+  });
+
+  it('drops the report button when no code is outstanding', () => {
+    const labels = buttonsOf(buildCodeLimitRow(USER, seriesData, null, 2)).map(b => b.label);
+    expect(labels).toEqual(['Go play a custom game']);
   });
 });
 
