@@ -13,6 +13,7 @@ const seriesData: SeriesData = {
   divisionId: 7,
   team1Id: 11,
   team2Id: 22,
+  seriesId: 756,
   stage: 'Week 1',
 };
 
@@ -26,13 +27,14 @@ describe('custom_id serialize/parse round-trip', () => {
   });
 
   it('serializes in the documented field order behind a version marker', () => {
-    // tag : v1 : originalUserId : enemyCaptainId : divisionId : team1Id : team2Id : stage
+    // tag : v1 : originalUserId : enemyCaptainId : divisionId : team1Id : team2Id
+    //     : seriesId : stage
     const data = createButtonData('switch_sides', '123456789012345678', seriesData);
     const parts = data.serialize().split(':');
     expect(parts[0]).toBe('ws');
     expect(parts[1]).toBe('v1');
-    expect(parts.slice(2, 7).every((p) => /^[0-9a-z~]*$/.test(p))).toBe(true);
-    expect(parts[7]).toBe('Week 1');
+    expect(parts.slice(2, 8).every((p) => /^[0-9a-z~]*$/.test(p))).toBe(true);
+    expect(parts[8]).toBe('Week 1');
   });
 });
 
@@ -43,6 +45,8 @@ describe('tag wire codes', () => {
     'division_select', 'team1_select', 'team2_select', 'stage_select',
     'confirm', 'switch', 'switch_sides', 'cancel', 'cancel_flow',
     'cancel_switch', 'generate_another', 'generate_another_confirm', 'end_series',
+    'series_select', 'report_result', 'report_team1_won', 'report_team2_won',
+    'code_not_working', 'play_custom', 'play_custom_confirm',
   ];
 
   it('round-trips every tag back to the readable name handlers.ts switches on', () => {
@@ -81,6 +85,7 @@ describe("Discord's 100-character custom_id cap", () => {
     divisionId: 9999,
     team1Id: 9999,
     team2Id: 9999,
+    seriesId: 9999,
     stage: 'PROMOTION_RELEGATION',
   };
 
@@ -89,10 +94,9 @@ describe("Discord's 100-character custom_id cap", () => {
     expect(data.serialize().length).toBeLessThan(MAX_CUSTOM_ID_LENGTH);
   });
 
-  it('keeps enough headroom for a field the size of a seriesId', () => {
-    // The budget question that prompted this work: does another id still fit?
-    // A base36 seriesId plus its separator is ~5 characters. Pinning the number
-    // here means a future field can be judged against a fact, not an estimate.
+  it('keeps headroom for another field beyond the ones already carried', () => {
+    // Pinning the number means the next field can be judged against a fact
+    // rather than an estimate. A base36 id plus its separator is ~5 characters.
     const data = createButtonData('generate_another_confirm', '1234567890123456789', worstCase);
     expect(MAX_CUSTOM_ID_LENGTH - data.serialize().length).toBeGreaterThanOrEqual(20);
   });
@@ -115,14 +119,18 @@ describe("Discord's 100-character custom_id cap", () => {
     expect(() => data.serialize()).toThrow(CustomIdTooLongError);
   });
 
-  it('fits a stage name of 56 characters alongside everything else', () => {
+  it('fits a stage name of 39 characters alongside everything else', () => {
     // Dennys hands us eventStages as free-form strings, so this is the budget
-    // that actually matters. 'PROMOTION_RELEGATION' is 20.
+    // that actually matters. The longest dennys actually issues is
+    // 'PROMOTION_RELEGATION' at 20, so this is still near double the real worst
+    // case. It was 50 before report buttons reserved room for a tag argument.
+    const stage = 'X'.repeat(39);
     const data = createButtonData('generate_another_confirm', '1234567890123456789', {
       ...worstCase,
-      stage: 'X'.repeat(56),
+      stage,
     });
     expect(data.serialize().length).toBeLessThanOrEqual(MAX_CUSTOM_ID_LENGTH);
+    expect(seriesDataFits('1234567890123456789', { ...worstCase, stage })).toBe(true);
   });
 });
 
@@ -131,19 +139,51 @@ describe('seriesDataFits', () => {
     expect(seriesDataFits('123456789012345678', seriesData)).toBe(true);
   });
 
+  it('is sized against a series id larger than the one being carried', () => {
+    // The check runs while the series is still unresolved, and the id is pinned
+    // later - onto the button built after the code already exists in dennys. A
+    // check sized against the current id would pass here and throw there.
+    const user = '1234567890123456789';
+    const unpinned: SeriesData = {
+      enemyCaptainId: user,
+      divisionId: 9999,
+      team1Id: 9999,
+      team2Id: 9999,
+      seriesId: 0,
+      stage: 'X'.repeat(51),
+    };
+    // Serializing it as it stands is fine; the check still refuses it.
+    expect(
+      createButtonData('generate_another_confirm', user, unpinned).serialize().length,
+    ).toBeLessThanOrEqual(MAX_CUSTOM_ID_LENGTH);
+    expect(seriesDataFits(user, unpinned)).toBe(false);
+  });
+
   it('rejects a stage name that would only overflow at a later, longer tag', () => {
     // Sized against the longest code on purpose: a stage can fit inside
     // 's' (stage_select) and still blow up inside 'gc'
     // (generate_another_confirm), which is built after the game exists.
     // Abbreviating the tags narrowed that window from 12 characters to 1, so
     // this pins the exact boundary rather than a comfortable margin.
-    const stage = 'X'.repeat(57);
+    const stage = 'X'.repeat(40);
     const user = '1234567890123456789';
-    const worst = { ...seriesData, enemyCaptainId: user, divisionId: 9999, team1Id: 9999, team2Id: 9999, stage };
+    const worst = { ...seriesData, enemyCaptainId: user, divisionId: 9999, team1Id: 9999, team2Id: 9999, seriesId: 9999, stage };
     const short = createButtonData('stage_select', user, worst);
     expect(short.serialize().length).toBeLessThanOrEqual(MAX_CUSTOM_ID_LENGTH);
     expect(seriesDataFits(user, worst)).toBe(false);
-    expect(seriesDataFits(user, { ...worst, stage: 'X'.repeat(56) })).toBe(true);
+    expect(seriesDataFits(user, { ...worst, stage: 'X'.repeat(39) })).toBe(true);
+  });
+
+  it('reserves room for a report button, which is built long after this runs', () => {
+    // The report button carries a tag argument and is minted onto the code
+    // message once the code already exists in dennys. A budget sized without it
+    // would pass here and throw there, with the code already issued.
+    const user = '1234567890123456789';
+    const worst = { ...seriesData, enemyCaptainId: user, divisionId: 9999, team1Id: 9999, team2Id: 9999, seriesId: 9999, stage: 'X'.repeat(39) };
+    expect(seriesDataFits(user, worst)).toBe(true);
+
+    const report = createButtonData('report_result', user, { ...worst, seriesId: 9999999 }, '9999999-99');
+    expect(report.serialize().length).toBeLessThanOrEqual(MAX_CUSTOM_ID_LENGTH);
   });
 });
 
@@ -166,7 +206,9 @@ describe('ids minted before base36', () => {
     const parsed = parseButtonData(legacy);
     expect(parsed.tag).toBe('generate_another');
     expect(parsed.originalUserId).toBe('123456789012345678');
-    expect(parsed.seriesData).toEqual(seriesData);
+    // Predates seriesId, so it decodes unpinned and the series is resolved from
+    // the team pair as it always was for these ids.
+    expect(parsed.seriesData).toEqual({ ...seriesData, seriesId: 0 });
   });
 
   it('re-serializes verbatim rather than rewriting the id under the user', () => {

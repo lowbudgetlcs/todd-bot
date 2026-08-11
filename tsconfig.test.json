@@ -1,0 +1,15 @@
+{
+  // The suite is type-checked separately from src, which ships as CommonJS.
+  // Vitest runs the tests as ESM, and they use top-level await with dynamic
+  // import to control when mocks are installed relative to the module under
+  // test - that needs an ES module target to type-check at all.
+  //
+  // Without this, fixtures could drift from the dennys types without failing
+  // the build, which is how a stale mock outlives the shape it stands in for.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ES2022",
+    "rootDir": "."
+  },
+  "include": ["src", "test"]
+}

@@ -3,6 +3,14 @@ export type SeriesData = {
   team2Id: number;
   divisionId: number;
   enemyCaptainId: string;
+  /**
+   * The series every later button acts on, pinned once it is first resolved.
+   * 0 until then - the selection dropdowns run before a series is known.
+   *
+   * Without it, each press re-resolves from the team pair, so the moment dennys
+   * closes one series the next code lands in the other one for the same pair.
+   */
+  seriesId: number;
   stage: string;
 };
 
@@ -68,12 +76,15 @@ export function decodeSnowflake(value: string | undefined): string {
   return acc.toString();
 }
 
+// Stage stays last so it can absorb the rest of the split; any new field goes
+// before it. See parseButtonData, which reassembles on that assumption.
 export function encodeSeriesData(data: SeriesData): string[] {
   return [
     encodeSnowflake(data.enemyCaptainId),
     encodeId(data.divisionId),
     encodeId(data.team1Id),
     encodeId(data.team2Id),
+    encodeId(data.seriesId),
     data.stage,
   ];
 }
@@ -84,7 +95,8 @@ export function decodeSeriesData(arr: string[]): SeriesData {
     divisionId: decodeId(arr[1]),
     team1Id: decodeId(arr[2]),
     team2Id: decodeId(arr[3]),
-    stage: arr[4] ?? '',
+    seriesId: decodeId(arr[4]),
+    stage: arr[5] ?? '',
   };
 }
 
@@ -109,6 +121,9 @@ export function decodeLegacySeriesData(arr: string[]): SeriesData {
     divisionId: toLegacyId(arr[1]),
     team1Id: toLegacyId(arr[2]),
     team2Id: toLegacyId(arr[3]),
+    // Predates the field, so the series is resolved from the team pair as it
+    // always was for these ids.
+    seriesId: 0,
     stage: arr[4] ?? '',
   };
 }

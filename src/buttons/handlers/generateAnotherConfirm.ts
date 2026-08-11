@@ -1,8 +1,21 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle } from "discord.js";
-import { createButton, createButtonData, parseButtonData } from "../button.ts";
+import { ButtonInteraction } from "discord.js";
+import { parseButtonData } from "../button.ts";
 import { getTournamentCode } from "../../commands/tournament.ts";
 import log from 'loglevel';
 import { safeDefer, safeInteractionError } from "../../interactionSafety.ts";
+import {
+  buildControlRow,
+  buildGameReportRow,
+  buildRecoveryRow,
+  buildSeriesStatus,
+  clearSupersededCodes,
+  gamesAwaitingReport,
+  postSeriesControl,
+  RECOVERY_MARKER,
+  shareThreadScan,
+} from "../../seriesControl.ts";
+import type { ControlThread } from "../../seriesControl.ts";
+import { SeriesData } from "../../types/toddData.ts";
 
 const logger =log.getLogger('generateAnotherConfirm');
 logger.setLevel('info');
@@ -35,15 +48,47 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
       components: [],
     });
 
-    const tournamentCode = await getTournamentCode(
-      team1,
-      team2,
-      division,
-      seriesData.stage,
+    // Only "Code not working?" means the existing code is dead. Generate Next
+    // Game asks for the following slot, even when the current game has not been
+    // reported yet - game numbers move on results, so nothing else would tell
+    // these two apart.
+    const replacement = data.tag === 'regenerate_confirm';
+
+    const tournamentCode = await getTournamentCode({
+      team1Id: team1,
+      team2Id: team2,
+      divisionId: division,
+      stage: seriesData.stage,
+      seriesId: seriesData.seriesId,
       interaction,
-      opposing_captain,
-      false
-    );
+      enemyCaptainId: opposing_captain,
+      first: false,
+      replacement,
+    });
+
+    if (tournamentCode.riotUnavailable) {
+      // Report in place of the "Generating..." message. followUp() here used to
+      // run before the interaction had been acknowledged at all.
+      await interaction.editReply({
+        content: tournamentCode.error!,
+        components: [],
+      });
+
+      // A mid-series regenerate that never got a code has nothing for
+      // "Code not working?" to gate on - hasOutstandingCode only sees codes
+      // Riot actually issued. Without this, the only failure exit is the one
+      // posted at series start, which this series may not have gone through.
+      const thread = interaction.channel;
+      if (thread && 'send' in thread) {
+        await thread.send({
+          content: `${RECOVERY_MARKER} ${tournamentCode.error}`,
+          components: [
+            buildRecoveryRow(data.originalUserId, seriesData, tournamentCode.retryable),
+          ],
+        });
+      }
+      return;
+    }
 
     if (tournamentCode.error) {
       // Report in place of the "Generating..." message. followUp() here used to
@@ -55,15 +100,6 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
       return;
     }
 
-    // Create generate another button
-
-    // Regenerate button row
-    // data.metadata[3] = tournamentCode.gameId.toString(); 
-    // logger.info(data.metadata);
-    // const regenerateButtonData = createButtonData("regenerate_code", data.originalUserId, data.metadata);
-    // const regenerateButton = createButton(regenerateButtonData, "Code Not Work?", ButtonStyle.Secondary, '❓');
-
-
     // Drop the ephemeral "Generating..." message, then post the code publicly.
     await interaction.deleteReply();
 
@@ -73,12 +109,59 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
     // it and "fixing" it would have duplicated the code line.
     const response = tournamentCode.discordResponse?.toString() || "";
 
-    await interaction.followUp({
+    const pinnedSeries: SeriesData = { ...seriesData, seriesId: tournamentCode.seriesId };
+
+    const posted = await interaction.followUp({
       content: response,
       ephemeral: false,
-      flags: 1 << 2
+      flags: 1 << 2,
+      // The report button rides on the code message so it can name the code it
+      // reports - see buildGameReportRow.
+      components: [
+        buildGameReportRow(
+          data.originalUserId,
+          pinnedSeries,
+          tournamentCode.tournamentCodeId,
+          tournamentCode.gameNumber,
+        ),
+      ],
     });
 
+    // Re-post the controls so they stay below the code that was just added.
+    const thread = interaction.channel;
+    if (thread && tournamentCode.series) {
+      // Sweep, list, post - three passes over the same fifty messages, and the
+      // fetch is lazy, so it still happens after the code above was posted and
+      // sees it. See shareThreadScan.
+      const scan = shareThreadScan(thread as unknown as ControlThread);
+
+      // Only when the captain came through "Code not working?", which is the one
+      // path that declares the existing code dead. Generate Next Game pressed
+      // before the current result is in produces a code for that same game
+      // number, and removing its message would take away a code still in use.
+      if (replacement) {
+        await clearSupersededCodes(scan, tournamentCode.gameNumber, posted.id);
+      }
+
+      // Issuing a code is the moment an unreported game falls behind: the game
+      // it was issued for becomes the one in progress, and anything below it
+      // that nobody reported is now genuinely overdue rather than in flight.
+      const awaiting = await gamesAwaitingReport(scan, tournamentCode.series);
+
+      await postSeriesControl(
+        scan,
+        buildSeriesStatus(
+          tournamentCode.series,
+          [
+            { id: seriesData.team1Id, name: tournamentCode.team1Name },
+            { id: seriesData.team2Id, name: tournamentCode.team2Name },
+          ],
+          Date.now(),
+          awaiting,
+        ),
+        [buildControlRow(data.originalUserId, pinnedSeries, tournamentCode.series)],
+      );
+    }
 
   } catch (error) {
     logger.error(error);

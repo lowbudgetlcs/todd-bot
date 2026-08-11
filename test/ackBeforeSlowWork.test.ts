@@ -33,8 +33,9 @@ vi.mock('../src/commands/tournament.ts', () => ({
       divisionId: 7,
       team1Name: 'Team 11',
       team2Name: 'Team 22',
-      gameId: 1,
+      tournamentCodeId: 1,
       totalGames: 3,
+      seriesId: 756,
     };
   }),
 }));
@@ -54,6 +55,7 @@ const seriesData: SeriesData = {
   divisionId: 7,
   team1Id: 11,
   team2Id: 22,
+  seriesId: 756,
   stage: 'Week 1',
 };
 

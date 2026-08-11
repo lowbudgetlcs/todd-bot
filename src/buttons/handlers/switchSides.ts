@@ -32,6 +32,7 @@ export async function handleSwitchSides(interaction: ButtonInteraction) {
       team2Id: team1.id,
       divisionId: seriesData.divisionId,
       enemyCaptainId: seriesData.enemyCaptainId,
+      seriesId: seriesData.seriesId,
       stage: seriesData.stage
     };
     const confirmButtonData = createButtonData("generate_another_confirm", data.originalUserId, seriesData);
