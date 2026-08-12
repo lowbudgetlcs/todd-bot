@@ -471,7 +471,7 @@ That count is only meaningful because of the rule in
 *result*, not per game number, so a series that got a code for game 1 and a code
 for game 2 with nothing reported has "2 codes used" — and calling that "no more
 codes **for this game**" mis-attributes a series-wide condition to the game a
-captain is looking at (todd-bot#129). With generation locked to one game at a
+captain is looking at. With generation locked to one game at a
 time, every code counted since the last result genuinely belongs to the game in
 progress, and the line means what it says. **Zero can only be reached through
 Code not working? → Generate a new one**, which is exactly the button it explains

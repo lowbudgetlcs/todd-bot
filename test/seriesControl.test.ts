@@ -383,7 +383,7 @@ describe('the code allowance', () => {
 });
 
 /**
- * One game at a time (todd-bot#129). The next code is unlocked by reporting the
+ * One game at a time. The next code is unlocked by reporting the
  * current game, which is also the thing that clears dennys's code allowance -
  * so every code counted since the last result belongs to the game in progress,
  * and the allowance line above can be trusted to mean what it says.
