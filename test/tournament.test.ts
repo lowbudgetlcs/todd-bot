@@ -281,7 +281,9 @@ describe('handleBothTeamSubmission acknowledges before touching dennys', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleBothTeamSubmission(interaction as any);
 
-    expect(calls.indexOf('issueTournamentCode')).toBeLessThan(calls.indexOf('getSeries'));
+    // lastIndexOf, not indexOf: the code-cap check reads the series first, and
+    // what this is about is the read the game number comes from.
+    expect(calls.indexOf('issueTournamentCode')).toBeLessThan(calls.lastIndexOf('getSeries'));
     expect(threadSends.find(c => c.includes('# Game'))).toContain('# Game 2');
   });
 });
@@ -684,13 +686,34 @@ describe('the game number tracks games played, not codes issued', () => {
 
   it('resolves the series once, by id, for both the number and the Bo', async () => {
     // Previously the code and the Bo count came from two independent lookups by
-    // team pair and could disagree (todd-bot#97).
+    // team pair and could disagree (todd-bot#97). Reads by id are not the
+    // hazard and there are two - the code-cap check, then the read the number
+    // and the Bo both come from; resolving by pair twice is.
     const interaction = makeInteraction('confirm');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleBothTeamSubmission(interaction as any);
 
-    expect(calls.filter(c => c === 'getSeries')).toHaveLength(1);
+    expect(calls.filter(c => c === 'getSeriesId')).toHaveLength(1);
+    expect(calls.filter(c => c === 'findSeriesForTeams')).toHaveLength(0);
     expect(calls).not.toContain('getTotalGames');
+  });
+
+  it('does not re-read the series for the cap on a mid-series generate', async () => {
+    // The router refuses a locked series before the handler runs, so the check
+    // here is only for /start-series. One read, after issuing, as before.
+    await getTournamentCode({
+      team1Id: 11,
+      team2Id: 22,
+      divisionId: 7,
+      stage: 'REGULAR_SEASON',
+      seriesId: 756,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      interaction: makeInteraction('generate_another_confirm') as any,
+      enemyCaptainId: seriesData.enemyCaptainId,
+      first: false,
+    });
+
+    expect(calls.filter(c => c === 'getSeries')).toHaveLength(1);
   });
 });
 

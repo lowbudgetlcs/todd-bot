@@ -31,12 +31,14 @@ const {
   reportSeriesResult,
   completeSeries,
   reopenSeries,
+  refreshSeriesFromCode,
   isRiotGatewayError,
   isRetryableRiotGatewayError,
   isCodeLimitError,
   dennysErrorMessage,
   remainingCodeAllowance,
   outstandingCodeId,
+  isSeriesLocked,
   DennysSchemaError,
 } = await import('../src/dennys.ts');
 const { HttpError } = await import('../src/http.ts');
@@ -184,6 +186,11 @@ describe('writes are never retried', () => {
     ['reportSeriesResult', () => reportSeriesResult(5, { winnerTeamId: 2 }), aGame()],
     ['completeSeries', () => completeSeries(5), aSeries({ completed: true })],
     ['reopenSeries', () => reopenSeries(5), aSeries()],
+    [
+      'refreshSeriesFromCode',
+      () => refreshSeriesFromCode(5, 'NA050c5-abc'),
+      aSeriesWithGames(),
+    ],
   ])('%s passes retries: 0', async (_name, call, response) => {
     fetchWithRetry.mockResolvedValue(ok(response));
     await call();
@@ -197,6 +204,39 @@ describe('writes are never retried', () => {
       status: 409,
       body: 'series already has 3 games',
     });
+  });
+});
+
+describe('re-checking Riot for one code', () => {
+  it('names the code by shortcode, which is what Riot and dennys both hold', async () => {
+    // Never the id: exactly one of the two may be sent, and the shortcode is the
+    // string every party to the game agrees on.
+    fetchWithRetry.mockResolvedValue(ok(aSeriesWithGames(), 201));
+    await refreshSeriesFromCode(756, 'NA050c5-abc');
+
+    expect(urlOf()).toBe(`${API_URL}/series/756/refresh`);
+    expect(initOf().method).toBe('POST');
+    expect(bodyOf()).toEqual({ shortcode: 'NA050c5-abc' });
+  });
+
+  it('hands back the series, so no follow-up read is needed', async () => {
+    // 201 means dennys attributed a game; the body is the series either way.
+    const series = aSeriesWithGames({
+      tournamentCodes: [aCode()],
+      games: [aGame({ result: { winningTeamId: 11, losingTeamId: 22 } })],
+    });
+    fetchWithRetry.mockResolvedValue(ok(series, 201));
+
+    const refreshed = await refreshSeriesFromCode(756, 'NA050c5-abc');
+    expect(refreshed.games[0].tournamentCodeId).toBe(9);
+    expect(refreshed.tournamentCodes[0].shortcode).toBe('ABC123');
+  });
+
+  it('surfaces Riot being unreachable as a 503 the caller can classify', async () => {
+    fetchWithRetry.mockResolvedValue(fail(503, 'riot unreachable'));
+    const error = await refreshSeriesFromCode(756, 'NA050c5-abc').catch((e: unknown) => e);
+
+    expect(isRiotGatewayError(error)).toBe(true);
   });
 });
 
@@ -529,5 +569,42 @@ describe('the tournament code allowance', () => {
       }),
     );
     expect(outstandingCodeId(series)).toBeNull();
+  });
+});
+
+/**
+ * A ceiling Todd enforces itself. Dennys has no such rule - it refuses a third
+ * code per game and is happy to keep issuing forever across a series.
+ */
+describe('the lifetime code cap', () => {
+  const withCodes = (n: number) =>
+    seriesWithGamesSchema.parse(
+      aSeriesWithGames({
+        tournamentCodes: Array.from({ length: n }, (_, i) => aCode({ id: i + 1 })),
+      }),
+    );
+
+  it('locks at ten', () => {
+    expect(isSeriesLocked(withCodes(10))).toBe(true);
+  });
+
+  it('does not lock at nine', () => {
+    // A Bo5 where every game took a regenerate is ten codes; the cap has to sit
+    // above anything a real series reaches, and this pins where that is.
+    expect(isSeriesLocked(withCodes(9))).toBe(false);
+  });
+
+  it('stays locked past the cap, rather than only exactly on it', () => {
+    expect(isSeriesLocked(withCodes(14))).toBe(true);
+  });
+
+  it('counts codes, not games - a game leaves no code behind when it is a custom', () => {
+    const series = seriesWithGamesSchema.parse(
+      aSeriesWithGames({
+        tournamentCodes: Array.from({ length: 10 }, (_, i) => aCode({ id: i + 1 })),
+        games: Array.from({ length: 5 }, (_, i) => aGame({ id: i, number: i + 1 })),
+      }),
+    );
+    expect(isSeriesLocked(series)).toBe(true);
   });
 });

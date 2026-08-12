@@ -1,7 +1,12 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { createButton, createButtonData, parseButtonData } from './buttons/button.ts';
 import { SeriesData } from './types/toddData.ts';
-import { remainingCodeAllowance, SeriesWithGames, TOURNAMENT_CODE_LIMIT } from './dennys.ts';
+import {
+  isSeriesLocked,
+  remainingCodeAllowance,
+  SeriesWithGames,
+  TOURNAMENT_CODE_LIMIT,
+} from './dennys.ts';
 import log from 'loglevel';
 
 const logger = log.getLogger('seriesControl');
@@ -43,6 +48,9 @@ export const CUSTOM_MARKER = '🎮';
  * second one. Nothing else Todd posts may start with it.
  */
 export const FINISHED_MARKER = '# The series is finished!';
+
+/** First line of the lock message, and what stops it being posted twice. */
+export const LOCKED_MARKER = '# 🛑 This series is locked';
 
 /** Discord: the message is already gone, which the delete race below produces. */
 const UNKNOWN_MESSAGE = 10008;
@@ -221,6 +229,13 @@ export function buildSeriesStatus(
   const score = teams.map(team => `**${team.name}** ${winsFor(series, team.id)}`).join(' – ');
   const lines = [`${score}  ·  Best of ${series.totalGames}`];
 
+  // Nothing below this is true of a locked series - every line it adds names a
+  // button that has just been taken away.
+  if (isSeriesLocked(series)) {
+    lines.push('**This series is locked.** A dev has been notified. Nothing here will work.');
+    return lines.join('\n');
+  }
+
   if (series.completed) {
     lines.push('This series is complete.');
   }
@@ -290,6 +305,10 @@ export function buildControlRow(
   seriesData: SeriesData,
   series?: SeriesWithGames,
 ): ActionRowBuilder<ButtonBuilder> {
+  // Locked series get no row at all - an empty row is what the callers check
+  // for, and Discord rejects one with no components in it.
+  if (series && isSeriesLocked(series)) return new ActionRowBuilder<ButtonBuilder>();
+
   // One game at a time. See docs/ARCHITECTURE.md - this is also what keeps the
   // code allowance countable.
   const inProgress = series ? hasOutstandingCode(series) : false;
@@ -483,7 +502,13 @@ export async function postSeriesControl(
   content: string,
   components: ActionRowBuilder<ButtonBuilder>[],
 ): Promise<void> {
-  const posted = await thread.send({ content: `${CONTROL_MARKER}\n${content}`, components });
+  // A locked series builds a row with nothing in it, and Discord rejects an
+  // empty row outright - which would take the status message down with it.
+  const usable = components.filter(row => row.components.length > 0);
+  const posted = await thread.send({
+    content: `${CONTROL_MARKER}\n${content}`,
+    components: usable,
+  });
 
   await sweepThread(
     thread,
@@ -491,6 +516,43 @@ export async function postSeriesControl(
     message => message.id !== posted.id && isControlMessage(message),
     message => message.delete(),
   );
+}
+
+/**
+ * Says the series is locked, and pings whoever can unlock it.
+ *
+ * Public rather than ephemeral for two reasons: a role mention in an ephemeral
+ * message notifies nobody, and both captains need to know why their buttons
+ * stopped working rather than only whoever pressed last.
+ *
+ * Posted once, guarded like the finish message - every press that follows is
+ * refused ephemerally instead, so a captain hammering the button cannot turn
+ * the lock into a wall of pings.
+ */
+export async function announceSeriesLocked(
+  thread: ControlThread,
+  seriesId: number,
+  codesIssued: number,
+  devTeamMention: string,
+): Promise<void> {
+  try {
+    const recent = await thread.messages.fetch({ limit: SCAN_LIMIT });
+    for (const message of recent.values()) {
+      if (message.content.startsWith(LOCKED_MARKER)) return;
+    }
+  } catch (error) {
+    logger.warn(`Could not check whether the series lock message is already up: ${String(error)}`);
+  }
+
+  await thread.send({
+    content:
+      `${LOCKED_MARKER}\n` +
+      `${devTeamMention} — series **${seriesId}** has been issued **${codesIssued}** tournament ` +
+      'codes, which should not happen. Todd has stopped every button in this thread.\n' +
+      '-# Captains: nothing here will work until a dev looks at it. Do not start another series ' +
+      'for this match.',
+    components: [],
+  });
 }
 
 /**
@@ -527,6 +589,46 @@ export async function announceSeriesFinished(
       formUrl,
     components: [],
   });
+}
+
+/**
+ * The tournament code out of a message Todd wrote, or null if it carries none.
+ *
+ * Matched against the exact shape `getTournamentCode` prints - `Code: ```X``` `
+ * - rather than by hunting for anything code-shaped, so a draft link or a team
+ * name can never be mistaken for one. A miss is answered with null and the
+ * caller carries on without it.
+ */
+export function shortcodeIn(content: string | undefined | null): string | null {
+  const match = /Code:\s*```([^`\n]+)```/.exec(content ?? '');
+  return match ? match[1].trim() || null : null;
+}
+
+/**
+ * The code Todd printed for one game, read back off that game's own message.
+ *
+ * The report button rides on the code message, so its own content is the first
+ * place to look and needs no request at all. The thread is the fallback for the
+ * buttons that live elsewhere - the code-limit row is posted on a ⚠️ message,
+ * which names a code it does not print.
+ */
+export async function shortcodeForGame(
+  thread: ControlThread,
+  gameNumber: number,
+): Promise<string | null> {
+  try {
+    const recent = await thread.messages.fetch({ limit: SCAN_LIMIT });
+    // The trailing space keeps "# Game 1 " from matching "# Game 12 ".
+    const heading = `# Game ${gameNumber} `;
+    for (const message of recent.values()) {
+      if (!message.content.startsWith(heading)) continue;
+      const shortcode = shortcodeIn(message.content);
+      if (shortcode) return shortcode;
+    }
+  } catch (error) {
+    logger.warn(`Could not read the code for game ${gameNumber} off the thread: ${String(error)}`);
+  }
+  return null;
 }
 
 /**

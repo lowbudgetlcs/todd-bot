@@ -79,6 +79,7 @@ fine for local development.
 | `API_TIMEOUT_MS` | `20000` | Per-attempt timeout on every outbound HTTP call. Must be positive — `AbortSignal.timeout` has no "no timeout" value, so `0` is treated as a mistake, not as "disabled" |
 | `API_RETRIES` | `2` | Retry budget for **GET** requests only. Non-GET calls never retry unless a call site opts in. **`0` is honored** — it's the setting to reach for when retries are making an incident worse |
 | `POST_GAME_FORM_URL` | the current LBLCS form | The link Todd posts when a series finishes. Set it when the season rolls, so a new form does not need a deploy |
+| `DEV_TEAM_ROLE_ID` | the LBLCS dev role | Role pinged when a series hits the lifetime code cap and locks itself. Must be a bare snowflake — anything else warns and falls back |
 
 These are parsed in [src/config.ts](../src/config.ts), not at the point of use.
 Unset and blank mean "use the default"; anything unparseable, negative, or (for

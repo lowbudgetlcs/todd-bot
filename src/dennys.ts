@@ -301,6 +301,36 @@ export const reportSeriesResult = async (
 ): Promise<Game> =>
   apiSend('POST', `/series/${seriesId}/results`, `reportSeriesResult(${seriesId})`, gameSchema, result);
 
+/**
+ * Ask dennys to re-check Riot for one code, and hand back the series as it
+ * stands afterwards - the same shape GET /series/{id} returns.
+ *
+ * 201 when a game was attributed, 200 when Riot answered with nothing, 503 when
+ * Riot could not be reached. Todd reads the games rather than the status, so a
+ * game recorded by an earlier self-report is treated the same as one Riot just
+ * supplied.
+ *
+ * Costs nothing against the per-game code limit, which is the point: a missed
+ * callback used to be worked around by issuing a fresh code.
+ *
+ * Identified by **shortcode**, not by id. The shortcode is the string Riot
+ * issued and Todd printed for the captains, so it means the same thing to all
+ * three; an id is dennys's own handle and Todd's copy of it is only as fresh as
+ * the button carrying it. Exactly one of the two may be sent - both or neither
+ * is a 422 - so a custom, which has no code at all, must not call this.
+ */
+export const refreshSeriesFromCode = async (
+  seriesId: number,
+  shortcode: string,
+): Promise<SeriesWithGames> =>
+  apiSend(
+    'POST',
+    `/series/${seriesId}/refresh`,
+    `refreshSeriesFromCode(${seriesId}, ${shortcode})`,
+    seriesWithGamesSchema,
+    { shortcode },
+  );
+
 /** Close a series by hand. 409 if it is already closed. An empty body is valid. */
 export const completeSeries = async (
   seriesId: number,
@@ -318,6 +348,16 @@ export const reopenSeries = async (seriesId: number): Promise<Series> =>
 
 /** Codes allowed for one game before dennys refuses, counted since the last result. */
 export const TOURNAMENT_CODE_LIMIT = 2;
+
+/**
+ * Codes one series may ever be issued. Todd's own ceiling, not dennys's - see
+ * docs/ARCHITECTURE.md. A Bo5 played entirely on regenerates does not reach it.
+ */
+export const SERIES_CODE_HARD_CAP = 10;
+
+/** This series has burned its lifetime code budget. Every flow stops. */
+export const isSeriesLocked = (series: SeriesWithGames): boolean =>
+  series.tournamentCodes.length >= SERIES_CODE_HARD_CAP;
 
 /** The code allowance for this game is spent. 409 on POST /series/{id}/game means this. */
 export const isCodeLimitError = (error: unknown): error is HttpError =>

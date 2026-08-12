@@ -1,6 +1,12 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle } from 'discord.js';
 import { createButton, createButtonData, parseButtonData } from '../button.ts';
-import { getSeries, getTeam, reportSeriesResult } from '../../dennys.ts';
+import {
+  getSeries,
+  getTeam,
+  isRiotGatewayError,
+  refreshSeriesFromCode,
+  reportSeriesResult,
+} from '../../dennys.ts';
 import type { SeriesWithGames, Team } from '../../dennys.ts';
 import {
   announceSeriesFinished,
@@ -8,11 +14,14 @@ import {
   buildSeriesStatus,
   clearRecoveryButtons,
   decodeReportTarget,
+  encodeReportTarget,
   gamesAwaitingReport,
   reconcileGameButtons,
   postSeriesControl,
   retireGameButtons,
   shareThreadScan,
+  shortcodeForGame,
+  shortcodeIn,
 } from '../../seriesControl.ts';
 import type { ControlThread } from '../../seriesControl.ts';
 import { safeDefer, safeInteractionError } from '../../interactionSafety.ts';
@@ -26,11 +35,17 @@ const mayAct = (interaction: ButtonInteraction, originalUserId: string, enemyCap
   interaction.user.id === originalUserId || interaction.user.id === enemyCaptainId;
 
 /**
- * What to say instead of opening the picker, when Riot got there first.
+ * What to say instead of opening the picker, when the stats are already in.
  *
- * Names the winner rather than just refusing: the captain pressed this because
- * they could not tell whether the result had landed, and seeing it is the
- * answer. A wrong result is a correction by staff, not a second report.
+ * This is the ordinary outcome of the button, not a refusal - Todd has just
+ * asked Riot, and the answer was yes. Worded as the verification succeeding.
+ *
+ * Names the winner rather than just saying "recorded": the captain pressed this
+ * because they could not tell whether the result had landed, and seeing it is
+ * the answer. A wrong result is a correction by staff, not a second report.
+ *
+ * Deliberately does not credit Riot. The same message covers a game an earlier
+ * self-report put on record, which Riot may know nothing about.
  *
  * The game number comes from the button, not from dennys. Dennys numbers games
  * in the order results are written, so its number for this game can differ from
@@ -45,9 +60,83 @@ function describeExistingResult(
   const winner = teams.find(team => team.id === recorded.result?.winningTeamId);
   const scoreline = winner ? ` — **${winner.name}** won` : '';
   return (
-    `Game ${gameNumber} is already recorded${scoreline}, so there is nothing to report.\n` +
+    `Game ${gameNumber}'s stats are in${scoreline}, so there is nothing to report.\n` +
     'If that result is wrong, ask an admin to fix it.'
   );
+}
+
+/**
+ * The series as it stands once dennys has re-asked Riot about this one code,
+ * plus the id dennys itself files that code under.
+ *
+ * A missed callback is far likelier than a genuinely unreported game, so the
+ * button asks Riot before it asks the captain - which is what the label
+ * promises. The refresh costs nothing against the per-game code limit, so this
+ * replaces the old workaround of issuing a fresh code to trigger a pull.
+ *
+ * The code is named by **shortcode**, taken from the message Todd printed it
+ * on. That string is what Riot issued, what dennys stored and what the captains
+ * pasted into the client, so all four agree on it; the id on the button is
+ * Todd's copy of dennys's handle and is only as fresh as the button. The id
+ * that comes back is looked up *from the shortcode* for the same reason - the
+ * duplicate check below matches on it, so trusting the button's copy there
+ * would put the same doubt on the answer.
+ *
+ * Undefined for a custom: no code to name, dennys rejects a refresh naming none
+ * (422), and Riot has never heard of the game anyway.
+ *
+ * Any refusal falls back to a plain read, so the duplicate check still runs
+ * against whatever dennys holds. That read is deliberately not caught - if
+ * dennys cannot be reached at all, this fails the way it always did rather than
+ * opening the picker on no information and inviting a duplicate.
+ */
+async function verifyAgainstRiot(
+  interaction: ButtonInteraction,
+  seriesId: number,
+  target: { tournamentCodeId: number | null; gameNumber: number } | null,
+): Promise<{ series: SeriesWithGames; tournamentCodeId: number | null } | undefined> {
+  if (!target || target.tournamentCodeId == null) return undefined;
+
+  // The button rides on the code message, so its own content is the first place
+  // to look and costs nothing. The thread is the fallback for the buttons that
+  // live elsewhere - the code-limit row is posted on a ⚠️ message.
+  const thread = interaction.channel;
+  const shortcode =
+    shortcodeIn(interaction.message?.content) ??
+    (thread && 'messages' in thread
+      ? await shortcodeForGame(thread as unknown as ControlThread, target.gameNumber)
+      : null);
+
+  const resolve = (series: SeriesWithGames) => ({
+    series,
+    // Falls back to the button's id only when the shortcode is not on the
+    // series at all, which means the two have genuinely diverged.
+    tournamentCodeId:
+      series.tournamentCodes.find(code => code.shortcode === shortcode)?.id ??
+      target.tournamentCodeId,
+  });
+
+  if (!shortcode) {
+    logger.warn(
+      `No code printed for game ${target.gameNumber} on series ${seriesId} - ` +
+        'reading the series instead of re-asking Riot',
+    );
+    return resolve(await getSeries(seriesId));
+  }
+
+  try {
+    return resolve(await refreshSeriesFromCode(seriesId, shortcode));
+  } catch (error) {
+    if (isRiotGatewayError(error)) {
+      logger.warn(
+        `Riot could not be reached to verify ${shortcode} on series ${seriesId}; ` +
+          'falling back to what dennys already holds',
+      );
+    } else {
+      logger.error(`Refreshing ${shortcode} on series ${seriesId} failed:`, error);
+    }
+    return resolve(await getSeries(seriesId));
+  }
 }
 
 /** Opens the winner picker. The report itself happens on the next click. */
@@ -84,27 +173,31 @@ export async function handleReportResult(interaction: ButtonInteraction) {
           : ' - nothing to ask dennys, a custom leaves no trace there'),
     );
 
-    const [team1, team2, series] = await Promise.all([
+    const [team1, team2, verified] = await Promise.all([
       getTeam(seriesData.team1Id),
       getTeam(seriesData.team2Id),
-      codeId != null ? getSeries(seriesData.seriesId) : undefined,
+      verifyAgainstRiot(interaction, seriesData.seriesId, target),
     ]);
+    const series = verified?.series;
+    // Dennys's own id for the code the button names, resolved from the
+    // shortcode - see verifyAgainstRiot for why the button's copy is not used.
+    const recordedCodeId = verified?.tournamentCodeId ?? codeId;
 
     // Exact, not a guess: dennys stamps the code on the game it records, so this
     // asks whether *this* game is recorded rather than whether some game is.
     const recorded = series?.games.find(
-      game => game.tournamentCodeId === codeId && game.result,
+      game => game.tournamentCodeId === recordedCodeId && game.result,
     );
     if (series) {
       logger.info(
         `dennys answered for series ${seriesData.seriesId}: ${series.games.length} game(s) on record` +
           `, codes recorded ${JSON.stringify(series.games.map(game => game.tournamentCodeId))}` +
-          ` - code ${codeId} ${recorded ? 'already has a result' : 'does not'}`,
+          ` - code ${recordedCodeId} ${recorded ? 'already has a result' : 'does not'}`,
       );
     }
     if (target && series && recorded) {
       logger.info(
-        `Report declined for series ${seriesData.seriesId}: code ${codeId} already has a result`,
+        `Report declined for series ${seriesData.seriesId}: code ${recordedCodeId} already has a result`,
       );
       await interaction.editReply({
         content: describeExistingResult(recorded, target.gameNumber, [team1, team2]),
@@ -129,22 +222,30 @@ export async function handleReportResult(interaction: ButtonInteraction) {
       return;
     }
 
+    // Re-encoded rather than passed straight through, so the write inherits the
+    // id resolved from the shortcode instead of the one frozen into the button
+    // that opened this. The next click is what calls /results, and a result
+    // naming the wrong code is credited to the wrong game - worse than the
+    // duplicate check merely missing. Minted fresh here, so it costs nothing.
+    //
+    // A custom resolves to null and encodes as 0, which is what it carried
+    // anyway: it has no code, and that is how the write knows to omit one.
+    const writeTarget = target
+      ? encodeReportTarget(recordedCodeId, target.gameNumber)
+      : data.tagArg;
+
     // No blue/red framing here. The sides in SeriesData are the ones the *next*
     // code will use, and Switch Sides swaps them between games, so they say
     // nothing about which side either team played in the game being reported.
-    //
-    // The target rides on through to the winner buttons: this click only opens
-    // the picker, and the next one is what writes, so it needs to know which
-    // game it is writing for.
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       createButton(
-        createButtonData('report_team1_won', data.originalUserId, seriesData, data.tagArg),
+        createButtonData('report_team1_won', data.originalUserId, seriesData, writeTarget),
         `${team1.name} won`,
         ButtonStyle.Secondary,
         '🏆',
       ),
       createButton(
-        createButtonData('report_team2_won', data.originalUserId, seriesData, data.tagArg),
+        createButtonData('report_team2_won', data.originalUserId, seriesData, writeTarget),
         `${team2.name} won`,
         ButtonStyle.Secondary,
         '🏆',
