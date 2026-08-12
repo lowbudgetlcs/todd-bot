@@ -477,7 +477,7 @@ describe('buildCodeLimitRow', () => {
 
   it('offers both remedies: report what was played, or play a custom', () => {
     const buttons = buttonsOf(buildCodeLimitRow(USER, seriesData, 9, 2));
-    expect(buttons.map(b => b.label)).toEqual(['Report Game 2', 'Go play a custom game']);
+    expect(buttons.map(b => b.label)).toEqual(['Verify Game 2 Stats', 'Go play a custom game']);
     expect(buttons.map(b => parseButtonData(b.custom_id).tag)).toEqual([
       'report_result',
       'play_custom',
@@ -787,7 +787,7 @@ describe('report targets', () => {
 
   it('puts the target on the button, so the press that writes knows the game', () => {
     const [button] = buttonsOf(buildGameReportRow('123456789012345678', seriesData, 42, 3));
-    expect(button.label).toBe('Report Game 3');
+    expect(button.label).toBe('Verify Game 3 Stats');
     const parsed = parseButtonData(button.custom_id);
     expect(parsed.tag).toBe('report_result');
     expect(decodeReportTarget(parsed.tagArg)).toEqual({ tournamentCodeId: 42, gameNumber: 3 });

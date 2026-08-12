@@ -253,7 +253,7 @@ describe('a mid-series regenerate dennys refuses on the code allowance', () => {
     await handleGenerateAnotherConfirm(makeInteraction() as any);
 
     expect(threadSends).toHaveLength(1);
-    expect(labelsOf(threadSends[0])).toEqual(['Report Game 2', 'Go play a custom game']);
+    expect(labelsOf(threadSends[0])).toEqual(['Verify Game 2 Stats', 'Go play a custom game']);
     expect(tagsOf(threadSends[0])).toEqual(['report_result', 'play_custom']);
   });
 

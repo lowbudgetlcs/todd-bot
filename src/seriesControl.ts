@@ -228,8 +228,8 @@ export function buildSeriesStatus(
     const named = awaitingReport.map(number => `**Game ${number}**`).join(', ');
     lines.push(
       awaitingReport.length === 1
-        ? `${named} still needs a result — use the Report button on its code message above.`
-        : `${named} still need results — use the Report buttons on their code messages above.`,
+        ? `${named} still needs a result — use the Verify Stats button on its code message above.`
+        : `${named} still need results — use the Verify Stats buttons on their code messages above.`,
     );
   }
 
@@ -252,7 +252,7 @@ export function buildSeriesStatus(
   if (hasOutstandingCode(series)) {
     lines.push(
       '**Report the game in progress to unlock the next one** — ' +
-        'use the Report button on its code message above.',
+        'use the Verify Stats button on its code message above.',
     );
   }
 
@@ -384,7 +384,7 @@ export function buildGameReportRow(
         seriesData,
         encodeReportTarget(tournamentCodeId, gameNumber),
       ),
-      `Report Game ${gameNumber}`,
+      `Verify Game ${gameNumber} Stats`,
       ButtonStyle.Secondary,
       '📝',
     ),
@@ -443,7 +443,7 @@ export function buildCodeLimitRow(
           seriesData,
           encodeReportTarget(outstandingCodeId, gameNumber),
         ),
-        `Report Game ${gameNumber}`,
+        `Verify Game ${gameNumber} Stats`,
         ButtonStyle.Primary,
         '📝',
       ),

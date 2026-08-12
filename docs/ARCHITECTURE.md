@@ -430,7 +430,7 @@ Two things follow from the cap only lifting when a result is written:
 
 - **Never retried, and no Try again button.** Unlike a 503 there is no moment at
   which the same press starts working, so `buildCodeLimitRow` offers only the two
-  things that clear it: **Report Game N**, which credits a result to the code
+  things that clear it: **Verify Game N Stats**, which credits a result to the code
   still outstanding (`outstandingCodeId`), and **Go play a custom game**, which
   rejoins the ordinary custom flow. The row is posted with `RECOVERY_MARKER`, so
   the first result to land retires both buttons.

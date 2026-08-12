@@ -81,7 +81,7 @@ them get to drive the series buttons afterward.
 | *"Failed to find a matching series for these teams."* | Dennys has no scheduled series for that pairing in that stage, or the only one is already complete — the lookup sends `completed=false`. |
 | *"Riot is not answering right now..."* | Riot returned 503. The thread is opened anyway with **Try again** and **Go play a custom game**. |
 | *"Riot refused to create a code for this game."* | Riot returned 502, which will not succeed on a retry, so only the custom path is offered. |
-| *"This game has already been issued 2 tournament code(s)…"* | Dennys 409: this game has spent its code allowance. The message is Dennys's own with the series id taken out, posted once in the thread with **Report Game N** and **Go play a custom game**. No retry is offered — the allowance clears when a result is written. |
+| *"This game has already been issued 2 tournament code(s)…"* | Dennys 409: this game has spent its code allowance. The message is Dennys's own with the series id taken out, posted once in the thread with **Verify Game N Stats** and **Go play a custom game**. No retry is offered — the allowance clears when a result is written. |
 | *"Error generating draft links! Please do so manually :)"* | The draft backend failed. **The tournament code was still created** — only the draft links are missing. |
 
 **Timeouts:** the dropdown collectors live for 5 minutes. After that the menus go
@@ -171,7 +171,7 @@ lookup table is [src/buttons/handlers.ts](../src/buttons/handlers.ts).
 | `generate_another_confirm` | ✅ Confirm | `handleGenerateAnotherConfirm` | Creates the next game in the series and posts its code. |
 | `switch_sides` | 🔄 Switch Sides | `handleSwitchSides` | Swaps sides for the *next* game and re-confirms. |
 | `cancel_flow` | ❌ Cancel | `handleCancel` | Deletes the ephemeral confirmation. |
-| `report_result` | 📝 Report result | `handleReportResult` | Opens the winner picker. Only on the control message, and only once the newest code has gone unanswered. |
+| `report_result` | 📝 Verify Game N Stats | `handleReportResult` | Opens the winner picker. Only on the control message, and only once the newest code has gone unanswered. |
 | `report_team1_won` | 🟦 *<blue team>* won | `handleReportTeam1Won` | Records the winner and refreshes the thread. |
 | `report_team2_won` | 🟥 *<red team>* won | `handleReportTeam2Won` | As above, for the other team. |
 | `code_not_working` | ❓ Code not working? | `handleCodeNotWorking` | Offers a replacement code or the custom-game path. Shown exactly when Generate Next Game is greyed, and the only route to a second code for the same game. |
