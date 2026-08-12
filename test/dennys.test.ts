@@ -441,10 +441,24 @@ describe('the tournament code allowance', () => {
     expect(isCodeLimitError(new Error('network'))).toBe(false);
   });
 
-  it("hands back dennys's own message, which names the series and the count", () => {
+  it("hands back dennys's own message, with the count it names", () => {
     expect(dennysErrorMessage(new HttpError('nope', 409, LIMIT_BODY))).toBe(
-      "Series '756' has already been issued 2 tournament code(s).",
+      'This game has already been issued 2 tournament code(s).',
     );
+  });
+
+  it('drops the series id dennys leads with - captains know series by team', () => {
+    expect(dennysErrorMessage(new HttpError('nope', 409, LIMIT_BODY))).not.toContain('756');
+  });
+
+  it('drops a series id named mid-sentence too', () => {
+    const body = JSON.stringify({ code: 409, message: 'No codes left for series 756.' });
+    expect(dennysErrorMessage(new HttpError('nope', 409, body))).toBe('No codes left.');
+  });
+
+  it('leaves a message that never named a series alone', () => {
+    const body = JSON.stringify({ code: 409, message: 'The allowance is spent.' });
+    expect(dennysErrorMessage(new HttpError('nope', 409, body))).toBe('The allowance is spent.');
   });
 
   it('repairs mojibake in the message, like every other string from dennys', () => {

@@ -410,10 +410,21 @@ never played leaves no game behind, so a captain pressing Generate could go roun
 forever.
 
 `isCodeLimitError` classifies it and `dennysErrorMessage` pulls the message out
-of the body. **The message is shown verbatim** — it names the series and the
-count, which is more use than anything Todd could write in its place — with
-Todd's own line appended for what to do next. `dennysErrorMessage` returns null
-for a body that is not that shape, leaving the caller on its own wording.
+of the body. **The message is shown as Dennys wrote it, minus the series id** —
+the count it names is more use than anything Todd could write in its place, but
+the id is not: captains know their series by the two teams in it, and a bare
+number in a failure message reads as something they are supposed to act on.
+`withoutSeriesId` rewrites Dennys's leading `Series '756' …` to `This game …` and
+strips a `for series 756` named mid-sentence; a message that never named one is
+passed through untouched. `dennysErrorMessage` returns null for a body that is
+not that shape, leaving the caller on its own wording.
+
+The refusal is said **once**, in the thread. Both captains need to see it and
+either may act on the buttons, so the handler posts there and deletes its
+ephemeral "Generating…" placeholder rather than rewriting it into a second copy
+of the same text. The thread send goes first: if it fails, the ephemeral is still
+standing to carry the news, and the fallback path uses it when there is no thread
+to post to at all.
 
 Two things follow from the cap only lifting when a result is written:
 
@@ -430,18 +441,30 @@ Todd counts the allowance itself so it can warn *before* the last code is spent.
 `remainingCodeAllowance` counts codes whose `createdAt` is after `lastGameAt` —
 the same rule Dennys applies — against `TOURNAMENT_CODE_LIMIT`. The status line
 says so at one remaining, which under a two-code cap is every game with a code
-out and reads as *your next code is the last one*, and at zero, where it also
-greys out Generate Next Game. It returns **null when the count cannot be worked
-out**, and null means say nothing and leave the button live: the number gates a
-button, and a guess that reads low would lock captains out of a code they are
-owed. Dennys is still the authority, and the 409 path above is what catches the
-cases Todd's count misses.
+out and reads as *your next code is the last one*, and at zero. It returns **null
+when the count cannot be worked out**, and null means say nothing and leave every
+button live: the number gates a button, and a guess that reads low would lock
+captains out of a code they are owed. Dennys is still the authority, and the 409
+path above is what catches the cases Todd's count misses.
+
+Which button the count gates is the part worth getting right, and the two are not
+the same:
+
+- **Generate Next Game is never gated.** It asks for the *next* game, and
+  reporting the current one is what a captain does immediately before pressing
+  it — the same act that clears the allowance. Greying it out put the exit behind
+  a disabled button and made a spent allowance look like a stuck series.
+- **"Generate a new one" is dropped from the "Code not working?" menu** at a
+  known zero, and the menu says why. That button asks for another code for the
+  game already in progress, which is exactly what Dennys is refusing, so offering
+  it can only spend a click on a 409. The custom-game exit stays, and it is the
+  one the wording points at.
 
 `TOURNAMENT_CODE_LIMIT` is Todd's copy of a server-side rule, so the two can
-drift. Setting it *below* what Dennys enforces is safe — the button greys out a
-code early and the 409 path never fires — but setting it above means the status
-line promises a code Dennys will refuse. Dennys's own message is always shown
-verbatim, so the captain reads the real count either way.
+drift. Setting it *below* what Dennys enforces is safe — the replacement button
+disappears early and the 409 path never fires — but setting it above means the
+status line promises a code Dennys will refuse. Dennys's own message is always
+shown, so the captain reads the real count either way.
 
 That null is why `tournamentCode.createdAt` is wrapped in `advisory()` rather
 than being required — see [Validation at the boundary](#validation-at-the-boundary).

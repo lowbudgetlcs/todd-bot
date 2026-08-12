@@ -654,8 +654,8 @@ export async function getTournamentCode({
         gameNumber: Math.max(1, limited ? nextGameNumber(limited) : 1, postedSoFar),
         error:
           `${dennysErrorMessage(error) ?? 'No more codes can be issued for this game.'}\n\n` +
-          'Another code will not help. Report the result of the game you already played, ' +
-          'or play a custom game and report the winner.',
+          'Another code will not help. **Report the result of the game you already played, ' +
+          'or play a custom game and report the winner.**',
         divisionId: division,
         divisionName: divisionEvent?.name,
         stageName: selectedStage,

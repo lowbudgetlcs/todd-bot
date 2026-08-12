@@ -247,13 +247,14 @@ export function buildSeriesStatus(
     lines.push('The last code has no result yet.');
   }
 
-  // At zero this is why the button below is greyed. At one it is the warning
-  // that the next code is the last one - a two-code cap leaves no earlier point.
+  // At zero this is why "Code not working?" stops offering a new code. At one it
+  // is the warning that the next code is the last - a two-code cap leaves no
+  // earlier point to say it.
   const remaining = remainingCodeAllowance(series);
   if (remaining === 0) {
     lines.push(
       `No more codes can be issued for this game — ${TOURNAMENT_CODE_LIMIT} have already gone out. ` +
-        'Report a result, or play a custom game.',
+        '**Report a result, or play a custom game.**',
     );
   } else if (remaining === 1) {
     lines.push('One more code can be issued for this game.');
@@ -278,18 +279,16 @@ export function buildControlRow(
   seriesData: SeriesData,
   series?: SeriesWithGames,
 ): ActionRowBuilder<ButtonBuilder> {
-  const generate = createButton(
-    createButtonData('generate_another', originalUserId, seriesData),
-    'Generate Next Game',
-    ButtonStyle.Success,
-    '⚔️',
+  // Never gated on the allowance. This asks for the next game, and reporting the
+  // current one is what a captain does immediately before pressing it.
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    createButton(
+      createButtonData('generate_another', originalUserId, seriesData),
+      'Generate Next Game',
+      ButtonStyle.Success,
+      '⚔️',
+    ),
   );
-
-  // Greyed rather than dropped, and only on a known zero - an unknown allowance
-  // leaves it live and lets dennys be the one to refuse.
-  if (series && remainingCodeAllowance(series) === 0) generate.setDisabled(true);
-
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(generate);
 
   // Not gated on staleness - staleness exists to give Riot's callback time to
   // land, but a dead code can be known immediately (League client says "invalid

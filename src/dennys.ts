@@ -323,12 +323,19 @@ export const TOURNAMENT_CODE_LIMIT = 2;
 export const isCodeLimitError = (error: unknown): error is HttpError =>
   error instanceof HttpError && error.status === 409;
 
+/** Dennys names series by id; captains know them by team. See docs/ARCHITECTURE.md. */
+const withoutSeriesId = (message: string): string =>
+  message
+    .replace(/^series\s+['"]?\d+['"]?\s+/i, 'This game ')
+    .replace(/\s*\bfor\s+series\s+['"]?\d+['"]?/gi, '');
+
 /** What dennys said, from its `{ code, message }` error body. Null if it did not say. */
 export const dennysErrorMessage = (error: unknown): string | null => {
   if (!(error instanceof HttpError) || !error.body) return null;
   try {
     const parsed = normalizeApiStrings(JSON.parse(error.body) as { message?: unknown });
-    const message = typeof parsed?.message === 'string' ? parsed.message.trim() : '';
+    const raw = typeof parsed?.message === 'string' ? parsed.message.trim() : '';
+    const message = withoutSeriesId(raw).trim();
     if (!message) return null;
     return message.length > 500 ? `${message.slice(0, 500)}…` : message;
   } catch {

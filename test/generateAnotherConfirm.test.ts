@@ -233,9 +233,9 @@ describe('a regenerate that succeeds', () => {
 describe('a mid-series regenerate dennys refuses on the code allowance', () => {
   const refused = {
     error:
-      "Series '756' has already been issued 2 tournament code(s).\n\n" +
-      'Another code will not help. Report the result of the game you already played, ' +
-      'or play a custom game and report the winner.',
+      'This game has already been issued 2 tournament code(s).\n\n' +
+      'Another code will not help. **Report the result of the game you already played, ' +
+      'or play a custom game and report the winner.**',
     riotUnavailable: false,
     retryable: false,
     codeLimitReached: true,
@@ -263,8 +263,42 @@ describe('a mid-series regenerate dennys refuses on the code allowance', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleGenerateAnotherConfirm(makeInteraction() as any);
 
-    expect(editReplyPayloads.at(-1)?.content).toContain('already been issued 2 tournament code(s)');
     expect(threadSends[0].content).toContain('already been issued 2 tournament code(s)');
+  });
+
+  it('says it once - the thread message, not an ephemeral copy as well', async () => {
+    getTournamentCode.mockResolvedValue(refused);
+    const interaction = makeInteraction();
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleGenerateAnotherConfirm(interaction as any);
+
+    // The "Generating..." placeholder goes rather than being rewritten into a
+    // second copy of a message the thread already carries.
+    expect(interaction.deleteReply).toHaveBeenCalled();
+    expect(editReplyPayloads.map(p => p.content)).not.toContain(refused.error);
+  });
+
+  it('names no series id - captains know their series by team', async () => {
+    getTournamentCode.mockResolvedValue(refused);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleGenerateAnotherConfirm(makeInteraction() as any);
+
+    expect(threadSends[0].content).not.toContain('756');
+  });
+
+  it('falls back to the ephemeral when there is no thread to post to', async () => {
+    getTournamentCode.mockResolvedValue(refused);
+    const interaction = makeInteraction();
+    // A refusal with nowhere to post must still reach the captain who clicked.
+    (interaction as { channel: unknown }).channel = null;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleGenerateAnotherConfirm(interaction as any);
+
+    expect(editReplyPayloads.at(-1)?.content).toBe(refused.error);
+    expect(interaction.deleteReply).not.toHaveBeenCalled();
   });
 
   it('leaves the report button out when no code is outstanding', async () => {

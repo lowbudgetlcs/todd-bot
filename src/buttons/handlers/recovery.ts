@@ -1,6 +1,7 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle, MessageFlags } from 'discord.js';
 import { createButton, createButtonData, parseButtonData } from '../button.ts';
 import { safeDefer, safeInteractionError } from '../../interactionSafety.ts';
+import { getSeries, remainingCodeAllowance } from '../../dennys.ts';
 import {
   CUSTOM_MARKER,
   encodeReportTarget,
@@ -47,16 +48,26 @@ export async function handleCodeNotWorking(interaction: ButtonInteraction) {
     if (!mayAct(interaction, data.originalUserId, seriesData.enemyCaptainId)) return refuse(interaction);
     if (!(await safeDefer(interaction, { ephemeral: true }))) return;
 
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      // regenerate_confirm, not generate_another_confirm: reaching this button
-      // means the captain has declared the current code dead, which is the only
-      // thing that licenses removing its message from the thread.
-      createButton(
-        createButtonData('regenerate_confirm', data.originalUserId, seriesData),
-        'Generate a new one',
-        ButtonStyle.Primary,
-        '🔄',
-      ),
+    // A read, and an unknown allowance leaves the option up: dennys is the
+    // authority, and offering a code it refuses beats hiding one it would issue.
+    const series = await getSeries(seriesData.seriesId).catch(() => null);
+    const spent = series !== null && remainingCodeAllowance(series) === 0;
+
+    const row = new ActionRowBuilder<ButtonBuilder>();
+    if (!spent) {
+      row.addComponents(
+        // regenerate_confirm, not generate_another_confirm: reaching this button
+        // means the captain has declared the current code dead, which is the only
+        // thing that licenses removing its message from the thread.
+        createButton(
+          createButtonData('regenerate_confirm', data.originalUserId, seriesData),
+          'Generate a new one',
+          ButtonStyle.Primary,
+          '🔄',
+        ),
+      );
+    }
+    row.addComponents(
       createButton(
         createButtonData('play_custom', data.originalUserId, seriesData),
         'Go play a custom game',
@@ -72,9 +83,11 @@ export async function handleCodeNotWorking(interaction: ButtonInteraction) {
     );
 
     await interaction.editReply({
-      content:
-        'You may either regenerate a new code to use OR play a custom.\n' +
-        'If regenerating a code fails for any reason, please use a custom game.',
+      content: spent
+        ? 'No more codes can be issued for this game.\n' +
+          '**Play a custom game and report the winner.**'
+        : 'You may either regenerate a new code to use OR play a custom.\n' +
+          'If regenerating a code fails for any reason, please use a custom game.',
       components: [row],
     });
   } catch (error) {

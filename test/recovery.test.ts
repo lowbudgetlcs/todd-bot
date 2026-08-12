@@ -3,11 +3,41 @@ import { SeriesData } from '../src/types/toddData.ts';
 import { createButtonData, parseButtonData } from '../src/buttons/button.ts';
 import { buildRecoveryRow } from '../src/seriesControl.ts';
 import { getButtonHandler } from '../src/buttons/handlers.ts';
-import {
-  handleCodeNotWorking,
-  handlePlayCustom,
-  handlePlayCustomConfirm,
-} from '../src/buttons/handlers/recovery.ts';
+
+/** Codes issued for the game in progress, which is what gates the replacement. */
+let seriesCodes: { id: number; createdAt: string | null }[] = [];
+/** Set to make the allowance unreadable, so dennys stays the authority. */
+let seriesFailsToLoad = false;
+
+vi.mock('../src/dennys.ts', async importOriginal => {
+  // remainingCodeAllowance is pure and covered by dennys.test.ts - keep the real
+  // one so what is stubbed here is only the read.
+  const actual = await importOriginal<typeof import('../src/dennys.ts')>();
+  return {
+    ...actual,
+    getSeries: vi.fn(async (id: number) => {
+      if (seriesFailsToLoad) throw new Error('dennys is down');
+      return {
+        id,
+        eventId: 7,
+        teamIds: [11, 22],
+        totalGames: 3,
+        eventStage: 'REGULAR_SEASON',
+        completed: false,
+        completedAt: null,
+        reopenedAt: null,
+        tournamentCodes: seriesCodes,
+        games: [],
+        lastCodeIssuedAt: null,
+        lastGameAt: null,
+      };
+    }),
+  };
+});
+
+const { handleCodeNotWorking, handlePlayCustom, handlePlayCustomConfirm } = await import(
+  '../src/buttons/handlers/recovery.ts'
+);
 
 /**
  * A dead code and a code that never generated are different failures with the
@@ -116,6 +146,8 @@ beforeEach(() => {
   editReplyPayloads.length = 0;
   threadSends.length = 0;
   threadMessages = [];
+  seriesCodes = [{ id: 9, createdAt: '2026-08-09T12:00:00Z' }];
+  seriesFailsToLoad = false;
 });
 
 describe('a code that will not generate', () => {
@@ -174,6 +206,32 @@ describe('a code that generated but does not work', () => {
     expect(getButtonHandler('regenerate_confirm')).toBe(
       getButtonHandler('generate_another_confirm'),
     );
+  });
+
+  it('drops the replacement once this game has spent its allowance', async () => {
+    // Dennys would refuse it, so offering it can only waste a click. The custom
+    // is the way out, and it is the one left on screen.
+    seriesCodes = [
+      { id: 8, createdAt: '2026-08-09T11:00:00Z' },
+      { id: 9, createdAt: '2026-08-09T12:00:00Z' },
+    ];
+    const interaction = makeInteraction('code_not_working');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleCodeNotWorking(interaction as any);
+
+    expect(labelsOf(editReplyPayloads.at(-1)!)).toEqual(['Go play a custom game', 'Cancel']);
+    expect(editReplyPayloads.at(-1)!.content).toContain('No more codes can be issued');
+    expect(editReplyPayloads.at(-1)!.content).not.toContain('regenerate');
+  });
+
+  it('keeps the replacement when the allowance cannot be read', async () => {
+    // A guess that reads low locks captains out of a code dennys would issue.
+    seriesFailsToLoad = true;
+    const interaction = makeInteraction('code_not_working');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleCodeNotWorking(interaction as any);
+
+    expect(labelsOf(editReplyPayloads.at(-1)!)).toContain('Generate a new one');
   });
 
   it('marks the replacement apart from Generate Next Game', async () => {

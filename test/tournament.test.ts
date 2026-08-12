@@ -457,8 +457,28 @@ describe('dennys refusing a code because the allowance is spent', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleBothTeamSubmission(interaction as any);
 
-    expect(threadSends[0]).toContain(MESSAGE);
+    expect(threadSends[0]).toContain('already been issued 2 tournament code(s)');
     expect(threadSends[0]).not.toContain('An error occurred');
+  });
+
+  it("drops the series id out of dennys's wording", async () => {
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    expect(threadSends[0]).toContain('This game has already been issued');
+    expect(threadSends[0]).not.toContain('756');
+  });
+
+  it('bolds the two things a captain can actually do', async () => {
+    const interaction = makeInteraction('confirm');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleBothTeamSubmission(interaction as any);
+
+    expect(threadSends[0]).toContain(
+      '**Report the result of the game you already played, ' +
+        'or play a custom game and report the winner.**',
+    );
   });
 
   it('opens the thread anyway, so the series has somewhere to be played out', async () => {
