@@ -20,6 +20,9 @@ import { z } from 'zod';
  */
 const unread = <T extends z.ZodType>(schema: T) => schema.nullish().catch(null);
 
+/** Read, but null is a usable answer ("unknown"), so a rename must not fail the request. */
+const advisory = <T extends z.ZodType>(schema: T) => schema.nullish().catch(null);
+
 /**
  * A string whose known values are documented but not enforced.
  *
@@ -128,7 +131,8 @@ export const tournamentCodeSchema = z.object({
   seriesId: z.number(),
   blueTeamId: z.number(),
   redTeamId: z.number(),
-  createdAt: unread(z.string()),
+  // Counted against `lastGameAt` to work out the codes left for this game.
+  createdAt: advisory(z.string()),
 });
 
 export const gameResultSchema = z.object({

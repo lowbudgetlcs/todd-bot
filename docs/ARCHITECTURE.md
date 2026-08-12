@@ -401,6 +401,51 @@ tagged `report_result` so it rejoins the normal flow. That message is deliberate
 **not** a control message: the custom is played over the next half hour and the
 button has to survive however many codes are issued meanwhile.
 
+### When Dennys will not issue another code
+
+Dennys 1.4.1 caps tournament codes at **two per game, counted since the most
+recent recorded game**, and answers `409` with `{ code, message }` past that. The
+cap exists because nothing else stops a series burning Riot codes: a code that is
+never played leaves no game behind, so a captain pressing Generate could go round
+forever.
+
+`isCodeLimitError` classifies it and `dennysErrorMessage` pulls the message out
+of the body. **The message is shown verbatim** — it names the series and the
+count, which is more use than anything Todd could write in its place — with
+Todd's own line appended for what to do next. `dennysErrorMessage` returns null
+for a body that is not that shape, leaving the caller on its own wording.
+
+Two things follow from the cap only lifting when a result is written:
+
+- **Never retried, and no Try again button.** Unlike a 503 there is no moment at
+  which the same press starts working, so `buildCodeLimitRow` offers only the two
+  things that clear it: **Report Game N**, which credits a result to the code
+  still outstanding (`outstandingCodeId`), and **Go play a custom game**, which
+  rejoins the ordinary custom flow. The row is posted with `RECOVERY_MARKER`, so
+  the first result to land retires both buttons.
+- **A refusal at game 1 still opens the thread**, for the same reason a Riot
+  outage does: the series has to be played out somewhere.
+
+Todd counts the allowance itself so it can warn *before* the last code is spent.
+`remainingCodeAllowance` counts codes whose `createdAt` is after `lastGameAt` —
+the same rule Dennys applies — against `TOURNAMENT_CODE_LIMIT`. The status line
+says so at one remaining, which under a two-code cap is every game with a code
+out and reads as *your next code is the last one*, and at zero, where it also
+greys out Generate Next Game. It returns **null when the count cannot be worked
+out**, and null means say nothing and leave the button live: the number gates a
+button, and a guess that reads low would lock captains out of a code they are
+owed. Dennys is still the authority, and the 409 path above is what catches the
+cases Todd's count misses.
+
+`TOURNAMENT_CODE_LIMIT` is Todd's copy of a server-side rule, so the two can
+drift. Setting it *below* what Dennys enforces is safe — the button greys out a
+code early and the 409 path never fires — but setting it above means the status
+line promises a code Dennys will refuse. Dennys's own message is always shown
+verbatim, so the captain reads the real count either way.
+
+That null is why `tournamentCode.createdAt` is wrapped in `advisory()` rather
+than being required — see [Validation at the boundary](#validation-at-the-boundary).
+
 ### `getTournamentCode`
 
 The one function that talks to everything. Sequentially:
@@ -496,7 +541,7 @@ been posted, leaving a series announced with no thread.
 
 ## The Dennys contract
 
-Everything Todd needs from the backend, against **Dennys 1.4.0**. All requests
+Everything Todd needs from the backend, against **Dennys 1.4.1**. All requests
 carry `Authorization: Bearer ${DENNYS_TOKEN}`. Calls live in `src/dennys.ts`,
 response shapes in `src/dennysSchemas.ts`.
 
@@ -522,6 +567,12 @@ Bodies: `{ blueTeamId, redTeamId }` for the code, `{ winnerTeamId?, loserTeamId?
 tournamentCodeId?, shortcode? }` for a result, `{ winnerTeamId?, loserTeamId? }`
 for a completion. **None of the writes are retried** — a replay would issue a
 second code, and a result naming no code records a second game.
+
+Failures worth telling apart, all on the code issue: **502** is Riot refusing,
+**503** is Riot unreachable, and **409** is Dennys refusing because the game has
+used its two-code allowance (1.4.1). Error bodies are `{ code, message }`. See
+[When Riot will not give out a code](#when-riot-will-not-give-out-a-code) and
+[When Dennys will not issue another code](#when-dennys-will-not-issue-another-code).
 
 A result naming a code is the exception, and Todd depends on it. Dennys returns
 the game it already holds for that code with a 200 instead of inserting a second
@@ -584,6 +635,13 @@ mojibake repair so the validated strings are the repaired ones. Two rules:
 - **Everything else is wrapped in `unread()`** and degrades to null, so a change
   in a corner Todd ignores cannot take a flow down. Objects are non-strict, so
   unknown keys are stripped and an additive Dennys release is a no-op.
+
+`advisory()` is the deliberate exception to rule one, and currently has exactly
+one user: `TournamentCodeDto.createdAt`, which feeds the remaining-code count.
+Its consumer treats null as "unknown" and goes quiet, so a rename costs a line of
+status text — whereas requiring it would raise `DennysSchemaError` on the code
+issue itself and take the whole flow down over that line. Use it only where null
+is a genuinely usable answer; everything Todd depends on stays required.
 
 `DennysSchemaError` is deliberately separate from `HttpError`: the latter is
 Dennys working and saying no, the former needs a code change here.

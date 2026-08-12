@@ -4,6 +4,7 @@ import { getTournamentCode } from "../../commands/tournament.ts";
 import log from 'loglevel';
 import { safeDefer, safeInteractionError } from "../../interactionSafety.ts";
 import {
+  buildCodeLimitRow,
   buildControlRow,
   buildGameReportRow,
   buildRecoveryRow,
@@ -84,6 +85,31 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
           content: `${RECOVERY_MARKER} ${tournamentCode.error}`,
           components: [
             buildRecoveryRow(data.originalUserId, seriesData, tournamentCode.retryable),
+          ],
+        });
+      }
+      return;
+    }
+
+    // Dennys refused: this game has used its code allowance. The remedies go in
+    // the thread, where both captains can see them and either can act.
+    if (tournamentCode.codeLimitReached) {
+      await interaction.editReply({
+        content: tournamentCode.error!,
+        components: [],
+      });
+
+      const limitThread = interaction.channel;
+      if (limitThread && 'send' in limitThread) {
+        await limitThread.send({
+          content: `${RECOVERY_MARKER} ${tournamentCode.error}`,
+          components: [
+            buildCodeLimitRow(
+              data.originalUserId,
+              seriesData,
+              tournamentCode.tournamentCodeId || null,
+              tournamentCode.gameNumber,
+            ),
           ],
         });
       }

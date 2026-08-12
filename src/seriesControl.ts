@@ -1,7 +1,7 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { createButton, createButtonData, parseButtonData } from './buttons/button.ts';
 import { SeriesData } from './types/toddData.ts';
-import { SeriesWithGames } from './dennys.ts';
+import { remainingCodeAllowance, SeriesWithGames, TOURNAMENT_CODE_LIMIT } from './dennys.ts';
 import log from 'loglevel';
 
 const logger = log.getLogger('seriesControl');
@@ -247,6 +247,18 @@ export function buildSeriesStatus(
     lines.push('The last code has no result yet.');
   }
 
+  // At zero this is why the button below is greyed. At one it is the warning
+  // that the next code is the last one - a two-code cap leaves no earlier point.
+  const remaining = remainingCodeAllowance(series);
+  if (remaining === 0) {
+    lines.push(
+      `No more codes can be issued for this game — ${TOURNAMENT_CODE_LIMIT} have already gone out. ` +
+        'Report a result, or play a custom game.',
+    );
+  } else if (remaining === 1) {
+    lines.push('One more code can be issued for this game.');
+  }
+
   return lines.join('\n');
 }
 
@@ -266,14 +278,18 @@ export function buildControlRow(
   seriesData: SeriesData,
   series?: SeriesWithGames,
 ): ActionRowBuilder<ButtonBuilder> {
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    createButton(
-      createButtonData('generate_another', originalUserId, seriesData),
-      'Generate Next Game',
-      ButtonStyle.Success,
-      '⚔️',
-    ),
+  const generate = createButton(
+    createButtonData('generate_another', originalUserId, seriesData),
+    'Generate Next Game',
+    ButtonStyle.Success,
+    '⚔️',
   );
+
+  // Greyed rather than dropped, and only on a known zero - an unknown allowance
+  // leaves it live and lets dennys be the one to refuse.
+  if (series && remainingCodeAllowance(series) === 0) generate.setDisabled(true);
+
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(generate);
 
   // Not gated on staleness - staleness exists to give Riot's callback time to
   // land, but a dead code can be known immediately (League client says "invalid
@@ -383,6 +399,43 @@ export function buildRecoveryRow(
         'Try again',
         ButtonStyle.Primary,
         '🔄',
+      ),
+    );
+  }
+  row.addComponents(
+    createButton(
+      createButtonData('play_custom', originalUserId, seriesData),
+      'Go play a custom game',
+      ButtonStyle.Secondary,
+      '⚠️',
+    ),
+  );
+  return row;
+}
+
+/**
+ * Shown when dennys refuses a code because this game has spent its allowance.
+ * Both buttons clear it; no retry, because pressing again cannot.
+ */
+export function buildCodeLimitRow(
+  originalUserId: string,
+  seriesData: SeriesData,
+  outstandingCodeId: number | null,
+  gameNumber: number,
+): ActionRowBuilder<ButtonBuilder> {
+  const row = new ActionRowBuilder<ButtonBuilder>();
+  if (outstandingCodeId != null) {
+    row.addComponents(
+      createButton(
+        createButtonData(
+          'report_result',
+          originalUserId,
+          seriesData,
+          encodeReportTarget(outstandingCodeId, gameNumber),
+        ),
+        `Report Game ${gameNumber}`,
+        ButtonStyle.Primary,
+        '📝',
       ),
     );
   }
