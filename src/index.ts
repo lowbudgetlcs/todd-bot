@@ -16,6 +16,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { parseButtonData } from "./buttons/button";
 import { getButtonHandler } from "./buttons/handlers.ts";
+import { refuseIfSeriesLocked } from "./buttons/seriesLock.ts";
 import log from 'loglevel';
 import { handleModal } from "./modals/playerPoint.ts";
 import { handleEventGroupSelect } from './commands/setEventGroup.ts';
@@ -138,7 +139,12 @@ client.on(Events.InteractionCreate, async interaction => {
     const data = parseButtonData(interaction.customId);
     const handler = getButtonHandler(data.tag);
     if (handler) {
-      await runGuarded(interaction, `button:${data.tag}`, () => handler(interaction));
+      await runGuarded(interaction, `button:${data.tag}`, async () => {
+        // Before the handler, and inside the guard: a series that has run away
+        // with codes stops here rather than in each handler separately.
+        if (await refuseIfSeriesLocked(interaction, data.tag, data.seriesData.seriesId)) return;
+        await handler(interaction);
+      });
     }
     return;
   }

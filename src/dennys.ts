@@ -319,6 +319,16 @@ export const reopenSeries = async (seriesId: number): Promise<Series> =>
 /** Codes allowed for one game before dennys refuses, counted since the last result. */
 export const TOURNAMENT_CODE_LIMIT = 2;
 
+/**
+ * Codes one series may ever be issued. Todd's own ceiling, not dennys's - see
+ * docs/ARCHITECTURE.md. A Bo5 played entirely on regenerates does not reach it.
+ */
+export const SERIES_CODE_HARD_CAP = 10;
+
+/** This series has burned its lifetime code budget. Every flow stops. */
+export const isSeriesLocked = (series: SeriesWithGames): boolean =>
+  series.tournamentCodes.length >= SERIES_CODE_HARD_CAP;
+
 /** The code allowance for this game is spent. 409 on POST /series/{id}/game means this. */
 export const isCodeLimitError = (error: unknown): error is HttpError =>
   error instanceof HttpError && error.status === 409;

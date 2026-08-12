@@ -483,6 +483,55 @@ disappears early and the 409 path never fires — but setting it above means the
 status line promises a code Dennys will refuse. Dennys's own message is always
 shown, so the captain reads the real count either way.
 
+### The lifetime code cap
+
+`SERIES_CODE_HARD_CAP` is **10 codes on one series, ever** — Todd's own ceiling,
+not Dennys's. Dennys refuses a third code *per game* and will happily keep
+issuing across a series forever, so nothing on the server side stops a loop. Ten
+sits above anything a real series reaches: a Bo5 in which every single game
+needed a regenerate is ten codes, and one that reaches it is not a series having
+a bad night, it is something stuck.
+
+At the cap **every button in that thread stops**, including reporting. That is
+deliberate and it is not the cheap option — a locked series cannot be completed
+by its captains at all — but a series issuing codes in a loop is producing
+garbage, and letting it keep writing results makes the cleanup worse than the
+outage.
+
+The guard lives in the **router** (`refuseIfSeriesLocked`, called from
+`index.ts`), not in each handler. "Stop all flows" has to hold for flows nobody
+is thinking about at the time, and a guard per handler is a list that goes stale
+the first time one is added. Three consequences worth knowing:
+
+- **Scoped to the one series named on the button.** A runaway thread cannot take
+  anyone else's game down with it.
+- **`cancel_flow` is exempt**, along with the selection-flow tags that carry no
+  series yet. Blocking a Cancel button is not stopping a flow, it is stranding an
+  ephemeral prompt on screen with no way to dismiss it.
+- **A series that cannot be read is let through.** Failing closed here would take
+  every button in every thread down the moment Dennys blipped; the cap is for a
+  runaway, not for an outage.
+
+`/start-series` is the one path the router cannot see — its Confirm button
+carries no series, because the series is resolved inside `getTournamentCode` —
+so that function re-checks before issuing, and only when `first` is true. A match
+whose first thread ran away is refused rather than handed a fresh thread and an
+eleventh code. Every mid-series press arrives with the series pinned and is
+refused before the handler runs, so the extra read stays off the hot path.
+
+The lock message is posted **publicly in the thread and only once**. Public
+because a role mention in an ephemeral message notifies nobody, and because both
+captains need to know why their buttons died rather than only whoever pressed
+last; once because a captain hammering a dead button would otherwise turn the
+lock into a wall of pings. Every press after the first gets an ephemeral refusal.
+The ping is `DEV_TEAM_ROLE_ID`, which falls back rather than sending a bad id —
+Discord renders a malformed role mention as literal text, which reads as Todd
+malfunctioning on top of the thing it is reporting.
+
+`buildControlRow` returns an **empty row** for a locked series, and
+`postSeriesControl` drops empty rows before sending: Discord rejects an action
+row with no components in it, which would take the status message down with it.
+
 ### One game at a time
 
 **Generate Next Game is greyed out while a game is in progress**, and reporting

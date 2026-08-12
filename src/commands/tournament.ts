@@ -25,7 +25,7 @@ import {
   postSeriesControl,
   RECOVERY_MARKER,
 } from '../seriesControl.ts';
-import { dennysErrorMessage, findSeriesForTeams, getEvent, getEvents, getEventWithTeams, getSeries, getSeriesId, getTeam, isCodeLimitError, isRetryableRiotGatewayError, isRiotGatewayError, issueTournamentCode, nextGameNumber, outstandingCodeId, Team } from '../dennys.ts';
+import { dennysErrorMessage, findSeriesForTeams, getEvent, getEvents, getEventWithTeams, getSeries, getSeriesId, getTeam, isCodeLimitError, isRetryableRiotGatewayError, isRiotGatewayError, isSeriesLocked, issueTournamentCode, nextGameNumber, outstandingCodeId, Team } from '../dennys.ts';
 import log from 'loglevel';
 import { SeriesData } from '../types/toddData.ts';
 
@@ -557,6 +557,8 @@ export async function getTournamentCode({
   retryable: boolean;
   /** Dennys refused: this game has used its code allowance. Never retryable. */
   codeLimitReached: boolean;
+  /** Todd's own ceiling: this series has run away with codes. A dev is needed. */
+  seriesLocked: boolean;
 }> {
   //TODO: Call api with this informatio nand let it handle all this logic
   const division  = divisionId? Number(divisionId) : null
@@ -579,6 +581,7 @@ export async function getTournamentCode({
       riotUnavailable: false,
       retryable: false,
       codeLimitReached: false,
+      seriesLocked: false,
       totalGames: 0,
     };
   }
@@ -598,6 +601,7 @@ export async function getTournamentCode({
       riotUnavailable: false,
       retryable: false,
       codeLimitReached: false,
+      seriesLocked: false,
       totalGames:0
     };
   }
@@ -626,7 +630,42 @@ export async function getTournamentCode({
       riotUnavailable: false,
       retryable: false,
       codeLimitReached: false,
+      seriesLocked: false,
       totalGames: 0
+    };
+  }
+
+  // Only on the /start-series path, which is the one the router guard cannot
+  // see: its button carries no series yet, so a match whose first thread ran
+  // away would otherwise be handed a fresh thread and an eleventh code. Every
+  // mid-series press arrives with the series pinned and is refused before the
+  // handler runs, so this read stays off the hot path.
+  const before = first ? await getSeries(seriesId).catch(() => null) : null;
+  if (before && isSeriesLocked(before)) {
+    logger.error(
+      `Refusing a code for series ${seriesId}: ${before.tournamentCodes.length} already issued`,
+    );
+    return {
+      discordResponse: null,
+      draftLinks: null,
+      shortcode: null,
+      gameNumber: 0,
+      error:
+        'This series has been issued too many tournament codes and is locked. ' +
+        'A dev needs to look at it before it can continue.',
+      divisionId: division,
+      divisionName: divisionEvent?.name,
+      stageName: selectedStage,
+      team1Name,
+      team2Name,
+      tournamentCodeId: 0,
+      totalGames: before.totalGames,
+      seriesId,
+      series: null,
+      riotUnavailable: false,
+      retryable: false,
+      codeLimitReached: false,
+      seriesLocked: true,
     };
   }
 
@@ -668,6 +707,7 @@ export async function getTournamentCode({
         riotUnavailable: false,
         retryable: false,
         codeLimitReached: true,
+        seriesLocked: false,
       };
     }
     // Riot refusing is not a lookup failure, and telling a captain "no such
@@ -695,6 +735,7 @@ export async function getTournamentCode({
       riotUnavailable: true,
       retryable,
       codeLimitReached: false,
+      seriesLocked: false,
     };
   }
   const shortcode = code.shortcode;
@@ -752,6 +793,7 @@ export async function getTournamentCode({
     riotUnavailable: false,
     retryable: false,
     codeLimitReached: false,
+    seriesLocked: false,
     totalGames
   };
 }

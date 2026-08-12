@@ -37,6 +37,7 @@ const {
   dennysErrorMessage,
   remainingCodeAllowance,
   outstandingCodeId,
+  isSeriesLocked,
   DennysSchemaError,
 } = await import('../src/dennys.ts');
 const { HttpError } = await import('../src/http.ts');
@@ -529,5 +530,42 @@ describe('the tournament code allowance', () => {
       }),
     );
     expect(outstandingCodeId(series)).toBeNull();
+  });
+});
+
+/**
+ * A ceiling Todd enforces itself. Dennys has no such rule - it refuses a third
+ * code per game and is happy to keep issuing forever across a series.
+ */
+describe('the lifetime code cap', () => {
+  const withCodes = (n: number) =>
+    seriesWithGamesSchema.parse(
+      aSeriesWithGames({
+        tournamentCodes: Array.from({ length: n }, (_, i) => aCode({ id: i + 1 })),
+      }),
+    );
+
+  it('locks at ten', () => {
+    expect(isSeriesLocked(withCodes(10))).toBe(true);
+  });
+
+  it('does not lock at nine', () => {
+    // A Bo5 where every game took a regenerate is ten codes; the cap has to sit
+    // above anything a real series reaches, and this pins where that is.
+    expect(isSeriesLocked(withCodes(9))).toBe(false);
+  });
+
+  it('stays locked past the cap, rather than only exactly on it', () => {
+    expect(isSeriesLocked(withCodes(14))).toBe(true);
+  });
+
+  it('counts codes, not games - a game leaves no code behind when it is a custom', () => {
+    const series = seriesWithGamesSchema.parse(
+      aSeriesWithGames({
+        tournamentCodes: Array.from({ length: 10 }, (_, i) => aCode({ id: i + 1 })),
+        games: Array.from({ length: 5 }, (_, i) => aGame({ id: i, number: i + 1 })),
+      }),
+    );
+    expect(isSeriesLocked(series)).toBe(true);
   });
 });

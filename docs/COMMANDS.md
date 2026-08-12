@@ -84,6 +84,7 @@ them get to drive the series buttons afterward.
 | *"Riot is not answering right now..."* | Riot returned 503. The thread is opened anyway with **Try again** and **Go play a custom game**. |
 | *"Riot refused to create a code for this game."* | Riot returned 502, which will not succeed on a retry, so only the custom path is offered. |
 | *"This game has already been issued 2 tournament code(s)…"* | Dennys 409: this game has spent its code allowance. The message is Dennys's own with the series id taken out, posted once in the thread with **Verify Game N Stats** and **Go play a custom game**. No retry is offered — the allowance clears when a result is written. |
+| *"This series has been issued too many tournament codes and is locked."* | Todd's own ceiling: 10 codes on one series. Every button in that thread stops, including reporting, and the dev team is pinged. No thread is opened. See [the lifetime code cap](ARCHITECTURE.md#the-lifetime-code-cap). |
 | *"Error generating draft links! Please do so manually :)"* | The draft backend failed. **The tournament code was still created** — only the draft links are missing. |
 
 **Timeouts:** the dropdown collectors live for 5 minutes. After that the menus go

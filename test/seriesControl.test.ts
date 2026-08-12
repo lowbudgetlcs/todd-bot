@@ -9,6 +9,7 @@ import {
   buildControlRow,
   buildGameReportRow,
   announceSeriesFinished,
+  announceSeriesLocked,
   buildSeriesStatus,
   clearRecoveryButtons,
   clearSupersededCodes,
@@ -1249,5 +1250,78 @@ describe('shareThreadScan', () => {
     await expect(clearRecoveryButtons(scan)).resolves.toBeUndefined();
     await expect(retireGameButtons(scan, 1)).resolves.toBeUndefined();
     expect(thread.fetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Todd's own ceiling, not dennys's. Ten codes on one series means something is
+ * looping, and the only safe move is to stop and fetch a human.
+ */
+describe('a series that has run away with codes', () => {
+  const USER = '123456789012345678';
+  const tenCodes = () =>
+    aSeries({ tournamentCodes: Array.from({ length: 10 }, (_, i) => aCode(i + 1, ago(1000))) });
+  const nineCodes = () =>
+    aSeries({ tournamentCodes: Array.from({ length: 9 }, (_, i) => aCode(i + 1, ago(1000))) });
+
+  it('leaves no button at all on the control row', () => {
+    expect(buttonsOf(buildControlRow(USER, seriesData, tenCodes()))).toHaveLength(0);
+  });
+
+  it('still has its buttons one code short of the cap', () => {
+    expect(buttonsOf(buildControlRow(USER, seriesData, nineCodes())).length).toBeGreaterThan(0);
+  });
+
+  it('says it is locked, and says nothing that names a button', () => {
+    const status = buildSeriesStatus(tenCodes(), TEAMS, NOW);
+    expect(status).toContain('This series is locked');
+    expect(status).toContain('dev has been notified');
+    expect(status).not.toContain('Verify Stats');
+    expect(status).not.toContain('unlock the next one');
+    expect(status).not.toContain('No more codes');
+  });
+
+  it('keeps the score, so the thread still says where the series got to', () => {
+    const series = aSeries({
+      tournamentCodes: Array.from({ length: 10 }, (_, i) => aCode(i + 1, ago(1000))),
+      games: [aGame(1, 11, 1)],
+    });
+    expect(buildSeriesStatus(series, TEAMS, NOW)).toContain('**Alpha** 1 – **Bravo** 0');
+  });
+
+  it('drops the empty row rather than sending one Discord rejects', async () => {
+    const thread = makeThread([]);
+    await postSeriesControl(thread, 'locked', [buildControlRow(USER, seriesData, tenCodes())]);
+
+    expect(thread.sent).toHaveLength(1);
+    expect(thread.sent[0].components).toEqual([]);
+  });
+});
+
+describe('announceSeriesLocked', () => {
+  it('pings the dev team and names the series and the count', async () => {
+    const thread = makeThread([]);
+    await announceSeriesLocked(thread, 756, 10, '<@&1209287588796436561>');
+
+    expect(thread.sent[0].content).toContain('<@&1209287588796436561>');
+    expect(thread.sent[0].content).toContain('756');
+    expect(thread.sent[0].content).toContain('10');
+  });
+
+  it('says it once, so a captain hammering a button cannot spam the ping', async () => {
+    const thread = makeThread([]);
+    await announceSeriesLocked(thread, 756, 10, '<@&1>');
+    const posted = makeMessage('100', thread.sent[0].content, false);
+    const second = makeThread([posted]);
+    await announceSeriesLocked(second, 756, 10, '<@&1>');
+
+    expect(second.sent).toHaveLength(0);
+  });
+
+  it('carries no buttons - that is the point of it', async () => {
+    const thread = makeThread([]);
+    await announceSeriesLocked(thread, 756, 10, '<@&1>');
+
+    expect(thread.sent[0].components).toEqual([]);
   });
 });
