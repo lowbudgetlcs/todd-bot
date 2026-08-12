@@ -435,6 +435,16 @@ looking the shortcode up in `tournamentCodes[]`, and only falls back to the
 button's copy when the shortcode is not on the series at all. Trusting the button
 there would leave the answer resting on the id the request deliberately avoided.
 
+Whichever way the game lands, **the thread is brought into line the same way**.
+`catchThreadUp` is the one function both paths end in — the captain claiming a
+winner and Riot answering for the code are the same event as far as the thread is
+concerned, so the sweeps, the awaiting-report list, the finish message and the
+control message all run for both. They did not at first: the verify path retired
+the report buttons and stopped, which left a game Riot had just confirmed showing
+*"Report the game in progress to unlock the next one"* with Generate Next Game
+still greyed against a game that was over. Two code paths doing the same job by
+hand is what let them drift, so now there is only one.
+
 That resolved id is also what the **winner buttons** are minted with, rather than
 the target being passed through from the button that opened the picker. Those
 buttons are what call `/results`, and a result naming the wrong code is credited

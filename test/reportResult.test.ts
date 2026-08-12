@@ -115,7 +115,7 @@ const { handleReportResult, handleReportTeam1Won } = await import(
   '../src/buttons/handlers/reportResult.ts'
 );
 const { createButtonData, parseButtonData } = await import('../src/buttons/button.ts');
-const { buildControlRow, CUSTOM_MARKER, RECOVERY_MARKER, STALE_CODE_MS } = await import(
+const { buildControlRow, CONTROL_MARKER, CUSTOM_MARKER, RECOVERY_MARKER, STALE_CODE_MS } = await import(
   '../src/seriesControl.ts'
 );
 
@@ -1010,5 +1010,123 @@ describe('what the winner buttons are told to write', () => {
     expect(reported).toEqual([
       { seriesId: 756, body: { winnerTeamId: 11, tournamentCodeId: 2 } },
     ]);
+  });
+});
+
+/**
+ * Riot answering for a code moves the series on exactly as much as a captain
+ * claiming a winner does. The thread has to move with it - for both captains,
+ * not just whoever pressed Verify.
+ *
+ * It did not: the verify path retired the report buttons and stopped, leaving
+ * the status line asking for a result dennys already held and Generate Next
+ * Game greyed against a game that was over.
+ */
+describe('the thread after Riot confirms a game', () => {
+  const codeMessage = (gameNumber: number, shortcode: string) =>
+    `# Game ${gameNumber} \n 🟦 A v.s. B 🟥\nCode: \`\`\`${shortcode}\`\`\`\n`;
+
+  /** Riot answered for game 1's code, so nothing is outstanding any more. */
+  const riotAnswered = () =>
+    aSeries({
+      tournamentCodes: [aCode(2)],
+      games: [aGame(1, 11, 2)],
+      lastCodeIssuedAt: '2026-08-09T12:00:00Z',
+      lastGameAt: '2026-08-09T12:20:00Z',
+    });
+
+  const verify = async () => {
+    refreshFinds = riotAnswered();
+    const interaction = makeInteraction(
+      'report_result',
+      ORIGINAL_USER,
+      [],
+      '2-1',
+      codeMessage(1, 'CODE2'),
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+  };
+
+  /** The control message the catch-up posts, if it posted one. */
+  const control = () => threadSends.find(s => s.content.startsWith(CONTROL_MARKER));
+
+  it('re-posts the series status', async () => {
+    await verify();
+    expect(control()).toBeDefined();
+  });
+
+  it('stops asking for a result dennys already has', async () => {
+    await verify();
+    expect(control()!.content).not.toContain('unlock the next one');
+  });
+
+  it('unlocks Generate Next Game', async () => {
+    // The flaw a captain actually hits: the game is over, Riot said so, and the
+    // only button that moves the series on is still greyed.
+    await verify();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [generate] = buttonsOf((control()!.components as any[])[0]) as {
+      label: string;
+      disabled?: boolean;
+    }[];
+    expect(generate.label).toBe('Generate Next Game');
+    expect(generate.disabled).not.toBe(true);
+  });
+
+  it('shows the score Riot just settled', async () => {
+    await verify();
+    expect(control()!.content).toContain('**Team 11** 1 – **Team 22** 0');
+  });
+
+  it('posts the form when Riot answering finished the series', async () => {
+    refreshFinds = { ...riotAnswered(), completed: true };
+    const interaction = makeInteraction(
+      'report_result',
+      ORIGINAL_USER,
+      [],
+      '2-1',
+      codeMessage(1, 'CODE2'),
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    const finish = threadSends.findIndex(s => s.content.startsWith('# The series is finished!'));
+    const status = threadSends.findIndex(s => s.content.startsWith(CONTROL_MARKER));
+    expect(finish).toBeGreaterThanOrEqual(0);
+    // The controls stay last, below the form.
+    expect(status).toBeGreaterThan(finish);
+  });
+
+  it('retires the ⚠️ rows, which a recorded game is the way past', async () => {
+    refreshFinds = riotAnswered();
+    const recovery = aThreadMessage('9', `${RECOVERY_MARKER} Riot would not issue a code.`, 'x');
+    const interaction = makeInteraction(
+      'report_result',
+      ORIGINAL_USER,
+      [recovery],
+      '2-1',
+      codeMessage(1, 'CODE2'),
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    expect(recovery.edit).toHaveBeenCalledWith({ components: [] });
+  });
+
+  it('says nothing extra when there is no game to confirm', async () => {
+    // Riot answered empty, so the picker opens and the thread is untouched -
+    // the series has not moved.
+    const interaction = makeInteraction(
+      'report_result',
+      ORIGINAL_USER,
+      [],
+      '2-1',
+      codeMessage(1, 'CODE2'),
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    expect(control()).toBeUndefined();
   });
 });
