@@ -14,6 +14,7 @@ import {
   buildSeriesStatus,
   clearRecoveryButtons,
   decodeReportTarget,
+  encodeReportTarget,
   gamesAwaitingReport,
   reconcileGameButtons,
   postSeriesControl,
@@ -221,22 +222,30 @@ export async function handleReportResult(interaction: ButtonInteraction) {
       return;
     }
 
+    // Re-encoded rather than passed straight through, so the write inherits the
+    // id resolved from the shortcode instead of the one frozen into the button
+    // that opened this. The next click is what calls /results, and a result
+    // naming the wrong code is credited to the wrong game - worse than the
+    // duplicate check merely missing. Minted fresh here, so it costs nothing.
+    //
+    // A custom resolves to null and encodes as 0, which is what it carried
+    // anyway: it has no code, and that is how the write knows to omit one.
+    const writeTarget = target
+      ? encodeReportTarget(recordedCodeId, target.gameNumber)
+      : data.tagArg;
+
     // No blue/red framing here. The sides in SeriesData are the ones the *next*
     // code will use, and Switch Sides swaps them between games, so they say
     // nothing about which side either team played in the game being reported.
-    //
-    // The target rides on through to the winner buttons: this click only opens
-    // the picker, and the next one is what writes, so it needs to know which
-    // game it is writing for.
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       createButton(
-        createButtonData('report_team1_won', data.originalUserId, seriesData, data.tagArg),
+        createButtonData('report_team1_won', data.originalUserId, seriesData, writeTarget),
         `${team1.name} won`,
         ButtonStyle.Secondary,
         '🏆',
       ),
       createButton(
-        createButtonData('report_team2_won', data.originalUserId, seriesData, data.tagArg),
+        createButtonData('report_team2_won', data.originalUserId, seriesData, writeTarget),
         `${team2.name} won`,
         ButtonStyle.Secondary,
         '🏆',

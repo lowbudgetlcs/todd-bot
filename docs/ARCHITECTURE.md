@@ -435,6 +435,15 @@ looking the shortcode up in `tournamentCodes[]`, and only falls back to the
 button's copy when the shortcode is not on the series at all. Trusting the button
 there would leave the answer resting on the id the request deliberately avoided.
 
+That resolved id is also what the **winner buttons** are minted with, rather than
+the target being passed through from the button that opened the picker. Those
+buttons are what call `/results`, and a result naming the wrong code is credited
+to the wrong game — a worse failure than the duplicate check merely missing one.
+They are built fresh at that moment, so carrying the better id costs nothing. The
+*game number* is not re-resolved: Dennys numbers games in write order, so its
+number can disagree with the heading the captain is looking at, and the thread's
+is the one that stays consistent with the code message above it.
+
 Two paths do not refresh. A **custom** has no code, and a refresh naming none is
 a 422 — Riot has never heard of the game anyway. And **Riot being unreachable**
 (503) falls back to a plain read, so an outage costs the verification, not the

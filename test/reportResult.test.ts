@@ -924,3 +924,91 @@ describe('verifying a game against Riot', () => {
     expect(calls.indexOf('deferReply')).toBeLessThan(calls.indexOf('refreshSeriesFromCode'));
   });
 });
+
+/**
+ * The picker's buttons are what call /results, and a result naming the wrong
+ * code is credited to the wrong game - worse than a check merely missing one.
+ * They are minted fresh at that moment, so they can carry the id resolved from
+ * the shortcode rather than the one frozen into the button that opened them.
+ */
+describe('what the winner buttons are told to write', () => {
+  const codeMessage = (gameNumber: number, shortcode: string) =>
+    `# Game ${gameNumber} \n 🟦 A v.s. B 🟥\nCode: \`\`\`${shortcode}\`\`\`\n`;
+
+  /** The report target encoded on the picker's first winner button. */
+  const pickerTarget = () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const row = (editReplyPayloads.at(-1) as any).components[0];
+    return parseButtonData(buttonsOf(row)[0].custom_id).tagArg;
+  };
+
+  it('writes against the id dennys files the shortcode under', async () => {
+    // The button that opened the picker says code 99; dennys files CODE2 as 2.
+    // Passing 99 through would credit the result to whatever game holds it.
+    seriesState = aSeries({ tournamentCodes: [aCode(1), aCode(2), aCode(3)] });
+    const interaction = makeInteraction(
+      'report_result',
+      ORIGINAL_USER,
+      [],
+      '99-2',
+      codeMessage(2, 'CODE2'),
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    expect(pickerTarget()).toBe('2-2');
+  });
+
+  it('keeps the game number the thread has been showing', async () => {
+    // Dennys numbers games in write order, so its number can differ from the
+    // heading the captain is looking at. Only the code id is re-resolved.
+    seriesState = aSeries({ tournamentCodes: [aCode(2)] });
+    const interaction = makeInteraction(
+      'report_result',
+      ORIGINAL_USER,
+      [],
+      '99-7',
+      codeMessage(7, 'CODE2'),
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    expect(pickerTarget()).toBe('2-7');
+  });
+
+  it('leaves a custom codeless, which is how the write knows to omit one', async () => {
+    const interaction = makeInteraction('report_custom', ORIGINAL_USER, [], '0-2');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    expect(pickerTarget()).toBe('0-2');
+  });
+
+  it('keeps the button as it was when the shortcode is not on the series', async () => {
+    // Genuinely diverged, so there is nothing better to fall back to than what
+    // the button already carried.
+    seriesState = aSeries({ tournamentCodes: [aCode(1)] });
+    const interaction = makeInteraction(
+      'report_result',
+      ORIGINAL_USER,
+      [],
+      '99-2',
+      codeMessage(2, 'CODE-UNKNOWN'),
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    expect(pickerTarget()).toBe('99-2');
+  });
+
+  it('sends that id on the write itself', async () => {
+    seriesState = aSeries({ tournamentCodes: [aCode(2)] });
+    const interaction = makeInteraction('report_team1_won', ORIGINAL_USER, [], '2-2');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportTeam1Won(interaction as any);
+
+    expect(reported).toEqual([
+      { seriesId: 756, body: { winnerTeamId: 11, tournamentCodeId: 2 } },
+    ]);
+  });
+});
