@@ -26,6 +26,7 @@ import {
 import type { ControlThread } from '../../seriesControl.ts';
 import { safeDefer, safeInteractionError } from '../../interactionSafety.ts';
 import { config } from '../../config.ts';
+import { SeriesData } from '../../types/toddData.ts';
 import log from 'loglevel';
 
 const logger = log.getLogger('reportResult');
@@ -33,6 +34,65 @@ logger.setLevel('info');
 
 const mayAct = (interaction: ButtonInteraction, originalUserId: string, enemyCaptainId: string) =>
   interaction.user.id === originalUserId || interaction.user.id === enemyCaptainId;
+
+/**
+ * Brings the thread into line with what dennys now holds.
+ *
+ * Both ways a game becomes recorded end here, and that is the whole point of it
+ * being one function: the captain claiming a winner and Riot answering for the
+ * code are the same event as far as the thread is concerned, and the status line
+ * and the buttons have to say so either way.
+ *
+ * They did not. The verify path retired the report buttons and stopped, so a
+ * game Riot had just confirmed left the status still asking for a result and
+ * Generate Next Game still greyed against a game that was over - the series had
+ * moved on and the only thing that said so was a message nobody could see.
+ *
+ * `retireCustomFor` is the game number a custom was just reported for, or null.
+ * A custom records a game with no code on it, so reconcileGameButtons can never
+ * reach its button and retiring by number is what closes that gap.
+ *
+ * The order is load-bearing: the sweeps run before the thread is read for what
+ * is still awaiting a result, so the game just recorded is not counted among
+ * them, and the control message is posted last so it stays at the bottom.
+ */
+async function catchThreadUp(
+  scan: ControlThread,
+  series: SeriesWithGames,
+  teams: [Team, Team],
+  seriesData: SeriesData,
+  originalUserId: string,
+  retireCustomFor: number | null,
+): Promise<void> {
+  // Retires the report button on every game dennys now holds - the one just
+  // recorded, and any Riot has answered since the thread was last touched.
+  await reconcileGameButtons(scan, series);
+
+  // A recorded game is the way past whatever the ⚠️ rows were offering a way
+  // past, so those retire on any result.
+  await clearRecoveryButtons(scan);
+
+  if (retireCustomFor != null) await retireGameButtons(scan, retireCustomFor);
+
+  // Only true because the shared scan carries the sweeps' edits forward.
+  const awaiting = await gamesAwaitingReport(scan, series);
+
+  // Before the control message, which has to stay last in the thread.
+  if (series.completed) {
+    await announceSeriesFinished(scan, config.POST_GAME_FORM_URL);
+  }
+
+  await postSeriesControl(
+    scan,
+    buildSeriesStatus(
+      series,
+      teams.map(team => ({ id: team.id, name: team.name })),
+      Date.now(),
+      awaiting,
+    ),
+    [buildControlRow(originalUserId, seriesData, series)],
+  );
+}
 
 /**
  * What to say instead of opening the picker, when the stats are already in.
@@ -204,20 +264,22 @@ export async function handleReportResult(interaction: ButtonInteraction) {
         components: [],
       });
 
-      // Retire the button that should not still have been there - for the other
-      // captain too, rather than leaving them to press it and read the same
-      // refusal. Riot's callback lands without anyone pressing anything, so
-      // this is the first chance Todd has had to notice.
+      // The same catch-up a self-reported result gets. Riot answering for the
+      // code moves the series on exactly as much as a captain claiming it does,
+      // so the status line and the buttons have to move with it - for both
+      // captains, not just whoever pressed.
       const thread = interaction.channel;
       if (thread && 'send' in thread) {
-        const scan = shareThreadScan(thread as unknown as ControlThread);
-        await reconcileGameButtons(scan, series);
-
-        // Riot answering the final game closes the series without anyone
-        // reporting it, so this press is the first time Todd could have known.
-        if (series.completed) {
-          await announceSeriesFinished(scan, config.POST_GAME_FORM_URL);
-        }
+        await catchThreadUp(
+          shareThreadScan(thread as unknown as ControlThread),
+          series,
+          [team1, team2],
+          seriesData,
+          data.originalUserId,
+          // Nothing to retire by number: this game has a code, so the sweep
+          // above reaches its button.
+          null,
+        );
       }
       return;
     }
@@ -357,49 +419,18 @@ async function report(interaction: ButtonInteraction, winner: 'team1' | 'team2')
         });
       }
 
-      // The four sweeps below have to run in this order and cannot be fired in
-      // parallel, so they shared five sequential fetches of the same fifty
-      // messages. One fetch now serves all of them.
-      const scan = shareThreadScan(thread as unknown as ControlThread);
-
-      // Retires the report button on every game dennys now holds - the one just
-      // written, and any Riot has answered since the thread was last touched.
-      await reconcileGameButtons(scan, series);
-
-      // A recorded game is the way past whatever the ⚠️ rows were offering a way
-      // past, so those retire on any result.
-      await clearRecoveryButtons(scan);
-
-      // A custom records a game with no code on it, so reconcile above can never
-      // reach either the custom's own button or the dead code's. Retiring by
-      // game number is what closes that gap - and only once the custom is
-      // genuinely on record, since a swallowed report still needs filing.
-      if (codeId == null && !swallowed && target) {
-        await retireGameButtons(scan, target.gameNumber);
-      }
-
-      // After the three sweeps above, so the game just reported is not counted
-      // among the ones still waiting - which is only true because the shared
-      // scan carries their edits forward.
-      const awaiting = await gamesAwaitingReport(scan, series);
-
-      // Before the control message, which has to stay last in the thread.
-      if (series.completed) {
-        await announceSeriesFinished(scan, config.POST_GAME_FORM_URL);
-      }
-
-      await postSeriesControl(
-        scan,
-        buildSeriesStatus(
-          series,
-          [
-            { id: team1.id, name: team1.name },
-            { id: team2.id, name: team2.name },
-          ],
-          Date.now(),
-          awaiting,
-        ),
-        [buildControlRow(data.originalUserId, seriesData, series)],
+      // The sweeps have to run in this order and cannot be fired in parallel, so
+      // they shared five sequential fetches of the same fifty messages. One
+      // fetch now serves all of them.
+      await catchThreadUp(
+        shareThreadScan(thread as unknown as ControlThread),
+        series,
+        [team1, team2],
+        seriesData,
+        data.originalUserId,
+        // Only once the custom is genuinely on record: a swallowed report still
+        // needs filing, so its button has to stay.
+        codeId == null && !swallowed && target ? target.gameNumber : null,
       );
     }
   } catch (error) {
