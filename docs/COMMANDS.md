@@ -81,7 +81,7 @@ them get to drive the series buttons afterward.
 | *"Failed to find a matching series for these teams."* | Dennys has no scheduled series for that pairing in that stage, or the only one is already complete — the lookup sends `completed=false`. |
 | *"Riot is not answering right now..."* | Riot returned 503. The thread is opened anyway with **Try again** and **Go play a custom game**. |
 | *"Riot refused to create a code for this game."* | Riot returned 502, which will not succeed on a retry, so only the custom path is offered. |
-| *"Series 'N' has already been issued 2 tournament code(s)…"* | Dennys 409: this game has spent its code allowance. The message is Dennys's own, and the thread is opened anyway with **Report Game N** and **Go play a custom game**. No retry is offered — the allowance clears when a result is written. |
+| *"This game has already been issued 2 tournament code(s)…"* | Dennys 409: this game has spent its code allowance. The message is Dennys's own with the series id taken out, posted once in the thread with **Report Game N** and **Go play a custom game**. No retry is offered — the allowance clears when a result is written. |
 | *"Error generating draft links! Please do so manually :)"* | The draft backend failed. **The tournament code was still created** — only the draft links are missing. |
 
 **Timeouts:** the dropdown collectors live for 5 minutes. After that the menus go

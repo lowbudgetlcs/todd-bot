@@ -374,9 +374,11 @@ describe('the code allowance', () => {
     expect(status).toContain('custom game');
   });
 
-  it('greys out Generate Next Game at zero rather than removing it', () => {
+  it('leaves Generate Next Game live at zero - it asks for the next game', () => {
+    // The allowance is per game and clears on a result, so a captain reporting
+    // and then pressing this is the ordinary way out. Greying it blocked that.
     expect(labelsOfControl(spent())).toContain('Generate Next Game');
-    expect(generateIsDisabled(spent())).toBe(true);
+    expect(generateIsDisabled(spent())).toBe(false);
   });
 
   it('counts only the codes issued since the last recorded game', () => {

@@ -91,14 +91,9 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
       return;
     }
 
-    // Dennys refused: this game has used its code allowance. The remedies go in
-    // the thread, where both captains can see them and either can act.
+    // Dennys refused: this game has used its code allowance. Said once, in the
+    // thread, where both captains can see it and either can act on the buttons.
     if (tournamentCode.codeLimitReached) {
-      await interaction.editReply({
-        content: tournamentCode.error!,
-        components: [],
-      });
-
       const limitThread = interaction.channel;
       if (limitThread && 'send' in limitThread) {
         await limitThread.send({
@@ -112,7 +107,15 @@ export async function handleGenerateAnotherConfirm(interaction: ButtonInteractio
             ),
           ],
         });
+        // Posted first, so a failed send leaves the ephemeral to carry the news.
+        await interaction.deleteReply();
+        return;
       }
+
+      await interaction.editReply({
+        content: tournamentCode.error!,
+        components: [],
+      });
       return;
     }
 
