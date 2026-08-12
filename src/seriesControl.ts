@@ -592,6 +592,46 @@ export async function announceSeriesFinished(
 }
 
 /**
+ * The tournament code out of a message Todd wrote, or null if it carries none.
+ *
+ * Matched against the exact shape `getTournamentCode` prints - `Code: ```X``` `
+ * - rather than by hunting for anything code-shaped, so a draft link or a team
+ * name can never be mistaken for one. A miss is answered with null and the
+ * caller carries on without it.
+ */
+export function shortcodeIn(content: string | undefined | null): string | null {
+  const match = /Code:\s*```([^`\n]+)```/.exec(content ?? '');
+  return match ? match[1].trim() || null : null;
+}
+
+/**
+ * The code Todd printed for one game, read back off that game's own message.
+ *
+ * The report button rides on the code message, so its own content is the first
+ * place to look and needs no request at all. The thread is the fallback for the
+ * buttons that live elsewhere - the code-limit row is posted on a ⚠️ message,
+ * which names a code it does not print.
+ */
+export async function shortcodeForGame(
+  thread: ControlThread,
+  gameNumber: number,
+): Promise<string | null> {
+  try {
+    const recent = await thread.messages.fetch({ limit: SCAN_LIMIT });
+    // The trailing space keeps "# Game 1 " from matching "# Game 12 ".
+    const heading = `# Game ${gameNumber} `;
+    for (const message of recent.values()) {
+      if (!message.content.startsWith(heading)) continue;
+      const shortcode = shortcodeIn(message.content);
+      if (shortcode) return shortcode;
+    }
+  } catch (error) {
+    logger.warn(`Could not read the code for game ${gameNumber} off the thread: ${String(error)}`);
+  }
+  return null;
+}
+
+/**
  * The highest game number Todd has already stamped on a code message here.
  *
  * Dennys cannot answer this. A tournament code carries no game number, and a

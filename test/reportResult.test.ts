@@ -52,6 +52,15 @@ const aGame = (number: number, winningTeamId: number, tournamentCodeId: number |
 /** What getSeries hands back. Overridden per test; reset in beforeEach. */
 let seriesState: ReturnType<typeof aSeries> = aSeries();
 
+/** What the refresh was asked about: the series, and the code as a shortcode. */
+const refreshedWith: { seriesId: number; shortcode: string }[] = [];
+
+/** Set to make the refresh throw - 503 is Riot unreachable, the documented case. */
+let refreshFailsWith: unknown = null;
+
+/** What the series looks like *after* dennys re-asks Riot. Null leaves it alone. */
+let refreshFinds: ReturnType<typeof aSeries> | null = null;
+
 /**
  * What reportSeriesResult hands back. Overridden per test; reset in beforeEach.
  *
@@ -83,6 +92,15 @@ vi.mock('../src/dennys.ts', async importOriginal => {
     }),
     getSeries: vi.fn(async () => {
       calls.push('getSeries');
+      return seriesState;
+    }),
+    refreshSeriesFromCode: vi.fn(async (seriesId: number, shortcode: string) => {
+      calls.push('refreshSeriesFromCode');
+      refreshedWith.push({ seriesId, shortcode });
+      if (refreshFailsWith) throw refreshFailsWith;
+      // Dennys hands back the series as it stands after the re-check, so a game
+      // Riot has just answered for is already in what the caller reads.
+      seriesState = refreshFinds ?? seriesState;
       return seriesState;
     }),
     reportSeriesResult: vi.fn(async (seriesId: number, body: unknown) => {
@@ -158,10 +176,13 @@ function makeInteraction(
   userId = ORIGINAL_USER,
   existing: FakeMessage[] = [],
   tagArg?: string,
+  /** The message the button rides on. A code message carries the shortcode. */
+  messageContent?: string,
 ) {
   const interaction = {
     customId: createButtonData(tag, ORIGINAL_USER, seriesData, tagArg).serialize(),
     user: { id: userId },
+    message: messageContent === undefined ? undefined : { content: messageContent },
     replied: false,
     deferred: false,
     isRepliable: () => true,
@@ -206,6 +227,9 @@ beforeEach(() => {
   threadSends.length = 0;
   seriesState = aSeries();
   reportedGame = aGame(1, 11, null);
+  refreshedWith.length = 0;
+  refreshFailsWith = null;
+  refreshFinds = null;
 });
 
 describe('reporting does not live on the control message', () => {
@@ -305,7 +329,7 @@ describe('checking whether Riot got there first', () => {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const last = editReplyPayloads.at(-1) as any;
-    expect(last.content).toContain('already recorded');
+    expect(last.content).toContain("stats are in");
     expect(last.components).toEqual([]);
   });
 
@@ -731,5 +755,172 @@ describe('the series finishing', () => {
     await handleReportTeam1Won(interaction as any);
 
     expect(threadSends.filter(s => s.content.includes('series is finished'))).toHaveLength(0);
+  });
+});
+
+/**
+ * Pressing Verify asks dennys to re-check Riot for the one code, rather than
+ * only reading what dennys already holds. A missed callback is far likelier
+ * than a genuinely unreported game, and a refresh costs nothing against the
+ * per-game code limit - the old workaround was issuing a fresh code.
+ */
+describe('verifying a game against Riot', () => {
+  const codeMessage = (gameNumber: number, shortcode: string) =>
+    `# Game ${gameNumber} \n 🟦 A v.s. B 🟥\nCode: \`\`\`${shortcode}\`\`\`\n`;
+
+  it('names the code by shortcode, not by the id on the button', async () => {
+    // The shortcode is what Riot issued, what dennys stored and what the
+    // captains pasted into the client. The id is Todd's copy of dennys's handle
+    // and is only as fresh as the button carrying it.
+    const interaction = makeInteraction(
+      'report_result',
+      ORIGINAL_USER,
+      [],
+      '2-2',
+      codeMessage(2, 'NA050c5-abc'),
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    expect(refreshedWith).toEqual([{ seriesId: 756, shortcode: 'NA050c5-abc' }]);
+  });
+
+  it('reads the code off the message the button rides on, with no extra fetch', async () => {
+    const interaction = makeInteraction(
+      'report_result',
+      ORIGINAL_USER,
+      [],
+      '2-2',
+      codeMessage(2, 'NA050c5-abc'),
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    expect(interaction.channel.messages.fetch).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the thread when the button is not on a code message', async () => {
+    // The code-limit row is posted on a ⚠️ message, which names a code it does
+    // not print.
+    const interaction = makeInteraction('report_result', ORIGINAL_USER, [
+      aThreadMessage('1', codeMessage(2, 'NA050c5-xyz')),
+    ], '2-2', '⚠️ No more codes can be issued for this game.');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    expect(refreshedWith).toEqual([{ seriesId: 756, shortcode: 'NA050c5-xyz' }]);
+  });
+
+  it('reads the series instead when no code was ever printed', async () => {
+    const interaction = makeInteraction('report_result', ORIGINAL_USER, [], '2-2');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    expect(calls).not.toContain('refreshSeriesFromCode');
+    expect(calls).toContain('getSeries');
+  });
+
+  it('never refreshes for a custom, which dennys would reject', async () => {
+    // A custom names no code, and a refresh naming none is a 422.
+    const interaction = makeInteraction('report_custom', ORIGINAL_USER, [], '0-2');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    expect(calls).not.toContain('refreshSeriesFromCode');
+    expect(calls).not.toContain('getSeries');
+  });
+
+  it('declines the picker when the re-check turned the game up', async () => {
+    // The whole point: Riot had it all along, so the captain does not have to
+    // claim a winner Riot can contradict.
+    refreshFinds = alreadyReported();
+    const interaction = makeInteraction(
+      'report_result',
+      ORIGINAL_USER,
+      [],
+      '2-2',
+      codeMessage(2, 'CODE2'),
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const last = editReplyPayloads.at(-1) as any;
+    expect(last.content).toContain("stats are in");
+    expect(last.components).toEqual([]);
+  });
+
+  it('matches the game on the id dennys files the shortcode under', async () => {
+    // The button says code 99; dennys files that shortcode as code 2. Trusting
+    // the button would miss the recorded game and offer the picker anyway.
+    refreshFinds = alreadyReported();
+    const interaction = makeInteraction(
+      'report_result',
+      ORIGINAL_USER,
+      [],
+      '99-2',
+      codeMessage(2, 'CODE2'),
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const last = editReplyPayloads.at(-1) as any;
+    expect(last.content).toContain("stats are in");
+  });
+
+  it('still opens the picker when Riot answered with nothing', async () => {
+    const interaction = makeInteraction(
+      'report_result',
+      ORIGINAL_USER,
+      [],
+      '2-2',
+      codeMessage(2, 'CODE2'),
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const last = editReplyPayloads.at(-1) as any;
+    expect(buttonsOf(last.components[0]).map(b => b.label)).toEqual([
+      'Team 11 won',
+      'Team 22 won',
+      'Cancel',
+    ]);
+  });
+
+  it('falls back to what dennys holds when Riot is unreachable', async () => {
+    // 503 is the documented outcome for that, and it must not cost the captain
+    // the ability to self-report.
+    const { HttpError } = await import('../src/http.ts');
+    refreshFailsWith = new HttpError('riot', 503, '');
+    seriesState = alreadyReported();
+    const interaction = makeInteraction(
+      'report_result',
+      ORIGINAL_USER,
+      [],
+      '2-2',
+      codeMessage(2, 'CODE2'),
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    expect(calls).toContain('getSeries');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((editReplyPayloads.at(-1) as any).content).toContain("stats are in");
+  });
+
+  it('acknowledges before re-checking, which goes out to Riot and back', async () => {
+    const interaction = makeInteraction(
+      'report_result',
+      ORIGINAL_USER,
+      [],
+      '2-2',
+      codeMessage(2, 'CODE2'),
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    expect(calls.indexOf('deferReply')).toBeLessThan(calls.indexOf('refreshSeriesFromCode'));
   });
 });

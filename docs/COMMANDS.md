@@ -174,7 +174,7 @@ lookup table is [src/buttons/handlers.ts](../src/buttons/handlers.ts).
 | `generate_another_confirm` | ✅ Confirm | `handleGenerateAnotherConfirm` | Creates the next game in the series and posts its code. |
 | `switch_sides` | 🔄 Switch Sides | `handleSwitchSides` | Swaps sides for the *next* game and re-confirms. |
 | `cancel_flow` | ❌ Cancel | `handleCancel` | Deletes the ephemeral confirmation. |
-| `report_result` | 📝 Verify Game N Stats | `handleReportResult` | Opens the winner picker. Only on the control message, and only once the newest code has gone unanswered. |
+| `report_result` | 📝 Verify Game N Stats | `handleReportResult` | Re-checks Riot for that game's code (`POST /series/{id}/refresh`, named by shortcode). If the stats are in, it says so; if Riot has nothing, it opens the winner picker. Rides on the game's own code message. |
 | `report_team1_won` | 🟦 *<blue team>* won | `handleReportTeam1Won` | Records the winner and refreshes the thread. |
 | `report_team2_won` | 🟥 *<red team>* won | `handleReportTeam2Won` | As above, for the other team. |
 | `code_not_working` | ❓ Code not working? | `handleCodeNotWorking` | Offers a replacement code or the custom-game path. Shown exactly when Generate Next Game is greyed, and the only route to a second code for the same game. |

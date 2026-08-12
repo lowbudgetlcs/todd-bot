@@ -397,6 +397,49 @@ A winner is mandatory; Dennys answers 422 to a report without one. The click is
 logged with the user id, because a captain can report a winner Riot does not
 corroborate and staff need the audit trail.
 
+### Verifying a game against Riot
+
+**Verify Game N Stats** asks Riot before it asks the captain. Dennys 1.4.1's
+`POST /series/{id}/refresh` re-checks one tournament code and records the game if
+Riot has one, and **costs nothing against the per-game code limit** — which is
+the point, because the old way to trigger a pull was to issue a fresh code.
+
+Todd calls it in place of the `GET /series/{id}` the button used to do: the
+response body is the whole series, so it answers the duplicate check as well as
+performing the re-check. If a game comes back for the code, the picker never
+opens and the captain is told the stats are in. If Riot has nothing, the picker
+opens and the self-report path runs exactly as before.
+
+**The code is named by shortcode, never by id.** The shortcode is the string Riot
+issued, Dennys stored, Todd printed and the captains pasted into the client, so
+all four agree on it; an id is Dennys's own handle, and Todd's copy of it rides
+on a button that may be older than the series' current state. Todd keeps no
+shortcode in the `custom_id` — there is no room, and it would go stale the same
+way — so it is read back out of the message it was printed on:
+
+1. **The message the button is on.** The report button rides on the code message,
+   so this costs no request at all.
+2. **The thread**, matched on the `# Game N ` heading. The fallback for buttons
+   that live elsewhere — the code-limit row is posted on a ⚠️ message, which
+   names a code it does not print.
+3. **Neither** → skip the refresh and do the plain read, which is what the button
+   did before this existed.
+
+`shortcodeIn` matches the exact shape `getTournamentCode` prints — `` Code:
+```X``` `` — rather than hunting for anything code-shaped, so a draft link can
+never be mistaken for a code.
+
+The same doubt applies to the **duplicate check**, which matches
+`game.tournamentCodeId`. Todd resolves that id out of the refresh response by
+looking the shortcode up in `tournamentCodes[]`, and only falls back to the
+button's copy when the shortcode is not on the series at all. Trusting the button
+there would leave the answer resting on the id the request deliberately avoided.
+
+Two paths do not refresh. A **custom** has no code, and a refresh naming none is
+a 422 — Riot has never heard of the game anyway. And **Riot being unreachable**
+(503) falls back to a plain read, so an outage costs the verification, not the
+captain's ability to self-report.
+
 ### When Riot will not give out a code
 
 A code that generates but is dead, and a code that never generates, are different
@@ -677,14 +720,24 @@ response shapes in `src/dennysSchemas.ts`.
 | GET | `/event/{id}/series?teamIds={a}&teamIds={b}&stage={s}&completed=false` | Find the scheduled series | `EventWithSeries` |
 | GET | `/series/{id}` | Game number, Bo count, codes and games so far | `SeriesWithGames` |
 | POST | `/series/{id}/game` | Issue a Riot tournament code | `TournamentCode` |
+| POST | `/series/{id}/refresh` | Re-ask Riot about one code | `SeriesWithGames` |
 | POST | `/series/{id}/results` | Record who won a game | `Game` |
 | POST | `/series/{id}/complete` | Close a series by hand | `Series` |
 | DELETE | `/series/{id}/complete` | Reopen a closed series | `Series` |
 
 Bodies: `{ blueTeamId, redTeamId }` for the code, `{ winnerTeamId?, loserTeamId?,
-tournamentCodeId?, shortcode? }` for a result, `{ winnerTeamId?, loserTeamId? }`
-for a completion. **None of the writes are retried** — a replay would issue a
-second code, and a result naming no code records a second game.
+tournamentCodeId?, shortcode? }` for a result, `{ tournamentCodeId? | shortcode? }`
+for a refresh, `{ winnerTeamId?, loserTeamId? }` for a completion. **None of the
+writes are retried** — a replay would issue a second code, and a result naming no
+code records a second game.
+
+`/refresh` is the odd one out: it is a POST, but it only asks Riot about a code
+that already exists. **201** means it attributed a game, **200** that Riot
+answered with nothing, **503** that Riot could not be reached — and the body is
+the whole series either way, the same shape `GET /series/{id}` returns, so it
+replaces that read rather than adding to it. Unlike `/results`, naming no code at
+all is a **422**: the operation is defined by the code it targets. See
+[Verifying a game against Riot](#verifying-a-game-against-riot).
 
 Failures worth telling apart, all on the code issue: **502** is Riot refusing,
 **503** is Riot unreachable, and **409** is Dennys refusing because the game has
