@@ -353,6 +353,28 @@ Code blocks and draft links are permanent. The control message is safe to delete
 precisely because everything on it is regenerated from `getSeries` on the next
 post.
 
+### When the series finishes
+
+`announceSeriesFinished` posts the post-game form the moment `series.completed`
+comes back true. This is the one message in the thread that is not about Todd:
+**nothing Todd writes reaches the standings** — the form is what records the
+match — so it carries the warning that results are not recorded without it, and
+names the winning captain as the one to fill it in. The URL comes from
+`POST_GAME_FORM_URL`, which is optional and defaults to the current form, so a
+new season is a config change rather than a deploy.
+
+It is posted **before** the control message, so the controls stay last, and it
+carries no buttons: there is nothing left to press in Discord.
+
+Once, guarded by `FINISHED_MARKER` — a scan of the thread rather than "did this
+click complete the series". Riot's callback closes a series with nobody pressing
+anything, so the completing click is not something Todd can rely on seeing;
+that is also why the decline path in `handleReportResult` (*"already
+recorded"*) announces too, since a captain pressing Verify Stats is often how
+Todd first learns the final game landed. If the thread cannot be read, it posts
+anyway — a duplicate reminder costs a scroll, and staying quiet costs the match
+result.
+
 ### Reporting a result
 
 Dennys pulls a played game from Riot whenever a code is issued, so a lost
@@ -430,41 +452,65 @@ Two things follow from the cap only lifting when a result is written:
 
 - **Never retried, and no Try again button.** Unlike a 503 there is no moment at
   which the same press starts working, so `buildCodeLimitRow` offers only the two
-  things that clear it: **Report Game N**, which credits a result to the code
+  things that clear it: **Verify Game N Stats**, which credits a result to the code
   still outstanding (`outstandingCodeId`), and **Go play a custom game**, which
   rejoins the ordinary custom flow. The row is posted with `RECOVERY_MARKER`, so
   the first result to land retires both buttons.
 - **A refusal at game 1 still opens the thread**, for the same reason a Riot
   outage does: the series has to be played out somewhere.
 
-Todd counts the allowance itself so it can warn *before* the last code is spent.
-`remainingCodeAllowance` counts codes whose `createdAt` is after `lastGameAt` —
-the same rule Dennys applies — against `TOURNAMENT_CODE_LIMIT`. The status line
-says so at one remaining, which under a two-code cap is every game with a code
-out and reads as *your next code is the last one*, and at zero. It returns **null
-when the count cannot be worked out**, and null means say nothing and leave every
-button live: the number gates a button, and a guess that reads low would lock
-captains out of a code they are owed. Dennys is still the authority, and the 409
-path above is what catches the cases Todd's count misses.
+Todd counts the allowance itself so it can explain the refusal before the 409
+arrives. `remainingCodeAllowance` counts codes whose `createdAt` is after
+`lastGameAt` — the same rule Dennys applies — against `TOURNAMENT_CODE_LIMIT`,
+and the status line speaks at zero. It returns **null when the count cannot be
+worked out**, and null means say nothing: a guess that reads low would announce a
+limit Dennys is not applying, and Dennys is the authority either way.
 
-Which button the count gates is the part worth getting right, and the two are not
-the same:
-
-- **Generate Next Game is never gated.** It asks for the *next* game, and
-  reporting the current one is what a captain does immediately before pressing
-  it — the same act that clears the allowance. Greying it out put the exit behind
-  a disabled button and made a spent allowance look like a stuck series.
-- **"Generate a new one" is dropped from the "Code not working?" menu** at a
-  known zero, and the menu says why. That button asks for another code for the
-  game already in progress, which is exactly what Dennys is refusing, so offering
-  it can only spend a click on a 409. The custom-game exit stays, and it is the
-  one the wording points at.
+That count is only meaningful because of the rule in
+[One game at a time](#one-game-at-a-time). Dennys counts codes since the last
+*result*, not per game number, so a series that got a code for game 1 and a code
+for game 2 with nothing reported has "2 codes used" — and calling that "no more
+codes **for this game**" mis-attributes a series-wide condition to the game a
+captain is looking at. With generation locked to one game at a
+time, every code counted since the last result genuinely belongs to the game in
+progress, and the line means what it says. **Zero can only be reached through
+Code not working? → Generate a new one**, which is exactly the button it explains
+the absence of.
 
 `TOURNAMENT_CODE_LIMIT` is Todd's copy of a server-side rule, so the two can
 drift. Setting it *below* what Dennys enforces is safe — the replacement button
 disappears early and the 409 path never fires — but setting it above means the
 status line promises a code Dennys will refuse. Dennys's own message is always
 shown, so the captain reads the real count either way.
+
+### One game at a time
+
+**Generate Next Game is greyed out while a game is in progress**, and reporting
+that game is what frees it. `buildControlRow` gates it on `hasOutstandingCode` —
+the same predicate that shows **Code not working?** — so the row always carries
+exactly one live button, never two and never none.
+
+"Reported" here means any of the three ways a game can land, because
+`hasOutstandingCode` reads the series rather than the clicks: the captain pressing
+Report, Riot's callback recording the game with nobody pressing anything, or a
+custom being reported (which records a game with no code on it, so only the
+timestamp ordering shows it). Todd catches up whenever the thread is next
+touched, and the sweeps that retire buttons run in the same pass as the control
+message being rebuilt — so a retired Report button and a greyed Generate can
+never be the final state.
+
+Two things fall out of it, and both were bugs before:
+
+- **The code allowance becomes countable**, as above.
+- **A replacement code has exactly one door.** "Code not working?" is the only
+  route to a second code for the same game, which is what makes a spent allowance
+  mean a captain actually regenerated rather than merely played two games without
+  reporting.
+
+A disabled button explains nothing on its own, so the status line carries *"Report
+the game in progress to unlock the next one — use the Report button on its code
+message above"* whenever it is greyed. Without it, "not yet" and "Todd is broken"
+look identical.
 
 That null is why `tournamentCode.createdAt` is wrapped in `advisory()` rather
 than being required — see [Validation at the boundary](#validation-at-the-boundary).

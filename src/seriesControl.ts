@@ -38,6 +38,12 @@ export const RECOVERY_MARKER = '⚠️';
  */
 export const CUSTOM_MARKER = '🎮';
 
+/**
+ * First line of the post-game form message, and the only thing stopping a
+ * second one. Nothing else Todd posts may start with it.
+ */
+export const FINISHED_MARKER = '# The series is finished!';
+
 /** Discord: the message is already gone, which the delete race below produces. */
 const UNKNOWN_MESSAGE = 10008;
 
@@ -228,8 +234,8 @@ export function buildSeriesStatus(
     const named = awaitingReport.map(number => `**Game ${number}**`).join(', ');
     lines.push(
       awaitingReport.length === 1
-        ? `${named} still needs a result — use the Report button on its code message above.`
-        : `${named} still need results — use the Report buttons on their code messages above.`,
+        ? `${named} still needs a result — use the Verify Stats button on its code message above.`
+        : `${named} still need results — use the Verify Stats buttons on their code messages above.`,
     );
   }
 
@@ -247,17 +253,22 @@ export function buildSeriesStatus(
     lines.push('The last code has no result yet.');
   }
 
-  // At zero this is why "Code not working?" stops offering a new code. At one it
-  // is the warning that the next code is the last - a two-code cap leaves no
-  // earlier point to say it.
-  const remaining = remainingCodeAllowance(series);
-  if (remaining === 0) {
+  // Why Generate Next Game is greyed. A disabled button explains nothing on its
+  // own, and this is the one line that turns it from broken into "not yet".
+  if (hasOutstandingCode(series)) {
+    lines.push(
+      '**Report the game in progress to unlock the next one** — ' +
+        'use the Verify Stats button on its code message above.',
+    );
+  }
+
+  // Only at zero, which under one-game-at-a-time takes a regenerate to reach.
+  // This is why "Code not working?" stops offering a new code.
+  if (remainingCodeAllowance(series) === 0) {
     lines.push(
       `No more codes can be issued for this game — ${TOURNAMENT_CODE_LIMIT} have already gone out. ` +
         '**Report a result, or play a custom game.**',
     );
-  } else if (remaining === 1) {
-    lines.push('One more code can be issued for this game.');
   }
 
   return lines.join('\n');
@@ -279,16 +290,19 @@ export function buildControlRow(
   seriesData: SeriesData,
   series?: SeriesWithGames,
 ): ActionRowBuilder<ButtonBuilder> {
-  // Never gated on the allowance. This asks for the next game, and reporting the
-  // current one is what a captain does immediately before pressing it.
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    createButton(
-      createButtonData('generate_another', originalUserId, seriesData),
-      'Generate Next Game',
-      ButtonStyle.Success,
-      '⚔️',
-    ),
+  // One game at a time. See docs/ARCHITECTURE.md - this is also what keeps the
+  // code allowance countable.
+  const inProgress = series ? hasOutstandingCode(series) : false;
+
+  const generate = createButton(
+    createButtonData('generate_another', originalUserId, seriesData),
+    'Generate Next Game',
+    ButtonStyle.Success,
+    '⚔️',
   );
+  if (inProgress) generate.setDisabled(true);
+
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(generate);
 
   // Not gated on staleness - staleness exists to give Riot's callback time to
   // land, but a dead code can be known immediately (League client says "invalid
@@ -299,7 +313,10 @@ export function buildControlRow(
   // Not gated on completion either. Dennys does not block a completed series
   // from taking codes or results, and a captain who needs to correct one should
   // not be locked out because dennys closed it early.
-  if (series && hasOutstandingCode(series)) {
+  //
+  // The same condition that greys the button above, so the row always carries
+  // exactly one live button - never two, never none.
+  if (inProgress) {
     row.addComponents(
       createButton(
         createButtonData('code_not_working', originalUserId, seriesData),
@@ -373,7 +390,7 @@ export function buildGameReportRow(
         seriesData,
         encodeReportTarget(tournamentCodeId, gameNumber),
       ),
-      `Report Game ${gameNumber}`,
+      `Verify Game ${gameNumber} Stats`,
       ButtonStyle.Secondary,
       '📝',
     ),
@@ -432,7 +449,7 @@ export function buildCodeLimitRow(
           seriesData,
           encodeReportTarget(outstandingCodeId, gameNumber),
         ),
-        `Report Game ${gameNumber}`,
+        `Verify Game ${gameNumber} Stats`,
         ButtonStyle.Primary,
         '📝',
       ),
@@ -474,6 +491,42 @@ export async function postSeriesControl(
     message => message.id !== posted.id && isControlMessage(message),
     message => message.delete(),
   );
+}
+
+/**
+ * Points at the post-game form once dennys closes the series.
+ *
+ * Nothing Todd writes reaches the standings - the form is what records the
+ * match - so this is the last thing the thread has to say and it must not be
+ * missed. Posted before the control message so the controls stay at the bottom.
+ *
+ * Posted once, guarded by FINISHED_MARKER rather than by "did this click
+ * complete the series": Riot's callback can close a series with nobody pressing
+ * anything, so the completing click is not a thing Todd can rely on seeing. A
+ * thread it cannot read is posted to anyway - a duplicate reminder costs a
+ * scroll, and staying quiet costs the match result.
+ */
+export async function announceSeriesFinished(
+  thread: ControlThread,
+  formUrl: string,
+): Promise<void> {
+  try {
+    const recent = await thread.messages.fetch({ limit: SCAN_LIMIT });
+    for (const message of recent.values()) {
+      if (message.content.startsWith(FINISHED_MARKER)) return;
+    }
+  } catch (error) {
+    logger.warn(`Could not check whether the series finish message is already up: ${String(error)}`);
+  }
+
+  await thread.send({
+    content:
+      `${FINISHED_MARKER} Please report the match results in the form!\n` +
+      '-# The match results will NOT be recorded if you do not fill out the sheet! ' +
+      'The winning captain needs to fill out the sheet\n\n' +
+      formUrl,
+    components: [],
+  });
 }
 
 /**

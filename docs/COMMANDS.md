@@ -65,6 +65,8 @@ them get to drive the series buttons afterward.
      the enemy captain;
    - the game code message with the tournament code, who generated it, and the
      enemy captain;
+   - once the series is decided, a **post-game form** message — the form is what
+     records the match in the standings, and the winning captain fills it in;
    - a **control message**, always last, carrying the series status and the
      buttons. It is deleted and re-posted after every code so it stays at the
      bottom, which means exactly one set of buttons is ever live.
@@ -81,7 +83,7 @@ them get to drive the series buttons afterward.
 | *"Failed to find a matching series for these teams."* | Dennys has no scheduled series for that pairing in that stage, or the only one is already complete — the lookup sends `completed=false`. |
 | *"Riot is not answering right now..."* | Riot returned 503. The thread is opened anyway with **Try again** and **Go play a custom game**. |
 | *"Riot refused to create a code for this game."* | Riot returned 502, which will not succeed on a retry, so only the custom path is offered. |
-| *"This game has already been issued 2 tournament code(s)…"* | Dennys 409: this game has spent its code allowance. The message is Dennys's own with the series id taken out, posted once in the thread with **Report Game N** and **Go play a custom game**. No retry is offered — the allowance clears when a result is written. |
+| *"This game has already been issued 2 tournament code(s)…"* | Dennys 409: this game has spent its code allowance. The message is Dennys's own with the series id taken out, posted once in the thread with **Verify Game N Stats** and **Go play a custom game**. No retry is offered — the allowance clears when a result is written. |
 | *"Error generating draft links! Please do so manually :)"* | The draft backend failed. **The tournament code was still created** — only the draft links are missing. |
 
 **Timeouts:** the dropdown collectors live for 5 minutes. After that the menus go
@@ -166,15 +168,15 @@ lookup table is [src/buttons/handlers.ts](../src/buttons/handlers.ts).
 | `confirm` | ✅ Confirm | `handleBothTeamSubmission` | Creates the game and posts the series. |
 | `switch` | 🔄 Switch Sides | `handleTeamSelect` | Swaps blue/red during initial setup and re-renders. |
 | `cancel` | ❌ Cancel | `handleTeamSelect` | Clears both teams and the stage during setup. |
-| `generate_another` | ⚔️ Generate Next Game | `handleGenerateAnotherCode` | Shows the current sides with confirm/switch/cancel. |
+| `generate_another` | ⚔️ Generate Next Game | `handleGenerateAnotherCode` | Shows the current sides with confirm/switch/cancel. **Greyed out while a game is in progress** — reporting that game unlocks it. |
 | `cancel_switch` | — | `handleGenerateAnotherCode` | Alias of the above; returns to the sides prompt. |
 | `generate_another_confirm` | ✅ Confirm | `handleGenerateAnotherConfirm` | Creates the next game in the series and posts its code. |
 | `switch_sides` | 🔄 Switch Sides | `handleSwitchSides` | Swaps sides for the *next* game and re-confirms. |
 | `cancel_flow` | ❌ Cancel | `handleCancel` | Deletes the ephemeral confirmation. |
-| `report_result` | 📝 Report result | `handleReportResult` | Opens the winner picker. Only on the control message, and only once the newest code has gone unanswered. |
+| `report_result` | 📝 Verify Game N Stats | `handleReportResult` | Opens the winner picker. Only on the control message, and only once the newest code has gone unanswered. |
 | `report_team1_won` | 🟦 *<blue team>* won | `handleReportTeam1Won` | Records the winner and refreshes the thread. |
 | `report_team2_won` | 🟥 *<red team>* won | `handleReportTeam2Won` | As above, for the other team. |
-| `code_not_working` | ❓ Code not working? | `handleCodeNotWorking` | Offers a replacement code or the custom-game path. |
+| `code_not_working` | ❓ Code not working? | `handleCodeNotWorking` | Offers a replacement code or the custom-game path. Shown exactly when Generate Next Game is greyed, and the only route to a second code for the same game. |
 | `play_custom` | ⚠️ Go play a custom game | `handlePlayCustom` | Confirms first: no stats, and take a scoreboard screenshot. |
 | `play_custom_confirm` | ✅ Yes, we're playing a custom | `handlePlayCustomConfirm` | Posts the *We finished the custom game* button into the thread. |
 | `end_series` | — | — | Retired. No button ever used it, and Dennys now closes a series automatically when enough results are written. The wire code stays reserved so a new tag cannot inherit it. |

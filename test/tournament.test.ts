@@ -499,7 +499,7 @@ describe('dennys refusing a code because the allowance is spent', () => {
     const labels = (threadComponents[0][0] as any)
       .toJSON()
       .components.map((b: { label: string }) => b.label);
-    expect(labels).toEqual(['Report Game 1', 'Go play a custom game']);
+    expect(labels).toEqual(['Verify Game 1 Stats', 'Go play a custom game']);
   });
 
   it('points the report button at the code still outstanding', async () => {
@@ -604,7 +604,7 @@ describe('the thread ends with the controls', () => {
       label: string;
       custom_id: string;
     }[];
-    expect(button.label).toBe('Report Game 1');
+    expect(button.label).toBe('Verify Game 1 Stats');
     const parsed = parseButtonData(button.custom_id);
     expect(parsed.tag).toBe('report_result');
     // The code dennys just issued, and the game number the thread is showing.
