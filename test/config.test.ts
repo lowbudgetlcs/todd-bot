@@ -75,6 +75,26 @@ describe('API_TIMEOUT_MS', () => {
   });
 });
 
+describe('POST_GAME_FORM_URL', () => {
+  it('boots without it, rather than joining the required set', async () => {
+    // The deploy that does not know about this variable yet must still start.
+    const config = await loadConfigWith({ POST_GAME_FORM_URL: undefined });
+    expect(config.POST_GAME_FORM_URL).toBe('https://forms.gle/bxYwXpe8esVpsoix6');
+  });
+
+  it('treats a blank value as unset', async () => {
+    // `POST_GAME_FORM_URL=` in a .env file would otherwise post a bare heading
+    // with no link under it.
+    const config = await loadConfigWith({ POST_GAME_FORM_URL: '   ' });
+    expect(config.POST_GAME_FORM_URL).toBe('https://forms.gle/bxYwXpe8esVpsoix6');
+  });
+
+  it('takes a new form when the season rolls', async () => {
+    const config = await loadConfigWith({ POST_GAME_FORM_URL: 'https://forms.gle/next-season' });
+    expect(config.POST_GAME_FORM_URL).toBe('https://forms.gle/next-season');
+  });
+});
+
 describe('unparseable tunables', () => {
   it('falls back to the default without throwing', async () => {
     // A typo in an optional knob must not stop the bot from booting, unlike

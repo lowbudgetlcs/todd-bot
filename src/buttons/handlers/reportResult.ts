@@ -3,6 +3,7 @@ import { createButton, createButtonData, parseButtonData } from '../button.ts';
 import { getSeries, getTeam, reportSeriesResult } from '../../dennys.ts';
 import type { SeriesWithGames, Team } from '../../dennys.ts';
 import {
+  announceSeriesFinished,
   buildControlRow,
   buildSeriesStatus,
   clearRecoveryButtons,
@@ -15,6 +16,7 @@ import {
 } from '../../seriesControl.ts';
 import type { ControlThread } from '../../seriesControl.ts';
 import { safeDefer, safeInteractionError } from '../../interactionSafety.ts';
+import { config } from '../../config.ts';
 import log from 'loglevel';
 
 const logger = log.getLogger('reportResult');
@@ -115,10 +117,14 @@ export async function handleReportResult(interaction: ButtonInteraction) {
       // this is the first chance Todd has had to notice.
       const thread = interaction.channel;
       if (thread && 'send' in thread) {
-        await reconcileGameButtons(
-          thread as unknown as Parameters<typeof reconcileGameButtons>[0],
-          series,
-        );
+        const scan = shareThreadScan(thread as unknown as ControlThread);
+        await reconcileGameButtons(scan, series);
+
+        // Riot answering the final game closes the series without anyone
+        // reporting it, so this press is the first time Todd could have known.
+        if (series.completed) {
+          await announceSeriesFinished(scan, config.POST_GAME_FORM_URL);
+        }
       }
       return;
     }
@@ -275,6 +281,11 @@ async function report(interaction: ButtonInteraction, winner: 'team1' | 'team2')
       // among the ones still waiting - which is only true because the shared
       // scan carries their edits forward.
       const awaiting = await gamesAwaitingReport(scan, series);
+
+      // Before the control message, which has to stay last in the thread.
+      if (series.completed) {
+        await announceSeriesFinished(scan, config.POST_GAME_FORM_URL);
+      }
 
       await postSeriesControl(
         scan,

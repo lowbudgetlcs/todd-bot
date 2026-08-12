@@ -662,3 +662,74 @@ describe('recording the result', () => {
     expect(calls.indexOf('deferUpdate')).toBeLessThan(calls.indexOf('reportSeriesResult'));
   });
 });
+
+/**
+ * The form is what records the match in the standings - nothing Todd writes
+ * does - so the thread has to say so the moment dennys closes the series.
+ */
+describe('the series finishing', () => {
+  const finished = () =>
+    aSeries({
+      completed: true,
+      completedAt: '2026-08-09T13:00:00Z',
+      tournamentCodes: [aCode(1)],
+      games: [aGame(1, 11, 1), aGame(2, 11, null)],
+      lastCodeIssuedAt: '2026-08-09T12:00:00Z',
+      lastGameAt: '2026-08-09T12:40:00Z',
+    });
+
+  it('points at the post-game form once the result closes the series', async () => {
+    seriesState = finished();
+    const interaction = makeInteraction('report_team1_won');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportTeam1Won(interaction as any);
+
+    const finish = threadSends.find(s => s.content.startsWith('# The series is finished!'));
+    expect(finish).toBeDefined();
+    expect(finish!.content).toContain('will NOT be recorded');
+    expect(finish!.content).toContain('https://forms.gle/');
+  });
+
+  it('says nothing while the series is still going', async () => {
+    const interaction = makeInteraction('report_team1_won');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportTeam1Won(interaction as any);
+
+    expect(threadSends.some(s => s.content.includes('series is finished'))).toBe(false);
+  });
+
+  it('keeps the control message last, below the form', async () => {
+    // The controls are the bottom of the thread by convention, and a captain
+    // correcting a result still needs to reach them.
+    seriesState = finished();
+    const interaction = makeInteraction('report_team1_won');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportTeam1Won(interaction as any);
+
+    const finish = threadSends.findIndex(s => s.content.startsWith('# The series is finished!'));
+    const control = threadSends.findIndex(s => s.content.startsWith('## 📋 Series status'));
+    expect(finish).toBeGreaterThanOrEqual(0);
+    expect(control).toBeGreaterThan(finish);
+  });
+
+  it('says it when Riot closed the series with nobody reporting', async () => {
+    // The captain presses Verify Stats, dennys says the game is already in -
+    // and that game was the one that finished the series.
+    seriesState = { ...alreadyReported(), completed: true };
+    const interaction = makeInteraction('report_result', ORIGINAL_USER, [], '2-2');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportResult(interaction as any);
+
+    expect(threadSends.some(s => s.content.startsWith('# The series is finished!'))).toBe(true);
+  });
+
+  it('does not repeat itself when the form message is already in the thread', async () => {
+    seriesState = finished();
+    const already = aThreadMessage('9', '# The series is finished! Please report the match results in the form!');
+    const interaction = makeInteraction('report_team1_won', ORIGINAL_USER, [already]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handleReportTeam1Won(interaction as any);
+
+    expect(threadSends.filter(s => s.content.includes('series is finished'))).toHaveLength(0);
+  });
+});

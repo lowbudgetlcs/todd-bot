@@ -65,6 +65,8 @@ them get to drive the series buttons afterward.
      the enemy captain;
    - the game code message with the tournament code, who generated it, and the
      enemy captain;
+   - once the series is decided, a **post-game form** message — the form is what
+     records the match in the standings, and the winning captain fills it in;
    - a **control message**, always last, carrying the series status and the
      buttons. It is deleted and re-posted after every code so it stays at the
      bottom, which means exactly one set of buttons is ever live.

@@ -8,6 +8,7 @@ import {
   buildCodeLimitRow,
   buildControlRow,
   buildGameReportRow,
+  announceSeriesFinished,
   buildSeriesStatus,
   clearRecoveryButtons,
   clearSupersededCodes,
@@ -567,6 +568,67 @@ function makeThread(existing: FakeMessage[]) {
 }
 
 const row = () => buildControlRow('123456789012345678', seriesData);
+
+/**
+ * The form is what actually records the match - nothing Todd writes reaches the
+ * standings - so this message must land, and must land once.
+ */
+describe('announceSeriesFinished', () => {
+  const FORM = 'https://forms.gle/test-form';
+
+  it('posts the form with the warning that results are not recorded without it', async () => {
+    const thread = makeThread([]);
+    await announceSeriesFinished(thread, FORM);
+
+    expect(thread.sent).toHaveLength(1);
+    expect(thread.sent[0].content).toContain('The series is finished!');
+    expect(thread.sent[0].content).toContain('will NOT be recorded');
+    expect(thread.sent[0].content).toContain('winning captain');
+    expect(thread.sent[0].content).toContain(FORM);
+  });
+
+  it('takes the form from config, so a new season does not need a deploy', async () => {
+    const thread = makeThread([]);
+    await announceSeriesFinished(thread, 'https://forms.gle/next-season');
+
+    expect(thread.sent[0].content).toContain('https://forms.gle/next-season');
+  });
+
+  it('carries no buttons - the form is the only action left', async () => {
+    const thread = makeThread([]);
+    await announceSeriesFinished(thread, FORM);
+
+    expect(thread.sent[0].components).toEqual([]);
+  });
+
+  it('says it once, however many times the series is read as complete', async () => {
+    // A correction reported after the series closed re-runs this path.
+    const thread = makeThread([]);
+    await announceSeriesFinished(thread, FORM);
+    const posted = makeMessage('100', thread.sent[0].content, false);
+    const second = makeThread([posted]);
+    await announceSeriesFinished(second, FORM);
+
+    expect(second.sent).toHaveLength(0);
+  });
+
+  it('is not confused by the code messages already in the thread', async () => {
+    // Both start with "# ", which is why the marker is the whole first phrase.
+    const thread = makeThread([makeGameMessage('1', 1, 9), makeGameMessage('2', 2, 10)]);
+    await announceSeriesFinished(thread, FORM);
+
+    expect(thread.sent).toHaveLength(1);
+  });
+
+  it('posts anyway when the thread cannot be read', async () => {
+    // A duplicate reminder costs a scroll; staying quiet costs the match result.
+    const thread = makeThread([]);
+    thread.fetch.mockRejectedValueOnce(new Error('no permission'));
+    await announceSeriesFinished(thread, FORM);
+
+    expect(thread.sent).toHaveLength(1);
+  });
+});
 
 describe('postSeriesControl', () => {
   let oldControl: FakeMessage;

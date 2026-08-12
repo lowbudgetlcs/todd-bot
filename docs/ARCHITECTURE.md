@@ -353,6 +353,28 @@ Code blocks and draft links are permanent. The control message is safe to delete
 precisely because everything on it is regenerated from `getSeries` on the next
 post.
 
+### When the series finishes
+
+`announceSeriesFinished` posts the post-game form the moment `series.completed`
+comes back true. This is the one message in the thread that is not about Todd:
+**nothing Todd writes reaches the standings** — the form is what records the
+match — so it carries the warning that results are not recorded without it, and
+names the winning captain as the one to fill it in. The URL comes from
+`POST_GAME_FORM_URL`, which is optional and defaults to the current form, so a
+new season is a config change rather than a deploy.
+
+It is posted **before** the control message, so the controls stay last, and it
+carries no buttons: there is nothing left to press in Discord.
+
+Once, guarded by `FINISHED_MARKER` — a scan of the thread rather than "did this
+click complete the series". Riot's callback closes a series with nobody pressing
+anything, so the completing click is not something Todd can rely on seeing;
+that is also why the decline path in `handleReportResult` (*"already
+recorded"*) announces too, since a captain pressing Verify Stats is often how
+Todd first learns the final game landed. If the thread cannot be read, it posts
+anyway — a duplicate reminder costs a scroll, and staying quiet costs the match
+result.
+
 ### Reporting a result
 
 Dennys pulls a played game from Riot whenever a code is issued, so a lost

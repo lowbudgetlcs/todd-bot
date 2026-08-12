@@ -39,6 +39,11 @@ function optionalInt(name: string, fallback: number, isValid: (n: number) => boo
 const API_TIMEOUT_MS = optionalInt('API_TIMEOUT_MS', 20_000, n => n > 0);
 const API_RETRIES = optionalInt('API_RETRIES', 2, n => n >= 0);
 
+// The post-game form changes between seasons, so it is swappable without a
+// deploy. Optional: an unset or blank value keeps the current form.
+const POST_GAME_FORM_URL =
+  process.env.POST_GAME_FORM_URL?.trim() || 'https://forms.gle/bxYwXpe8esVpsoix6';
+
 const {
   DISCORD_TOKEN,
   DISCORD_CLIENT_ID,
@@ -81,4 +86,5 @@ export const config = {
   DENNYS_TOKEN,
   API_TIMEOUT_MS,
   API_RETRIES,
+  POST_GAME_FORM_URL,
 };

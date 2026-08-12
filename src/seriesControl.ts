@@ -38,6 +38,12 @@ export const RECOVERY_MARKER = '⚠️';
  */
 export const CUSTOM_MARKER = '🎮';
 
+/**
+ * First line of the post-game form message, and the only thing stopping a
+ * second one. Nothing else Todd posts may start with it.
+ */
+export const FINISHED_MARKER = '# The series is finished!';
+
 /** Discord: the message is already gone, which the delete race below produces. */
 const UNKNOWN_MESSAGE = 10008;
 
@@ -485,6 +491,42 @@ export async function postSeriesControl(
     message => message.id !== posted.id && isControlMessage(message),
     message => message.delete(),
   );
+}
+
+/**
+ * Points at the post-game form once dennys closes the series.
+ *
+ * Nothing Todd writes reaches the standings - the form is what records the
+ * match - so this is the last thing the thread has to say and it must not be
+ * missed. Posted before the control message so the controls stay at the bottom.
+ *
+ * Posted once, guarded by FINISHED_MARKER rather than by "did this click
+ * complete the series": Riot's callback can close a series with nobody pressing
+ * anything, so the completing click is not a thing Todd can rely on seeing. A
+ * thread it cannot read is posted to anyway - a duplicate reminder costs a
+ * scroll, and staying quiet costs the match result.
+ */
+export async function announceSeriesFinished(
+  thread: ControlThread,
+  formUrl: string,
+): Promise<void> {
+  try {
+    const recent = await thread.messages.fetch({ limit: SCAN_LIMIT });
+    for (const message of recent.values()) {
+      if (message.content.startsWith(FINISHED_MARKER)) return;
+    }
+  } catch (error) {
+    logger.warn(`Could not check whether the series finish message is already up: ${String(error)}`);
+  }
+
+  await thread.send({
+    content:
+      `${FINISHED_MARKER} Please report the match results in the form!\n` +
+      '-# The match results will NOT be recorded if you do not fill out the sheet! ' +
+      'The winning captain needs to fill out the sheet\n\n' +
+      formUrl,
+    components: [],
+  });
 }
 
 /**
