@@ -570,7 +570,7 @@ second code, and a result naming no code records a second game.
 
 Failures worth telling apart, all on the code issue: **502** is Riot refusing,
 **503** is Riot unreachable, and **409** is Dennys refusing because the game has
-used its three-code allowance (1.4.1). Error bodies are `{ code, message }`. See
+used its two-code allowance (1.4.1). Error bodies are `{ code, message }`. See
 [When Riot will not give out a code](#when-riot-will-not-give-out-a-code) and
 [When Dennys will not issue another code](#when-dennys-will-not-issue-another-code).
 
