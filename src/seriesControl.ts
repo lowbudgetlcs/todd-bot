@@ -247,17 +247,22 @@ export function buildSeriesStatus(
     lines.push('The last code has no result yet.');
   }
 
-  // At zero this is why "Code not working?" stops offering a new code. At one it
-  // is the warning that the next code is the last - a two-code cap leaves no
-  // earlier point to say it.
-  const remaining = remainingCodeAllowance(series);
-  if (remaining === 0) {
+  // Why Generate Next Game is greyed. A disabled button explains nothing on its
+  // own, and this is the one line that turns it from broken into "not yet".
+  if (hasOutstandingCode(series)) {
+    lines.push(
+      '**Report the game in progress to unlock the next one** — ' +
+        'use the Report button on its code message above.',
+    );
+  }
+
+  // Only at zero, which under one-game-at-a-time takes a regenerate to reach.
+  // This is why "Code not working?" stops offering a new code.
+  if (remainingCodeAllowance(series) === 0) {
     lines.push(
       `No more codes can be issued for this game — ${TOURNAMENT_CODE_LIMIT} have already gone out. ` +
         '**Report a result, or play a custom game.**',
     );
-  } else if (remaining === 1) {
-    lines.push('One more code can be issued for this game.');
   }
 
   return lines.join('\n');
@@ -279,16 +284,19 @@ export function buildControlRow(
   seriesData: SeriesData,
   series?: SeriesWithGames,
 ): ActionRowBuilder<ButtonBuilder> {
-  // Never gated on the allowance. This asks for the next game, and reporting the
-  // current one is what a captain does immediately before pressing it.
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    createButton(
-      createButtonData('generate_another', originalUserId, seriesData),
-      'Generate Next Game',
-      ButtonStyle.Success,
-      '⚔️',
-    ),
+  // One game at a time. See docs/ARCHITECTURE.md - this is also what keeps the
+  // code allowance countable.
+  const inProgress = series ? hasOutstandingCode(series) : false;
+
+  const generate = createButton(
+    createButtonData('generate_another', originalUserId, seriesData),
+    'Generate Next Game',
+    ButtonStyle.Success,
+    '⚔️',
   );
+  if (inProgress) generate.setDisabled(true);
+
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(generate);
 
   // Not gated on staleness - staleness exists to give Riot's callback time to
   // land, but a dead code can be known immediately (League client says "invalid
@@ -299,7 +307,10 @@ export function buildControlRow(
   // Not gated on completion either. Dennys does not block a completed series
   // from taking codes or results, and a captain who needs to correct one should
   // not be locked out because dennys closed it early.
-  if (series && hasOutstandingCode(series)) {
+  //
+  // The same condition that greys the button above, so the row always carries
+  // exactly one live button - never two, never none.
+  if (inProgress) {
     row.addComponents(
       createButton(
         createButtonData('code_not_working', originalUserId, seriesData),

@@ -337,17 +337,12 @@ describe('buildControlRow', () => {
  * are left before a captain spends the last one.
  */
 describe('the code allowance', () => {
-  const USER = '123456789012345678';
+  /** Two codes for one game, which takes a regenerate to arrive at. */
   const spent = () =>
     aSeries({
       tournamentCodes: [aCode(1, ago(2000)), aCode(2, ago(1000))],
       lastCodeIssuedAt: ago(1000),
     });
-  const labelsOfControl = (series?: SeriesWithGames) =>
-    buttonsOf(buildControlRow(USER, seriesData, series)).map(b => b.label);
-  const generateIsDisabled = (series?: SeriesWithGames) =>
-    (buttonsOf(buildControlRow(USER, seriesData, series))[0] as { disabled?: boolean }).disabled ===
-    true;
 
   it('says nothing before a code has gone out for this game', () => {
     // Both codes belong to the game already in the books, so the game in
@@ -357,14 +352,7 @@ describe('the code allowance', () => {
       games: [aGame(1, 11, 2)],
       lastGameAt: ago(3000),
     });
-    const status = buildSeriesStatus(series, TEAMS, NOW);
-    expect(status).not.toContain('No more codes');
-    expect(status).not.toContain('One more code');
-  });
-
-  it('warns when one code is left', () => {
-    const series = aSeries({ tournamentCodes: [aCode(1, ago(1000))] });
-    expect(buildSeriesStatus(series, TEAMS, NOW)).toContain('One more code can be issued');
+    expect(buildSeriesStatus(series, TEAMS, NOW)).not.toContain('No more codes');
   });
 
   it('says why, and names the remedies, once the allowance is spent', () => {
@@ -374,35 +362,113 @@ describe('the code allowance', () => {
     expect(status).toContain('custom game');
   });
 
-  it('leaves Generate Next Game live at zero - it asks for the next game', () => {
-    // The allowance is per game and clears on a result, so a captain reporting
-    // and then pressing this is the ordinary way out. Greying it blocked that.
-    expect(labelsOfControl(spent())).toContain('Generate Next Game');
-    expect(generateIsDisabled(spent())).toBe(false);
-  });
-
   it('counts only the codes issued since the last recorded game', () => {
     // The first two belong to a game that is now in the books. Counting those
-    // would read as spent and grey the button out with a code still owed.
+    // would read as spent with a code still owed for the game in progress.
     const series = aSeries({
       tournamentCodes: [aCode(1, ago(5000)), aCode(2, ago(4000)), aCode(3, ago(1000))],
       games: [aGame(1, 11, 2)],
       lastGameAt: ago(3000),
     });
     expect(buildSeriesStatus(series, TEAMS, NOW)).not.toContain('No more codes');
+  });
+
+  it('stays quiet when the count cannot be worked out', () => {
+    // A code with no createdAt makes the count a guess, and a guess that reads
+    // low would announce a limit dennys is not applying.
+    const series = aSeries({ tournamentCodes: [aCode(1), aCode(2)] });
+    expect(buildSeriesStatus(series, TEAMS, NOW)).not.toContain('No more codes');
+  });
+});
+
+/**
+ * One game at a time (todd-bot#129). The next code is unlocked by reporting the
+ * current game, which is also the thing that clears dennys's code allowance -
+ * so every code counted since the last result belongs to the game in progress,
+ * and the allowance line above can be trusted to mean what it says.
+ */
+describe('generating the next game', () => {
+  const USER = '123456789012345678';
+  const labelsOfControl = (series?: SeriesWithGames) =>
+    buttonsOf(buildControlRow(USER, seriesData, series)).map(b => b.label);
+  const generateIsDisabled = (series?: SeriesWithGames) =>
+    (buttonsOf(buildControlRow(USER, seriesData, series))[0] as { disabled?: boolean }).disabled ===
+    true;
+
+  /** A code is out and nobody has reported the game it was issued for. */
+  const inProgress = () =>
+    aSeries({ tournamentCodes: [aCode(1, ago(1000))], lastCodeIssuedAt: ago(1000) });
+
+  it('greys the button while a game is in progress', () => {
+    expect(labelsOfControl(inProgress())).toContain('Generate Next Game');
+    expect(generateIsDisabled(inProgress())).toBe(true);
+  });
+
+  it('says why it is greyed, and where the button that clears it is', () => {
+    // A disabled button explains nothing on its own, and a captain who cannot
+    // tell "not yet" from "broken" opens a ticket.
+    const status = buildSeriesStatus(inProgress(), TEAMS, NOW);
+    expect(status).toContain('Report the game in progress to unlock the next one');
+    expect(status).toContain('code message above');
+  });
+
+  it('frees the button once the captain reports the game', () => {
+    const series = aSeries({
+      tournamentCodes: [aCode(1, ago(2000))],
+      games: [aGame(1, 11, 1)],
+      lastCodeIssuedAt: ago(2000),
+      lastGameAt: ago(1000),
+    });
+    expect(generateIsDisabled(series)).toBe(false);
+    expect(buildSeriesStatus(series, TEAMS, NOW)).not.toContain('unlock the next one');
+  });
+
+  it('frees the button when Riot records the game with nobody pressing anything', () => {
+    // No game names the code - a Riot pull can land one without Todd hearing -
+    // so the ordering of the two timestamps is what says the game is in.
+    const series = aSeries({
+      tournamentCodes: [aCode(1, ago(2000))],
+      lastCodeIssuedAt: ago(2000),
+      lastGameAt: ago(1000),
+    });
     expect(generateIsDisabled(series)).toBe(false);
   });
 
-  it('stays quiet and leaves the button live when the count cannot be worked out', () => {
-    // A code with no createdAt makes the count a guess, and a guess that reads
-    // low locks captains out of a code they are owed. Dennys can refuse instead.
-    const series = aSeries({ tournamentCodes: [aCode(1), aCode(2)] });
-    expect(buildSeriesStatus(series, TEAMS, NOW)).not.toContain('No more codes');
+  it('frees the button when a custom was played instead', () => {
+    // A custom leaves a game with no code on it, so nothing ever names code 1.
+    const series = aSeries({
+      tournamentCodes: [aCode(1, ago(2000))],
+      games: [aGame(1, 11, null)],
+      lastCodeIssuedAt: ago(2000),
+      lastGameAt: ago(1000),
+    });
     expect(generateIsDisabled(series)).toBe(false);
+  });
+
+  it('is live at the start of a series, before any code exists', () => {
+    expect(generateIsDisabled(aSeries())).toBe(false);
   });
 
   it('leaves the button live when there is no series to read', () => {
     expect(generateIsDisabled()).toBe(false);
+  });
+
+  it('always leaves exactly one live button - never two, never none', () => {
+    // The greyed generate and "Code not working?" are gated on the same
+    // condition, so the row cannot end up with nothing a captain can press.
+    for (const series of [inProgress(), aSeries()]) {
+      const buttons = buttonsOf(buildControlRow(USER, seriesData, series)) as {
+        label: string;
+        disabled?: boolean;
+      }[];
+      expect(buttons.filter(b => b.disabled !== true)).toHaveLength(1);
+    }
+  });
+
+  it('does not offer a second code as the way past a game in progress', () => {
+    // "Code not working?" is there for a dead code, and it is the only door to
+    // a replacement - which is what keeps the allowance one game deep.
+    expect(labelsOfControl(inProgress())).toEqual(['Generate Next Game', 'Code not working?']);
   });
 });
 
