@@ -29,8 +29,6 @@ const {
   getNextGameNumber,
   issueTournamentCode,
   reportSeriesResult,
-  completeSeries,
-  reopenSeries,
   refreshSeriesFromCode,
   isRiotGatewayError,
   isRetryableRiotGatewayError,
@@ -98,9 +96,9 @@ const aSeries = (over: Record<string, unknown> = {}) => ({
   teamIds: [2, 8],
   totalGames: 3,
   eventStage: 'REGULAR_SEASON',
-  completed: false,
-  completedAt: null,
-  reopenedAt: null,
+  status: 'IN_PROGRESS',
+  winnerTeamId: null,
+  doubleLoss: false,
   ...over,
 });
 
@@ -184,8 +182,6 @@ describe('writes are never retried', () => {
   it.each([
     ['issueTournamentCode', () => issueTournamentCode(5, BLUE, RED), aCode()],
     ['reportSeriesResult', () => reportSeriesResult(5, { winnerTeamId: 2 }), aGame()],
-    ['completeSeries', () => completeSeries(5), aSeries({ completed: true })],
-    ['reopenSeries', () => reopenSeries(5), aSeries()],
     [
       'refreshSeriesFromCode',
       () => refreshSeriesFromCode(5, 'NA050c5-abc'),
@@ -319,16 +315,31 @@ describe('response shapes', () => {
 });
 
 describe('series lookup', () => {
-  it('sends both team ids, the stage, and completed=false', async () => {
+  it('sends both team ids and the stage, and no status filter', async () => {
     fetchWithRetry.mockResolvedValue(ok(anEventWithSeries([aSeries()])));
     await getSeriesId(1, 2, 8, 'REGULAR_SEASON');
     const url = new URL(urlOf());
     expect(url.pathname).toBe('/event/1/series');
     expect(url.searchParams.getAll('teamIds')).toEqual(['2', '8']);
     expect(url.searchParams.get('stage')).toBe('REGULAR_SEASON');
-    // Dennys closes a series on result write. Without this filter the next code
-    // for the same pair lands in the series they already played.
-    expect(url.searchParams.get('completed')).toBe('false');
+    // `?status=` takes one value and an open series is either of two, so the
+    // status filter is Todd's. `completed` was dropped in 1.5.0 and is ignored.
+    expect(url.searchParams.has('status')).toBe(false);
+    expect(url.searchParams.has('completed')).toBe(false);
+  });
+
+  it.each(['COMPLETE', 'CANCELLED'])('skips a %s series for the same pair', async status => {
+    // Dennys closes a series on result write. Without this the next code for
+    // the same pair lands in the series they already played.
+    fetchWithRetry.mockResolvedValue(
+      ok(anEventWithSeries([aSeries({ id: 700, status }), aSeries({ status: 'IN_PROGRESS' })])),
+    );
+    expect(await getSeriesId(1, 2, 8, 'REGULAR_SEASON')).toBe(756);
+  });
+
+  it('treats an unknown status as finished', async () => {
+    fetchWithRetry.mockResolvedValue(ok(anEventWithSeries([aSeries({ status: 'ARCHIVED' })])));
+    expect(await getSeriesId(1, 2, 8, 'REGULAR_SEASON')).toBe(0);
   });
 
   it('reads the series off the event wrapper', async () => {
@@ -419,24 +430,6 @@ describe('series lifecycle', () => {
   it('treats the idempotent 200 the same as the 201', async () => {
     fetchWithRetry.mockResolvedValue(ok(aGame({ number: 2 }), 200));
     expect((await reportSeriesResult(756, { shortcode: 'ABC123' })).number).toBe(2);
-  });
-
-  it('completes a series, defaulting to an empty body', async () => {
-    fetchWithRetry.mockResolvedValue(ok(aSeries({ completed: true, completedAt: WHEN })));
-    const series = await completeSeries(756);
-    expect(urlOf()).toBe(`${API_URL}/series/756/complete`);
-    expect(initOf().method).toBe('POST');
-    expect(bodyOf()).toEqual({});
-    expect(series.completed).toBe(true);
-  });
-
-  it('reopens a series with no request body', async () => {
-    fetchWithRetry.mockResolvedValue(ok(aSeries({ reopenedAt: WHEN })));
-    const series = await reopenSeries(756);
-    expect(urlOf()).toBe(`${API_URL}/series/756/complete`);
-    expect(initOf().method).toBe('DELETE');
-    expect(initOf().body).toBeUndefined();
-    expect(series.reopenedAt).toBe(WHEN);
   });
 });
 

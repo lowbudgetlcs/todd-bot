@@ -26,9 +26,9 @@ vi.mock('../src/dennys.ts', async importOriginal => {
         teamIds: [11, 22],
         totalGames: 3,
         eventStage: 'REGULAR_SEASON',
-        completed: false,
-        completedAt: null,
-        reopenedAt: null,
+        status: 'IN_PROGRESS',
+        winnerTeamId: null,
+        doubleLoss: false,
         tournamentCodes: Array.from({ length: codeCount }, (_, i) => ({
           id: i + 1,
           shortcode: `CODE${i + 1}`,

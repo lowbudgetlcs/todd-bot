@@ -131,11 +131,12 @@ Todd never creates a series; it only creates *games inside an existing series*.
 teams, the stage name, and the division all match what's in Dennys — a stage
 mismatch is the usual culprit, since the lookup filters on it.
 
-**Also check whether the series is already complete.** The lookup sends
-`completed=false`, so a series Dennys has closed is invisible to it. Dennys closes
+**Also check whether the series is already complete or cancelled.** The lookup
+skips any series that is not `NOT_STARTED` or `IN_PROGRESS`, so a series Dennys
+has closed is invisible to it. Dennys closes
 a series automatically once enough results have been written, so this is the
 expected message after a Bo3 finishes. If it closed early — a result recorded
-against the wrong series, say — reopening it in Dennys makes it findable again.
+against the wrong series, say — setting it back to `IN_PROGRESS` in Stephen makes it findable again.
 
 ## "unexpected response shape from dennys"
 

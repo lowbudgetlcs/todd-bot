@@ -80,7 +80,7 @@ them get to drive the series buttons afterward.
 | *"No stages found for the selected division."* | The division has an empty `eventStages`. |
 | *"No teams found for the selected division."* | The division has no teams in Dennys. |
 | *"This is not One For All. No picking the same champs/teams"* | Blue and red are the same team. |
-| *"Failed to find a matching series for these teams."* | Dennys has no scheduled series for that pairing in that stage, or the only one is already complete — the lookup sends `completed=false`. |
+| *"Failed to find a matching series for these teams."* | Dennys has no scheduled series for that pairing in that stage, or the only one is already complete or cancelled — the lookup skips any series that is not `NOT_STARTED` or `IN_PROGRESS`. |
 | *"Riot is not answering right now..."* | Riot returned 503. The thread is opened anyway with **Try again** and **Go play a custom game**. |
 | *"Riot refused to create a code for this game."* | Riot returned 502, which will not succeed on a retry, so only the custom path is offered. |
 | *"This game has already been issued 2 tournament code(s)…"* | Dennys 409: this game has spent its code allowance. The message is Dennys's own with the series id taken out, posted once in the thread with **Verify Game N Stats** and **Go play a custom game**. No retry is offered — the allowance clears when a result is written. |

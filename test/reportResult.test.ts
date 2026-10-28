@@ -20,9 +20,9 @@ const aSeries = (over: Record<string, unknown> = {}) => ({
   teamIds: [11, 22],
   totalGames: 3,
   eventStage: 'REGULAR_SEASON',
-  completed: false,
-  completedAt: null,
-  reopenedAt: null,
+  status: 'IN_PROGRESS',
+  winnerTeamId: null,
+  doubleLoss: false,
   tournamentCodes: [],
   games: [],
   lastCodeIssuedAt: null,
@@ -694,8 +694,7 @@ describe('recording the result', () => {
 describe('the series finishing', () => {
   const finished = () =>
     aSeries({
-      completed: true,
-      completedAt: '2026-08-09T13:00:00Z',
+      status: 'COMPLETE',
       tournamentCodes: [aCode(1)],
       games: [aGame(1, 11, 1), aGame(2, 11, null)],
       lastCodeIssuedAt: '2026-08-09T12:00:00Z',
@@ -739,7 +738,7 @@ describe('the series finishing', () => {
   it('says it when Riot closed the series with nobody reporting', async () => {
     // The captain presses Verify Stats, dennys says the game is already in -
     // and that game was the one that finished the series.
-    seriesState = { ...alreadyReported(), completed: true };
+    seriesState = { ...alreadyReported(), status: 'COMPLETE' };
     const interaction = makeInteraction('report_result', ORIGINAL_USER, [], '2-2');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await handleReportResult(interaction as any);
@@ -1080,7 +1079,7 @@ describe('the thread after Riot confirms a game', () => {
   });
 
   it('posts the form when Riot answering finished the series', async () => {
-    refreshFinds = { ...riotAnswered(), completed: true };
+    refreshFinds = { ...riotAnswered(), status: 'COMPLETE' };
     const interaction = makeInteraction(
       'report_result',
       ORIGINAL_USER,
