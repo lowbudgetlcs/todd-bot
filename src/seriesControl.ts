@@ -236,7 +236,7 @@ export function buildSeriesStatus(
     return lines.join('\n');
   }
 
-  if (series.completed) {
+  if (series.status === 'COMPLETE') {
     lines.push('This series is complete.');
   }
 

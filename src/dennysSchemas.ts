@@ -56,6 +56,18 @@ export const eventStatusSchema = looseEnum([
   'CANCELED',
 ] as const);
 
+export type SeriesStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETE' | 'CANCELLED' | (string & {});
+export const seriesStatusSchema = looseEnum([
+  'NOT_STARTED',
+  'IN_PROGRESS',
+  'COMPLETE',
+  'CANCELLED',
+] as const);
+
+/** Still taking codes. Anything else is finished, including a status Todd does not know yet. */
+export const isSeriesOpen = (series: { status: SeriesStatus }): boolean =>
+  series.status === 'NOT_STARTED' || series.status === 'IN_PROGRESS';
+
 export const eventGroupSchema = z.object({
   id: z.number(),
   name: z.string(),
@@ -108,12 +120,10 @@ export const seriesSchema = z.object({
   teamIds: z.array(z.number()),
   totalGames: z.number(),
   eventStage: eventStageSchema,
-  // New in 1.4.0. Dennys closes a series on result write, and this is what keeps
-  // a finished series out of the candidate set for the next code.
-  completed: z.boolean(),
+  status: seriesStatusSchema,
   eventId: unread(z.number()),
-  completedAt: unread(z.string()),
-  reopenedAt: unread(z.string()),
+  winnerTeamId: unread(z.number()),
+  doubleLoss: unread(z.boolean()),
 });
 
 export const eventWithSeriesSchema = z.object({
@@ -206,10 +216,4 @@ export type ReportResultRequest = {
   loserTeamId?: number;
   tournamentCodeId?: number;
   shortcode?: string;
-};
-
-/** Body of POST /series/{id}/complete. Both fields optional; `{}` is valid. */
-export type CompleteSeriesRequest = {
-  winnerTeamId?: number;
-  loserTeamId?: number;
 };

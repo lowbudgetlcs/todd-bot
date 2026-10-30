@@ -44,9 +44,9 @@ const aSeries = (over: Partial<SeriesWithGames> = {}): SeriesWithGames => ({
   teamIds: [11, 22],
   totalGames: 3,
   eventStage: 'REGULAR_SEASON',
-  completed: false,
-  completedAt: null,
-  reopenedAt: null,
+  status: 'IN_PROGRESS',
+  winnerTeamId: null,
+  doubleLoss: false,
   tournamentCodes: [],
   games: [],
   lastCodeIssuedAt: null,
@@ -97,7 +97,7 @@ describe('buildSeriesStatus', () => {
   });
 
   it('says when the series is complete', () => {
-    expect(buildSeriesStatus(aSeries({ completed: true }), TEAMS, NOW)).toContain(
+    expect(buildSeriesStatus(aSeries({ status: 'COMPLETE' }), TEAMS, NOW)).toContain(
       'This series is complete',
     );
   });

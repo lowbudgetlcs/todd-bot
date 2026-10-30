@@ -9,11 +9,10 @@ import {
   eventWithSeriesSchema,
   eventWithTeamsSchema,
   gameSchema,
-  seriesSchema,
+  isSeriesOpen,
   seriesWithGamesSchema,
   teamSchema,
   tournamentCodeSchema,
-  type CompleteSeriesRequest,
   type CreateGameRequest,
   type Event,
   type EventGroup,
@@ -32,7 +31,6 @@ logger.setLevel('info');
 
 /** Shapes live in dennysSchemas.ts; re-exported so callers import from one module. */
 export type {
-  CompleteSeriesRequest,
   CreateGameRequest,
   Event,
   EventGroup,
@@ -45,6 +43,7 @@ export type {
   GameResult,
   ReportResultRequest,
   Series,
+  SeriesStatus,
   SeriesWithGames,
   Team,
   TournamentCode,
@@ -204,19 +203,20 @@ export const findSeriesForTeams = async (
   query.append('teamIds', String(team1));
   query.append('teamIds', String(team2));
   query.append('stage', stage);
-  // Dennys closes a series on result write. Without this filter a finished series
-  // stays a candidate and the next code lands in the one already played.
-  query.append('completed', 'false');
   const event = await apiGet(
     `/event/${eventId}/series?${query.toString()}`,
     'findSeriesForTeams',
     eventWithSeriesSchema,
   );
-  // Dennys filters on both query params server-side, so this is normally
-  // re-checking an already-correct result. Defence in depth: a widened filter
-  // upstream would otherwise book a code against the wrong series.
+  // Dennys filters on teams and stage server-side; status is filtered only here.
   const matches = event.series
-    .filter(s => s.teamIds.includes(team1) && s.teamIds.includes(team2) && s.eventStage === stage)
+    .filter(
+      s =>
+        s.teamIds.includes(team1) &&
+        s.teamIds.includes(team2) &&
+        s.eventStage === stage &&
+        isSeriesOpen(s),
+    )
     .sort((a, b) => a.id - b.id);
   if (matches.length === 0) {
     logger.warn(`No matching series for teams ${team1}/${team2} in event ${eventId}, stage ${stage}`);
@@ -330,21 +330,6 @@ export const refreshSeriesFromCode = async (
     seriesWithGamesSchema,
     { shortcode },
   );
-
-/** Close a series by hand. 409 if it is already closed. An empty body is valid. */
-export const completeSeries = async (
-  seriesId: number,
-  outcome: CompleteSeriesRequest = {},
-): Promise<Series> =>
-  apiSend('POST', `/series/${seriesId}/complete`, `completeSeries(${seriesId})`, seriesSchema, outcome);
-
-/**
- * Reopen a closed series. 409 if it is not closed. Dennys stamps `reopenedAt`
- * once and never clears it, permanently disabling auto-completion for that
- * series - reopening is not free.
- */
-export const reopenSeries = async (seriesId: number): Promise<Series> =>
-  apiSend('DELETE', `/series/${seriesId}/complete`, `reopenSeries(${seriesId})`, seriesSchema);
 
 /** Codes allowed for one game before dennys refuses, counted since the last result. */
 export const TOURNAMENT_CODE_LIMIT = 2;

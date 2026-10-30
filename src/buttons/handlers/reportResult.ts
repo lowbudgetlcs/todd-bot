@@ -78,7 +78,7 @@ async function catchThreadUp(
   const awaiting = await gamesAwaitingReport(scan, series);
 
   // Before the control message, which has to stay last in the thread.
-  if (series.completed) {
+  if (series.status === 'COMPLETE') {
     await announceSeriesFinished(scan, config.POST_GAME_FORM_URL);
   }
 

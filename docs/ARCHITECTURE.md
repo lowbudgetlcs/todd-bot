@@ -355,8 +355,8 @@ post.
 
 ### When the series finishes
 
-`announceSeriesFinished` posts the post-game form the moment `series.completed`
-comes back true. This is the one message in the thread that is not about Todd:
+`announceSeriesFinished` posts the post-game form the moment `series.status`
+comes back `COMPLETE`. This is the one message in the thread that is not about Todd:
 **nothing Todd writes reaches the standings** — the form is what records the
 match — so it carries the warning that results are not recorded without it, and
 names the winning captain as the one to fill it in. The URL comes from
@@ -736,13 +736,11 @@ response shapes in `src/dennysSchemas.ts`.
 | GET | `/event/{id}` | Division name + `eventStages` | `Event` |
 | GET | `/event/{id}/teams` | Teams in a division | `EventWithTeams` |
 | GET | `/team/{id}` | Team display name | `Team` |
-| GET | `/event/{id}/series?teamIds={a}&teamIds={b}&stage={s}&completed=false` | Find the scheduled series | `EventWithSeries` |
+| GET | `/event/{id}/series?teamIds={a}&teamIds={b}&stage={s}` | Find the scheduled series, then keep only `NOT_STARTED`/`IN_PROGRESS` | `EventWithSeries` |
 | GET | `/series/{id}` | Game number, Bo count, codes and games so far | `SeriesWithGames` |
 | POST | `/series/{id}/game` | Issue a Riot tournament code | `TournamentCode` |
 | POST | `/series/{id}/refresh` | Re-ask Riot about one code | `SeriesWithGames` |
 | POST | `/series/{id}/results` | Record who won a game | `Game` |
-| POST | `/series/{id}/complete` | Close a series by hand | `Series` |
-| DELETE | `/series/{id}/complete` | Reopen a closed series | `Series` |
 
 Bodies: `{ blueTeamId, redTeamId }` for the code, `{ winnerTeamId?, loserTeamId?,
 tournamentCodeId?, shortcode? }` for a result, `{ tournamentCodeId? | shortcode? }`
@@ -780,8 +778,9 @@ one dennys assigns; see `encodeReportTarget` in `seriesControl.ts`.
 
 Of these, the `/start-series` flow uses only the reads and the code issue. Todd
 never completes, reopens or forfeits a series — Dennys closes one automatically
-once enough results have been written. `reportSeriesResult`, `completeSeries` and
-`reopenSeries` are there for the recovery paths in todd-bot#97.
+once enough results have been written, and organizers set any other status from
+Stephen with `PATCH /series/{id}`. `reportSeriesResult` is there for the
+recovery paths in todd-bot#97.
 
 ### Codes and games are different things
 
@@ -800,11 +799,15 @@ game leaves a gap rather than colliding.
 The practical consequence: **`POST /series/{id}/game` cannot tell you which game
 you are on.** That requires `GET /series/{id}`.
 
-`completed=false` on the series lookup matters for the same reason. Once a series
-closes automatically, leaving it out of the filter would let the next code for the
-same pair land in the series the teams already played.
+Filtering the series lookup on status matters for the same reason. Once a series
+closes automatically, keeping it as a candidate would let the next code for the
+same pair land in the series the teams already played. Todd keeps only
+`NOT_STARTED` and `IN_PROGRESS` series, and treats a status it does not know as
+finished. The filter is client-side because Dennys's `?status=` takes one value
+and an open series is either of two. Dennys 1.5.0 dropped `?completed=` and
+ignores it without an error.
 
-**All three query params are real server-side filters**, not decoration:
+**Both query params are real server-side filters**, not decoration:
 `?teamIds=a&teamIds=b` narrows to series involving exactly that pair (three or
 more ids always returns nothing), `?stage=` narrows to that stage, and an
 unrecognised stage is rejected with `400 Malformed request body`.

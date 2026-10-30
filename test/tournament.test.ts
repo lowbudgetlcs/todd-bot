@@ -34,9 +34,9 @@ const aSeries = (id: number, totalGames: number) => ({
   teamIds: [11, 22],
   totalGames,
   eventStage: 'REGULAR_SEASON',
-  completed: false,
-  completedAt: null,
-  reopenedAt: null,
+  status: 'IN_PROGRESS',
+  winnerTeamId: null,
+  doubleLoss: false,
 });
 let seriesCandidates: ReturnType<typeof aSeries>[] = [];
 
@@ -106,9 +106,9 @@ vi.mock('../src/dennys.ts', async importOriginal => {
         teamIds: [11, 22],
         totalGames: 3,
         eventStage: 'REGULAR_SEASON',
-        completed: false,
-        completedAt: null,
-        reopenedAt: null,
+        status: 'IN_PROGRESS',
+        winnerTeamId: null,
+        doubleLoss: false,
         tournamentCodes: seriesCodes,
         games: seriesGames,
         lastCodeIssuedAt: null,

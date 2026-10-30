@@ -221,7 +221,7 @@ gateway connection or a live backend:
 | `state.test.ts` | Atomic write, reload survival, and corrupt-file fallback to defaults |
 | `interactionSafety.test.ts` | 10062 vs 40060 (dead token vs. our own double ack), defer/error channel selection, `runGuarded` |
 | `ackBeforeSlowWork.test.ts` | The 3-second rule: every button handler acks *before* its first dennys call |
-| `dennys.test.ts` | The backend contract: URL/auth on every call, **every write passes `retries: 0`**, the `completed=false` series filter, the client-side re-check that a series matches on *both* teams and the stage, game numbering following games rather than codes, `DennysSchemaError` on a changed shape vs. tolerance for unread and added fields, mojibake repair reaching real call sites, `HttpError` carrying status + body |
+| `dennys.test.ts` | The backend contract: URL/auth on every call, **every write passes `retries: 0`**, the open-status series filter, the client-side re-check that a series matches on *both* teams and the stage, game numbering following games rather than codes, `DennysSchemaError` on a changed shape vs. tolerance for unread and added fields, mojibake repair reaching real call sites, `HttpError` carrying status + body |
 | `tournament.test.ts` | The main flow: `handleBothTeamSubmission` and `handleTeamSelect` ack before their first dennys call, the game number tracks games played rather than codes issued, the series resolves once by id for both the number and the Bo, and an oversized stage is refused **before** the code is issued rather than stranding a real series behind an unusable button |
 
 Tests are written against the contracts in

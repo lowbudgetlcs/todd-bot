@@ -182,7 +182,7 @@ describe('a regenerate that succeeds', () => {
     series: {
       id: 756,
       totalGames: 5,
-      completed: false,
+      status: 'IN_PROGRESS',
       tournamentCodes: [{ id: 1 }, { id: 2 }, { id: 3 }],
       games: [{ number: 1, result: { winningTeamId: 11 } }],
       lastCodeIssuedAt: null,
