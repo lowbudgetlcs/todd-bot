@@ -56,7 +56,6 @@ export const eventStatusSchema = looseEnum([
   'CANCELED',
 ] as const);
 
-/** Set by dennys: the first code or game starts a series, the last result closes it. */
 export type SeriesStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETE' | 'CANCELLED' | (string & {});
 export const seriesStatusSchema = looseEnum([
   'NOT_STARTED',
@@ -121,9 +120,6 @@ export const seriesSchema = z.object({
   teamIds: z.array(z.number()),
   totalGames: z.number(),
   eventStage: eventStageSchema,
-  // New in 1.5.0, replacing `completed`. Dennys closes a series on result write,
-  // and this is what keeps a finished series out of the candidate set for the
-  // next code.
   status: seriesStatusSchema,
   eventId: unread(z.number()),
   winnerTeamId: unread(z.number()),

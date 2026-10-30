@@ -208,13 +208,7 @@ export const findSeriesForTeams = async (
     'findSeriesForTeams',
     eventWithSeriesSchema,
   );
-  // Dennys filters on teams and stage server-side, so that part is normally
-  // re-checking an already-correct result. Defence in depth: a widened filter
-  // upstream would otherwise book a code against the wrong series.
-  //
-  // Status is filtered here only. `?status=` takes one value and an open series
-  // is either of two. Without it a finished series stays a candidate and the
-  // next code lands in the one already played.
+  // Dennys filters on teams and stage server-side; status is filtered only here.
   const matches = event.series
     .filter(
       s =>

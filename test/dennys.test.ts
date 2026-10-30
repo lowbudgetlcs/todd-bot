@@ -322,15 +322,11 @@ describe('series lookup', () => {
     expect(url.pathname).toBe('/event/1/series');
     expect(url.searchParams.getAll('teamIds')).toEqual(['2', '8']);
     expect(url.searchParams.get('stage')).toBe('REGULAR_SEASON');
-    // `?status=` takes one value and an open series is either of two, so the
-    // status filter is Todd's. `completed` was dropped in 1.5.0 and is ignored.
     expect(url.searchParams.has('status')).toBe(false);
     expect(url.searchParams.has('completed')).toBe(false);
   });
 
   it.each(['COMPLETE', 'CANCELLED'])('skips a %s series for the same pair', async status => {
-    // Dennys closes a series on result write. Without this the next code for
-    // the same pair lands in the series they already played.
     fetchWithRetry.mockResolvedValue(
       ok(anEventWithSeries([aSeries({ id: 700, status }), aSeries({ status: 'IN_PROGRESS' })])),
     );
